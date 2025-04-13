@@ -4,7 +4,9 @@
   "description": "Model Context Protocol server for GitLab integration",
   "main": "./build/index.js",
   "type": "module",
-  "bin": "./build/index.js",
+  "bin": {
+    "gitlab-mcp": "build/index.js"
+  },
   "files": [
     "build"
   ],
