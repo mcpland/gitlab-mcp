@@ -98,7 +98,11 @@ import {
 } from "./schemas.js";
 
 // Load .env from the current working directory
-config({ path: path.resolve(process.cwd(), ".env") });
+config({
+  path: process.env.ENV_FILE ?? path.resolve(process.cwd(), ".env"),
+});
+
+console.log('process.cwd()', process.cwd());
 
 /**
  * Read version from package.json
