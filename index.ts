@@ -2,6 +2,7 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -14,6 +15,10 @@ import { dirname } from "path";
 import fs from "fs";
 import path from "path";
 import { config } from "dotenv";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
+import express, { Request, Response } from "express";
+import { IncomingMessage, ServerResponse } from "http";
 
 import {
   GitLabForkSchema,
@@ -98,11 +103,14 @@ import {
 } from "./schemas.js";
 
 // Load .env from the current working directory
-config({
-  path: process.env.ENV_FILE ?? path.resolve(process.cwd(), ".env"),
-});
+config({ path: path.resolve(process.cwd(), ".env") });
 
-console.log('process.cwd()', process.cwd());
+const argv = yargs(hideBin(process.argv)).argv as {
+  mode?: string;
+  port?: number;
+};
+const isSSE = argv.mode === "sse";
+const port = argv.port ?? 3044;
 
 /**
  * Read version from package.json
@@ -2305,18 +2313,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
  * 서버 초기화 및 실행
  */
 async function runServer() {
-  try {
-    console.error("========================");
-    console.error(`GitLab MCP Server v${SERVER_VERSION}`);
-    console.error(`API URL: ${GITLAB_API_URL}`);
-    console.error("========================");
+  if (isSSE) {
+    const app = express();
+    let transport: SSEServerTransport | undefined;
 
-    const transport = new StdioServerTransport();
-    await server.connect(transport);
-    console.error("GitLab MCP Server running on stdio");
-  } catch (error) {
-    console.error("Error initializing server:", error);
-    process.exit(1);
+    app.get("/sse", async (req: IncomingMessage, res: ServerResponse) => {
+      console.log("Establishing new SSE connection");
+      transport = new SSEServerTransport("/messages", res);
+      await server.connect(transport);
+      server.onclose = async () => {
+        await server.close();
+        process.exit(0);
+      };
+    });
+
+    app.post("/messages", async (req: Request, res: Response) => {
+      await transport?.handlePostMessage(req, res);
+    });
+    app.listen(port, () => {
+      console.log(`HTTP server listening on port ${port}`);
+      console.log(`SSE endpoint available at http://localhost:${port}/sse`);
+      console.log(
+        `Message endpoint available at http://localhost:${port}/messages`
+      );
+    });
+  } else {
+    try {
+      console.error("========================");
+      console.error(`GitLab MCP Server v${SERVER_VERSION}`);
+      console.error(`API URL: ${GITLAB_API_URL}`);
+      console.error("========================");
+
+      const transport = new StdioServerTransport();
+      await server.connect(transport);
+      console.error("GitLab MCP Server running on stdio");
+    } catch (error) {
+      console.error("Error initializing server:", error);
+      process.exit(1);
+    }
   }
 }
 
