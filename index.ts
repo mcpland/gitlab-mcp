@@ -375,7 +375,6 @@ if (!GITLAB_PERSONAL_ACCESS_TOKEN) {
 
 /**
  * Common headers for GitLab API requests
- * GitLab API 공통 헤더 (Common headers for GitLab API)
  */
 const DEFAULT_HEADERS = {
   Accept: "application/json",
@@ -385,7 +384,6 @@ const DEFAULT_HEADERS = {
 
 /**
  * Utility function for handling GitLab API errors
- * API 에러 처리를 위한 유틸리티 함수 (Utility function for handling API errors)
  *
  * @param {import("node-fetch").Response} response - The response from GitLab API
  * @throws {Error} Throws an error with response details if the request failed
@@ -414,7 +412,6 @@ async function handleGitLabError(
 
 /**
  * Create a fork of a GitLab project
- * 프로젝트 포크 생성 (Create a project fork)
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {string} [namespace] - The namespace to fork the project to
@@ -424,7 +421,6 @@ async function forkProject(
   projectId: string,
   namespace?: string
 ): Promise<GitLabFork> {
-  // API 엔드포인트 URL 생성
   const url = new URL(
     `${GITLAB_API_URL}/projects/${encodeURIComponent(projectId)}/fork`
   );
@@ -438,7 +434,6 @@ async function forkProject(
     headers: DEFAULT_HEADERS,
   });
 
-  // 이미 존재하는 프로젝트인 경우 처리
   if (response.status === 409) {
     throw new Error("Project already exists in the target namespace");
   }
@@ -450,7 +445,6 @@ async function forkProject(
 
 /**
  * Create a new branch in a GitLab project
- * 새로운 브랜치 생성 (Create a new branch)
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {z.infer<typeof CreateBranchOptionsSchema>} options - Branch creation options
@@ -481,7 +475,6 @@ async function createBranch(
 
 /**
  * Get the default branch for a GitLab project
- * 프로젝트의 기본 브랜치 조회 (Get the default branch of a project)
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @returns {Promise<string>} The name of the default branch
@@ -502,7 +495,6 @@ async function getDefaultBranchRef(projectId: string): Promise<string> {
 
 /**
  * Get the contents of a file from a GitLab project
- * 파일 내용 조회 (Get file contents)
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {string} filePath - The path of the file to get
@@ -516,7 +508,6 @@ async function getFileContents(
 ): Promise<GitLabContent> {
   const encodedPath = encodeURIComponent(filePath);
 
-  // ref가 없는 경우 default branch를 가져옴
   if (!ref) {
     ref = await getDefaultBranchRef(projectId);
   }
@@ -533,7 +524,6 @@ async function getFileContents(
     headers: DEFAULT_HEADERS,
   });
 
-  // 파일을 찾을 수 없는 경우 처리
   if (response.status === 404) {
     throw new Error(`File not found: ${filePath}`);
   }
@@ -542,7 +532,6 @@ async function getFileContents(
   const data = await response.json();
   const parsedData = GitLabContentSchema.parse(data);
 
-  // Base64로 인코딩된 파일 내용을 UTF-8로 디코딩
   if (!Array.isArray(parsedData) && parsedData.content) {
     parsedData.content = Buffer.from(parsedData.content, "base64").toString(
       "utf8"
@@ -555,7 +544,6 @@ async function getFileContents(
 
 /**
  * Create a new issue in a GitLab project
- * 이슈 생성 (Create an issue)
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {z.infer<typeof CreateIssueOptionsSchema>} options - Issue creation options
@@ -581,7 +569,6 @@ async function createIssue(
     }),
   });
 
-  // 잘못된 요청 처리
   if (response.status === 400) {
     const errorBody = await response.text();
     throw new Error(`Invalid request: ${errorBody}`);
@@ -594,7 +581,6 @@ async function createIssue(
 
 /**
  * List issues in a GitLab project
- * 프로젝트의 이슈 목록 조회
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {Object} options - Options for listing issues
@@ -631,7 +617,6 @@ async function listIssues(
 
 /**
  * Get a single issue from a GitLab project
- * 단일 이슈 조회
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} issueIid - The internal ID of the project issue
@@ -658,7 +643,6 @@ async function getIssue(
 
 /**
  * Update an issue in a GitLab project
- * 이슈 업데이트
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} issueIid - The internal ID of the project issue
@@ -695,7 +679,6 @@ async function updateIssue(
 
 /**
  * Delete an issue from a GitLab project
- * 이슈 삭제
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} issueIid - The internal ID of the project issue
@@ -718,7 +701,6 @@ async function deleteIssue(projectId: string, issueIid: number): Promise<void> {
 
 /**
  * List all issue links for a specific issue
- * 이슈 관계 목록 조회
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} issueIid - The internal ID of the project issue
@@ -745,7 +727,6 @@ async function listIssueLinks(
 
 /**
  * Get a specific issue link
- * 특정 이슈 관계 조회
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} issueIid - The internal ID of the project issue
@@ -774,7 +755,6 @@ async function getIssueLink(
 
 /**
  * Create an issue link between two issues
- * 이슈 관계 생성
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} issueIid - The internal ID of the project issue
@@ -813,7 +793,6 @@ async function createIssueLink(
 
 /**
  * Delete an issue link
- * 이슈 관계 삭제
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} issueIid - The internal ID of the project issue
@@ -841,7 +820,6 @@ async function deleteIssueLink(
 
 /**
  * Create a new merge request in a GitLab project
- * 병합 요청 생성
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {z.infer<typeof CreateMergeRequestOptionsSchema>} options - Merge request creation options
@@ -890,7 +868,6 @@ async function createMergeRequest(
 
 /**
  * List merge request discussion items
- * 병합 요청 토론 목록 조회
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} mergeRequestIid - The IID of a merge request
@@ -918,7 +895,6 @@ async function listMergeRequestDiscussions(
 
 /**
  * Modify an existing merge request thread note
- * 병합 요청 토론 노트 수정
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} mergeRequestIid - The IID of a merge request
@@ -960,7 +936,6 @@ async function updateMergeRequestNote(
 
 /**
  * Create or update a file in a GitLab project
- * 파일 생성 또는 업데이트
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {string} filePath - The path of the file to create or update
@@ -1054,7 +1029,6 @@ async function createOrUpdateFile(
 
 /**
  * Create a tree structure in a GitLab project repository
- * 저장소에 트리 구조 생성
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {FileOperation[]} files - Array of file operations
@@ -1110,7 +1084,6 @@ async function createTree(
 
 /**
  * Create a commit in a GitLab project repository
- * 저장소에 커밋 생성
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {string} message - The commit message
@@ -1256,7 +1229,6 @@ async function createRepository(
 
 /**
  * Get merge request details
- * MR 조회 함수 (Function to retrieve merge request)
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} mergeRequestIid - The internal ID of the merge request
@@ -1315,7 +1287,6 @@ async function getMergeRequestDiffs(
 
 /**
  * Update a merge request
- * MR 업데이트 함수 (Function to update merge request)
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {number} mergeRequestIid - The internal ID of the merge request
@@ -1348,7 +1319,6 @@ async function updateMergeRequest(
 
 /**
  * Create a new note (comment) on an issue or merge request
- * 📦 새로운 함수: createNote - 이슈 또는 병합 요청에 노트(댓글)를 추가하는 함수
  * (New function: createNote - Function to add a note (comment) to an issue or merge request)
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
@@ -1359,11 +1329,10 @@ async function updateMergeRequest(
  */
 async function createNote(
   projectId: string,
-  noteableType: "issue" | "merge_request", // 'issue' 또는 'merge_request' 타입 명시
+  noteableType: "issue" | "merge_request",
   noteableIid: number,
   body: string
 ): Promise<any> {
-  // ⚙️ 응답 타입은 GitLab API 문서에 따라 조정 가능
   const url = new URL(
     `${GITLAB_API_URL}/projects/${encodeURIComponent(
       projectId
@@ -1388,7 +1357,6 @@ async function createNote(
 
 /**
  * List all namespaces
- * 사용 가능한 모든 네임스페이스 목록 조회
  *
  * @param {Object} options - Options for listing namespaces
  * @param {string} [options.search] - Search query to filter namespaces
@@ -1426,7 +1394,6 @@ async function listNamespaces(options: {
 
 /**
  * Get details on a namespace
- * 네임스페이스 상세 정보 조회
  *
  * @param {string} id - The ID or URL-encoded path of the namespace
  * @returns {Promise<GitLabNamespace>} The namespace details
@@ -1445,7 +1412,6 @@ async function getNamespace(id: string): Promise<GitLabNamespace> {
 
 /**
  * Verify if a namespace exists
- * 네임스페이스 존재 여부 확인
  *
  * @param {string} namespacePath - The path of the namespace to check
  * @param {number} [parentId] - The ID of the parent namespace
@@ -1474,7 +1440,6 @@ async function verifyNamespaceExistence(
 
 /**
  * Get a single project
- * 단일 프로젝트 조회
  *
  * @param {string} projectId - The ID or URL-encoded path of the project
  * @param {Object} options - Options for getting project details
@@ -1518,7 +1483,6 @@ async function getProject(
 
 /**
  * List projects
- * 프로젝트 목록 조회
  *
  * @param {Object} options - Options for listing projects
  * @returns {Promise<GitLabProject[]>} List of projects
@@ -2310,7 +2274,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 /**
  * Initialize and run the server
- * 서버 초기화 및 실행
  */
 async function runServer() {
   if (isSSE) {
@@ -2321,10 +2284,6 @@ async function runServer() {
       console.log("Establishing new SSE connection");
       transport = new SSEServerTransport("/messages", res);
       await server.connect(transport);
-      server.onclose = async () => {
-        await server.close();
-        process.exit(0);
-      };
     });
 
     app.post("/messages", async (req: Request, res: Response) => {
