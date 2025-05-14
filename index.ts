@@ -102,15 +102,17 @@ import {
   type GitLabDiscussion,
 } from "./schemas.js";
 
-// Load .env from the current working directory
-config({ path: path.resolve(process.cwd(), ".env") });
-
 const argv = yargs(hideBin(process.argv)).argv as {
   mode?: string;
   port?: number;
+  envFile?: string;
 };
 const isSSE = argv.mode === "sse";
 const port = argv.port ?? 3044;
+const envFile = argv.envFile ?? ".env";
+
+// Load .env from the current working directory
+config({ path: envFile ?? path.resolve(process.cwd(), ".env") });
 
 /**
  * Read version from package.json
