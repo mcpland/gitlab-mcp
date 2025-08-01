@@ -33,12 +33,12 @@
     "zod-to-json-schema": "^3.23.5"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.8.0",
+    "@modelcontextprotocol/sdk": "^1.17.1",
     "@types/node-fetch": "^2.6.12",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "node-fetch": "^3.3.2",
     "yargs": "^17.7.2",
-    "zod-to-json-schema": "^3.23.5"
+    "zod-to-json-schema": "^3.24.6"
   }
 }
