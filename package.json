@@ -25,20 +25,16 @@
   "author": "unadlib",
   "license": "MIT",
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "1.8.0",
     "@types/express": "^5.0.1",
     "@types/node-fetch": "^2.6.12",
-    "@types/yargs": "^17.0.33",
-    "node-fetch": "^3.3.2",
-    "zod-to-json-schema": "^3.23.5"
+    "@types/yargs": "^17.0.33"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.1",
-    "@types/node-fetch": "^2.6.12",
-    "dotenv": "^16.5.0",
+    "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "node-fetch": "^3.3.2",
-    "yargs": "^17.7.2",
+    "yargs": "^18.0.0",
     "zod-to-json-schema": "^3.24.6"
   }
 }
