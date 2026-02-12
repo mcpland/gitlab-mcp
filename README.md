@@ -6,6 +6,7 @@
 - 策略层（readonly、allowlist、deny regex、feature toggle）
 - Streamable HTTP 会话治理（每会话串行队列、TTL 回收、容量上限、限流、remote auth）
 - 输出控制（`json` / `compact-json` / `yaml` + 大响应截断）
+- 认证与兼容增强（cookie 文件热重载 + warmup、外部 token script/file、Cloudflare 兼容头）
 - 高阶代码审查工具：`gitlab_get_merge_request_code_context`
 
 ## 核心能力
@@ -25,6 +26,14 @@
 - 空闲 session 自动回收（`SESSION_TIMEOUT_SECONDS`）
 - `MAX_SESSIONS` 容量保护
 - `MAX_REQUESTS_PER_MINUTE` 每 session 限流
+
+### 2.5) 认证与兼容增强（补齐 plan 的 P1/P2）
+
+- `GITLAB_AUTH_COOKIE_PATH`：支持 Netscape cookie 文件认证
+- cookie 文件变更会自动热重载；首次请求前自动 warmup（默认 `/api/v4/user`）
+- `GITLAB_TOKEN_SCRIPT`：可通过外部脚本动态获取 token（支持缓存）
+- `GITLAB_TOKEN_FILE`：可从文件读取 token，默认校验权限（建议 `chmod 600`）
+- `GITLAB_CLOUDFLARE_BYPASS=true`：启用浏览器兼容头（UA / Accept-Language 等）
 
 ### 3) MR Code Context（plan 重点特性）
 
@@ -69,6 +78,14 @@ npm run dev:http
 - tools/list 不依赖 token，可先发现工具
 - tool call 时才校验会话是否具备有效 auth
 
+## TLS 与安全
+
+- 生产环境默认建议 `GITLAB_ERROR_DETAIL_MODE=safe`，避免泄露上游错误细节
+- 若设置 `NODE_TLS_REJECT_UNAUTHORIZED=0`，必须同时显式确认：
+  - `GITLAB_ALLOW_INSECURE_TLS=true`
+- token 文件默认要求严格权限；如需放宽需显式设置：
+  - `GITLAB_ALLOW_INSECURE_TOKEN_FILE=true`
+
 ## 工具目录（主要）
 
 - 项目与组织
@@ -81,6 +98,7 @@ npm run dev:http
 - 仓库与文件
   - `gitlab_get_repository_tree`
   - `gitlab_get_file_contents`
+  - `gitlab_search_code_blobs`
   - `gitlab_create_or_update_file`
   - `gitlab_push_files`
   - `gitlab_create_branch`
@@ -122,7 +140,8 @@ npm run dev:http
 - GraphQL / 附件
   - `gitlab_execute_graphql_query`
   - `gitlab_execute_graphql_mutation`
-  - `gitlab_upload_markdown`
+  - `gitlab_execute_graphql`（兼容别名）
+  - `gitlab_upload_markdown`（支持 `content` 或 `file_path`）
   - `gitlab_download_attachment`
 
 ## 质量与构建
