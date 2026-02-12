@@ -646,6 +646,23 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_mr_discussions",
+      title: "Merge Request Discussions (Alias)",
+      description: "Backward-compatible alias of gitlab_list_merge_request_discussions.",
+      mutating: false,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1),
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listMergeRequestDiscussions(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          { query: toQuery(omit(args, ["project_id", "merge_request_iid"])) }
+        )
+    },
+    {
       name: "gitlab_create_merge_request_discussion_note",
       title: "Create MR Discussion Note",
       description: "Add note to existing MR discussion thread.",
@@ -734,6 +751,25 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       name: "gitlab_list_merge_request_notes",
       title: "List Merge Request Notes",
       description: "List top-level notes for an MR.",
+      mutating: false,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1),
+        sort: optionalString,
+        order_by: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listMergeRequestNotes(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          { query: toQuery(omit(args, ["project_id", "merge_request_iid"])) }
+        )
+    },
+    {
+      name: "gitlab_get_merge_request_notes",
+      title: "Get Merge Request Notes (Alias)",
+      description: "Backward-compatible alias of gitlab_list_merge_request_notes.",
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
@@ -1309,6 +1345,28 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_edit_milestone",
+      title: "Edit Milestone (Alias)",
+      description: "Backward-compatible alias of gitlab_update_milestone.",
+      mutating: true,
+      requiresFeature: "milestone",
+      inputSchema: {
+        project_id: z.string().optional(),
+        milestone_id: z.string().min(1),
+        title: optionalString,
+        description: optionalString,
+        due_date: optionalString,
+        start_date: optionalString,
+        state_event: optionalString
+      },
+      handler: async (args, context) =>
+        context.gitlab.updateMilestone(
+          resolveProjectId(args, context, true),
+          getString(args, "milestone_id"),
+          toQuery(omit(args, ["project_id", "milestone_id"]))
+        )
+    },
+    {
       name: "gitlab_delete_milestone",
       title: "Delete Milestone",
       description: "Delete a milestone.",
@@ -1637,6 +1695,28 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
 
         if (!containsGraphqlMutation(query)) {
           throw new Error("No mutation detected. Use gitlab_execute_graphql_query for queries.");
+        }
+
+        return context.gitlab.executeGraphql(query, getOptionalRecord(args, "variables"));
+      }
+    },
+    {
+      name: "gitlab_execute_graphql",
+      title: "Execute GraphQL (Compat)",
+      description:
+        "Backward-compatible GraphQL executor. Mutation payloads still honor read-only policy.",
+      mutating: false,
+      inputSchema: {
+        query: z.string().min(1),
+        variables: optionalRecord
+      },
+      handler: async (args, context) => {
+        const query = getString(args, "query");
+        if (containsGraphqlMutation(query)) {
+          context.policy.assertCanExecute({
+            name: "gitlab_execute_graphql",
+            mutating: true
+          });
         }
 
         return context.gitlab.executeGraphql(query, getOptionalRecord(args, "variables"));
