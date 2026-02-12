@@ -5,3 +5,6 @@ coverage/
 .DS_Store
 .vscode/
 .nyc_output/
+
+other/
+plan.md
