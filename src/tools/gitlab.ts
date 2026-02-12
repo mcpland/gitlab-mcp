@@ -1996,6 +1996,40 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_create_release_evidence",
+      title: "Create Release Evidence",
+      description: "Create evidence for an existing release.",
+      mutating: true,
+      requiresFeature: "release",
+      inputSchema: {
+        project_id: z.string().optional(),
+        tag_name: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.createReleaseEvidence(
+          resolveProjectId(args, context, true),
+          getString(args, "tag_name")
+        )
+    },
+    {
+      name: "gitlab_download_release_asset",
+      title: "Download Release Asset",
+      description: "Download a release asset using its direct asset path.",
+      mutating: false,
+      requiresFeature: "release",
+      inputSchema: {
+        project_id: z.string().optional(),
+        tag_name: z.string().min(1),
+        direct_asset_path: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.downloadReleaseAsset(
+          resolveProjectId(args, context, true),
+          getString(args, "tag_name"),
+          getString(args, "direct_asset_path")
+        )
+    },
+    {
       name: "gitlab_list_labels",
       title: "List Labels",
       description: "List project labels.",

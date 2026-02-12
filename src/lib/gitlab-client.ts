@@ -1287,6 +1287,30 @@ export class GitLabClient {
     return this.delete(`/projects/${encode(projectId)}/releases/${encode(tagName)}`, options);
   }
 
+  createReleaseEvidence(
+    projectId: string,
+    tagName: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(
+      `/projects/${encode(projectId)}/releases/${encode(tagName)}/evidence`,
+      options
+    );
+  }
+
+  downloadReleaseAsset(
+    projectId: string,
+    tagName: string,
+    directAssetPath: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    const safePath = encodeSlashPath(directAssetPath);
+    return this.get(
+      `/projects/${encode(projectId)}/releases/${encode(tagName)}/downloads/${safePath}`,
+      options
+    );
+  }
+
   // labels
   listLabels(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/labels`, options);
@@ -1573,6 +1597,19 @@ export function getEffectiveSessionAuth(
 
 function encode(value: string): string {
   return encodeURIComponent(value);
+}
+
+function encodeSlashPath(pathValue: string): string {
+  const trimmed = pathValue.replace(/^\/+/, "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encode(segment))
+    .join("/");
 }
 
 function normalizeApiUrl(rawUrl: string): string {
