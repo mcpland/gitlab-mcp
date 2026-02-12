@@ -2,6 +2,9 @@ import { getSessionAuth, type SessionAuth } from "./auth-context.js";
 
 export interface GitLabClientOptions {
   timeoutMs?: number;
+  beforeRequest?: (
+    context: GitLabBeforeRequestContext
+  ) => Promise<GitLabBeforeRequestResult | void>;
 }
 
 export interface GitLabRequestOptions {
@@ -10,6 +13,21 @@ export interface GitLabRequestOptions {
   headers?: HeadersInit;
   token?: string;
   apiUrl?: string;
+}
+
+export interface GitLabBeforeRequestContext {
+  url: URL;
+  method: string;
+  headers: Headers;
+  body?: BodyInit;
+  token?: string;
+}
+
+export interface GitLabBeforeRequestResult {
+  headers?: Headers;
+  body?: BodyInit;
+  token?: string;
+  fetchImpl?: typeof fetch;
 }
 
 export interface GitLabProject {
@@ -57,11 +75,13 @@ export class GitLabClient {
   private readonly baseApiUrl: string;
   private readonly defaultToken?: string;
   private readonly timeoutMs: number;
+  private readonly beforeRequest?: GitLabClientOptions["beforeRequest"];
 
   constructor(baseApiUrl: string, defaultToken?: string, options: GitLabClientOptions = {}) {
     this.baseApiUrl = normalizeApiUrl(baseApiUrl);
     this.defaultToken = defaultToken;
     this.timeoutMs = options.timeoutMs ?? 20_000;
+    this.beforeRequest = options.beforeRequest;
   }
 
   // projects
@@ -1420,7 +1440,11 @@ export class GitLabClient {
 
     return this.post(`/projects/${encode(projectId)}/uploads`, {
       ...options,
-      body: form
+      body: form,
+      headers: {
+        Accept: "*/*",
+        ...(options.headers ?? {})
+      }
     });
   }
 
@@ -1528,13 +1552,42 @@ export class GitLabClient {
       token?: string;
     }
   ): Promise<unknown> {
-    const headers = new Headers(options.headers);
-    headers.set("Accept", "application/json");
-    this.attachAuth(headers, options.token);
+    let headers = new Headers(options.headers);
+    if (!headers.has("Accept")) {
+      headers.set("Accept", "application/json");
+    }
+    let requestBody = options.body;
+    let token = options.token;
+    let fetchImpl: typeof fetch = fetch;
 
-    const response = await fetch(url, {
+    if (this.beforeRequest) {
+      const override = await this.beforeRequest({
+        url,
+        method: options.method,
+        headers,
+        body: requestBody,
+        token
+      });
+
+      if (override?.headers) {
+        headers = override.headers;
+      }
+      if (override?.body !== undefined) {
+        requestBody = override.body;
+      }
+      if (override?.token !== undefined) {
+        token = override.token;
+      }
+      if (override?.fetchImpl) {
+        fetchImpl = override.fetchImpl;
+      }
+    }
+
+    this.attachAuth(headers, token);
+
+    const response = await fetchImpl(url, {
       method: options.method,
-      body: options.body,
+      body: requestBody,
       headers,
       signal: AbortSignal.timeout(this.timeoutMs)
     });
