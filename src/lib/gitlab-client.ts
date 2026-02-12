@@ -1043,6 +1043,17 @@ export class GitLabClient {
     return this.get(`/projects/${encode(projectId)}/pipelines/${encode(pipelineId)}/jobs`, options);
   }
 
+  listPipelineTriggerJobs(
+    projectId: string,
+    pipelineId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/pipelines/${encode(pipelineId)}/bridges`,
+      options
+    );
+  }
+
   getPipelineJob(
     projectId: string,
     jobId: string,
@@ -1180,6 +1191,50 @@ export class GitLabClient {
     return this.delete(`/projects/${encode(projectId)}/milestones/${encode(milestoneId)}`, options);
   }
 
+  getMilestoneIssues(
+    projectId: string,
+    milestoneId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/milestones/${encode(milestoneId)}/issues`,
+      options
+    );
+  }
+
+  getMilestoneMergeRequests(
+    projectId: string,
+    milestoneId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/milestones/${encode(milestoneId)}/merge_requests`,
+      options
+    );
+  }
+
+  promoteMilestone(
+    projectId: string,
+    milestoneId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(
+      `/projects/${encode(projectId)}/milestones/${encode(milestoneId)}/promote`,
+      options
+    );
+  }
+
+  getMilestoneBurndownEvents(
+    projectId: string,
+    milestoneId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/milestones/${encode(milestoneId)}/burndown_events`,
+      options
+    );
+  }
+
   // releases
   listReleases(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/releases`, options);
@@ -1292,6 +1347,10 @@ export class GitLabClient {
   // namespaces/users/events
   listNamespaces(options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get("/namespaces", options);
+  }
+
+  listGroupIterations(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/groups/${encode(groupId)}/iterations`, options);
   }
 
   getNamespace(namespaceIdOrPath: string, options: GitLabRequestOptions = {}): Promise<unknown> {

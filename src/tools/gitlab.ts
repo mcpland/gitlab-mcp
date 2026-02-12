@@ -205,6 +205,33 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_list_group_iterations",
+      title: "List Group Iterations",
+      description: "List iterations for a group.",
+      mutating: false,
+      inputSchema: {
+        group_id: z.string().min(1),
+        state: optionalString,
+        search: optionalString,
+        search_in: optionalStringArray,
+        include_ancestors: optionalBoolean,
+        include_descendants: optionalBoolean,
+        updated_before: optionalString,
+        updated_after: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) => {
+        const query = toQuery(omit(args, ["group_id"]));
+        const searchIn = getOptionalStringArray(args, "search_in");
+        if (searchIn && searchIn.length > 0) {
+          query.in = searchIn.join(",");
+          delete query.search_in;
+        }
+
+        return context.gitlab.listGroupIterations(getString(args, "group_id"), { query });
+      }
+    },
+    {
       name: "gitlab_search_repositories",
       title: "Search Repositories",
       description: "Search repositories by keyword.",
@@ -1534,6 +1561,25 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_list_pipeline_trigger_jobs",
+      title: "List Pipeline Trigger Jobs",
+      description: "List downstream/bridge trigger jobs in a pipeline.",
+      mutating: false,
+      requiresFeature: "pipeline",
+      inputSchema: {
+        project_id: z.string().optional(),
+        pipeline_id: z.string().min(1),
+        scope: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listPipelineTriggerJobs(
+          resolveProjectId(args, context, true),
+          getString(args, "pipeline_id"),
+          { query: toQuery(omit(args, ["project_id", "pipeline_id"])) }
+        )
+    },
+    {
       name: "gitlab_get_pipeline_job",
       title: "Get Pipeline Job",
       description: "Get one job by job ID.",
@@ -1786,6 +1832,74 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         context.gitlab.deleteMilestone(
           resolveProjectId(args, context, true),
           getString(args, "milestone_id")
+        )
+    },
+    {
+      name: "gitlab_get_milestone_issue",
+      title: "Get Milestone Issues",
+      description: "List issues assigned to a milestone.",
+      mutating: false,
+      requiresFeature: "milestone",
+      inputSchema: {
+        project_id: z.string().optional(),
+        milestone_id: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.getMilestoneIssues(
+          resolveProjectId(args, context, true),
+          getString(args, "milestone_id")
+        )
+    },
+    {
+      name: "gitlab_get_milestone_merge_requests",
+      title: "Get Milestone Merge Requests",
+      description: "List merge requests assigned to a milestone.",
+      mutating: false,
+      requiresFeature: "milestone",
+      inputSchema: {
+        project_id: z.string().optional(),
+        milestone_id: z.string().min(1),
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.getMilestoneMergeRequests(
+          resolveProjectId(args, context, true),
+          getString(args, "milestone_id"),
+          { query: toQuery(omit(args, ["project_id", "milestone_id"])) }
+        )
+    },
+    {
+      name: "gitlab_promote_milestone",
+      title: "Promote Milestone",
+      description: "Promote a project milestone to a group milestone.",
+      mutating: true,
+      requiresFeature: "milestone",
+      inputSchema: {
+        project_id: z.string().optional(),
+        milestone_id: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.promoteMilestone(
+          resolveProjectId(args, context, true),
+          getString(args, "milestone_id")
+        )
+    },
+    {
+      name: "gitlab_get_milestone_burndown_events",
+      title: "Get Milestone Burndown Events",
+      description: "List burndown events for a milestone.",
+      mutating: false,
+      requiresFeature: "milestone",
+      inputSchema: {
+        project_id: z.string().optional(),
+        milestone_id: z.string().min(1),
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.getMilestoneBurndownEvents(
+          resolveProjectId(args, context, true),
+          getString(args, "milestone_id"),
+          { query: toQuery(omit(args, ["project_id", "milestone_id"])) }
         )
     },
     {
