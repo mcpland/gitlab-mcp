@@ -142,6 +142,35 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: async (args, context) => context.gitlab.listProjects({ query: toQuery(args) })
     },
     {
+      name: "gitlab_create_repository",
+      title: "Create Repository",
+      description: "Create a new GitLab project/repository.",
+      mutating: true,
+      inputSchema: {
+        name: z.string().min(1),
+        description: optionalString,
+        visibility: z.enum(["private", "internal", "public"]).optional(),
+        initialize_with_readme: optionalBoolean,
+        path: optionalString,
+        namespace_id: optionalString,
+        default_branch: optionalString
+      },
+      handler: async (args, context) =>
+        context.gitlab.createRepository({
+          name: getString(args, "name"),
+          description: getOptionalString(args, "description"),
+          visibility: getOptionalString(args, "visibility") as
+            | "private"
+            | "internal"
+            | "public"
+            | undefined,
+          initialize_with_readme: getOptionalBoolean(args, "initialize_with_readme"),
+          path: getOptionalString(args, "path"),
+          namespace_id: getOptionalString(args, "namespace_id"),
+          default_branch: getOptionalString(args, "default_branch")
+        })
+    },
+    {
       name: "gitlab_list_project_members",
       title: "List Project Members",
       description: "List members of a project.",
@@ -450,6 +479,36 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_fork_repository",
+      title: "Fork Repository",
+      description: "Fork an existing project to another namespace.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        namespace: optionalString,
+        namespace_id: optionalString,
+        path: optionalString,
+        name: optionalString,
+        description: optionalString,
+        visibility: z.enum(["private", "internal", "public"]).optional(),
+        default_branch: optionalString
+      },
+      handler: async (args, context) =>
+        context.gitlab.forkRepository(resolveProjectId(args, context, true), {
+          namespace: getOptionalString(args, "namespace"),
+          namespace_id: getOptionalString(args, "namespace_id"),
+          path: getOptionalString(args, "path"),
+          name: getOptionalString(args, "name"),
+          description: getOptionalString(args, "description"),
+          visibility: getOptionalString(args, "visibility") as
+            | "private"
+            | "internal"
+            | "public"
+            | undefined,
+          default_branch: getOptionalString(args, "default_branch")
+        })
+    },
+    {
       name: "gitlab_update_merge_request",
       title: "Update Merge Request",
       description: "Update merge request fields.",
@@ -511,6 +570,25 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         context.gitlab.getMergeRequestDiffs(
           resolveProjectId(args, context, true),
           getString(args, "merge_request_iid")
+        )
+    },
+    {
+      name: "gitlab_list_merge_request_diffs",
+      title: "List Merge Request Diffs",
+      description: "List detailed MR diffs (versions/changes view).",
+      mutating: false,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1),
+        page: optionalNumber,
+        per_page: optionalNumber,
+        unidiff: optionalBoolean
+      },
+      handler: async (args, context) =>
+        context.gitlab.listMergeRequestDiffs(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          { query: toQuery(omit(args, ["project_id", "merge_request_iid"])) }
         )
     },
     {
@@ -643,6 +721,29 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           resolveProjectId(args, context, true),
           getString(args, "merge_request_iid"),
           { query: toQuery(omit(args, ["project_id", "merge_request_iid"])) }
+        )
+    },
+    {
+      name: "gitlab_create_merge_request_thread",
+      title: "Create Merge Request Thread",
+      description: "Create a new MR discussion thread (supports diff positions).",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1),
+        body: z.string().min(1),
+        position: optionalRecord,
+        created_at: optionalString
+      },
+      handler: async (args, context) =>
+        context.gitlab.createMergeRequestThread(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          {
+            body: getString(args, "body"),
+            position: getOptionalRecord(args, "position"),
+            created_at: getOptionalString(args, "created_at")
+          }
         )
     },
     {
@@ -816,6 +917,25 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         context.gitlab.createMergeRequestNote(
           resolveProjectId(args, context, true),
           getString(args, "merge_request_iid"),
+          getString(args, "body")
+        )
+    },
+    {
+      name: "gitlab_create_note",
+      title: "Create Note",
+      description: "Create a note on an issue or merge request.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        noteable_type: z.enum(["issue", "merge_request"]),
+        noteable_iid: z.string().min(1),
+        body: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.createNote(
+          resolveProjectId(args, context, true),
+          getString(args, "noteable_type") as "issue" | "merge_request",
+          getString(args, "noteable_iid"),
           getString(args, "body")
         )
     },

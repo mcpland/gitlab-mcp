@@ -73,12 +73,57 @@ export class GitLabClient {
     return this.get("/projects", options);
   }
 
+  createRepository(
+    payload: {
+      name: string;
+      description?: string;
+      visibility?: "private" | "internal" | "public";
+      initialize_with_readme?: boolean;
+      path?: string;
+      namespace_id?: string | number;
+      default_branch?: string;
+    },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post("/projects", {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
   listProjectMembers(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/members/all`, options);
   }
 
   listGroupProjects(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/groups/${encode(groupId)}/projects`, options);
+  }
+
+  forkRepository(
+    projectId: string,
+    payload: {
+      namespace?: string;
+      namespace_id?: string | number;
+      path?: string;
+      name?: string;
+      description?: string;
+      visibility?: "private" | "internal" | "public";
+      default_branch?: string;
+    } = {},
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`/projects/${encode(projectId)}/fork`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
   }
 
   searchProjects(search: string, limit = 10, options: GitLabRequestOptions = {}): Promise<unknown> {
@@ -306,6 +351,17 @@ export class GitLabClient {
     );
   }
 
+  listMergeRequestDiffs(
+    projectId: string,
+    mergeRequestIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/diffs`,
+      options
+    );
+  }
+
   listMergeRequestVersions(
     projectId: string,
     mergeRequestIid: string,
@@ -410,6 +466,29 @@ export class GitLabClient {
     );
   }
 
+  createMergeRequestThread(
+    projectId: string,
+    mergeRequestIid: string,
+    payload: {
+      body: string;
+      position?: Record<string, unknown>;
+      created_at?: string;
+    },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions`,
+      {
+        ...options,
+        body: JSON.stringify(payload),
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers ?? {})
+        }
+      }
+    );
+  }
+
   updateMergeRequestDiscussionNote(
     projectId: string,
     mergeRequestIid: string,
@@ -499,6 +578,26 @@ export class GitLabClient {
   ): Promise<unknown> {
     return this.post(
       `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes`,
+      {
+        ...options,
+        body: JSON.stringify({ body }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers ?? {})
+        }
+      }
+    );
+  }
+
+  createNote(
+    projectId: string,
+    noteableType: "issue" | "merge_request",
+    noteableIid: string,
+    body: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(
+      `/projects/${encode(projectId)}/${noteableType}s/${encode(noteableIid)}/notes`,
       {
         ...options,
         body: JSON.stringify({ body }),
