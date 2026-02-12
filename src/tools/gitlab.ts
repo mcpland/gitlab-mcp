@@ -104,7 +104,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
             }
           };
         } catch (error) {
-          return toToolError(error);
+          return toToolError(error, context);
         }
       }
     );
@@ -2401,33 +2401,36 @@ function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean
   return fromArgs ?? "";
 }
 
-function toToolError(error: unknown): CallToolResult {
+function toToolError(error: unknown, context?: AppContext): CallToolResult {
+  const detailMode = context?.env.GITLAB_ERROR_DETAIL_MODE ?? "full";
+
   if (error instanceof GitLabApiError) {
+    const payload: Record<string, unknown> = {
+      error: `GitLab API error ${error.status}`
+    };
+    if (detailMode === "full") {
+      payload.details = redactSensitive(error.details);
+    }
+
     return {
       isError: true,
       content: [
         {
           type: "text",
-          text: JSON.stringify(
-            {
-              error: `GitLab API error ${error.status}`,
-              details: error.details
-            },
-            null,
-            2
-          )
+          text: JSON.stringify(payload, null, 2)
         }
       ]
     };
   }
 
   if (error instanceof Error) {
+    const message = detailMode === "full" ? error.message : "Request failed";
     return {
       isError: true,
       content: [
         {
           type: "text",
-          text: error.message
+          text: message
         }
       ]
     };
@@ -2602,6 +2605,39 @@ function requireArrayValue<T>(items: T[], index: number, errorMessage: string): 
   const value = items[index];
   if (value === undefined) {
     throw new Error(errorMessage);
+  }
+
+  return value;
+}
+
+function redactSensitive(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value
+      .replace(
+        /\b(glpat-[a-z0-9_-]{10,}|ghp_[a-z0-9]{20,}|eyJ[a-zA-Z0-9._-]{20,})\b/g,
+        "[REDACTED]"
+      )
+      .replace(
+        /(private[-_]?token|authorization)["']?\s*[:=]\s*["']?[^"'\s,}]+/gi,
+        "$1=[REDACTED]"
+      );
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSensitive(item));
+  }
+
+  if (value && typeof value === "object") {
+    const input = value as Record<string, unknown>;
+    const output: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(input)) {
+      if (/token|authorization|password|secret/i.test(key)) {
+        output[key] = "[REDACTED]";
+        continue;
+      }
+      output[key] = redactSensitive(item);
+    }
+    return output;
   }
 
   return value;
