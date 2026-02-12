@@ -1132,6 +1132,29 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         })
     },
     {
+      name: "gitlab_my_issues",
+      title: "My Issues",
+      description: "List issues assigned to the current authenticated user.",
+      mutating: false,
+      inputSchema: {
+        project_id: z.string().optional(),
+        state: z.enum(["opened", "closed", "all"]).optional(),
+        labels: optionalString,
+        milestone: optionalString,
+        search: optionalString,
+        created_after: optionalString,
+        created_before: optionalString,
+        updated_after: optionalString,
+        updated_before: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.myIssues({
+          project_id: getOptionalString(args, "project_id"),
+          ...(toQuery(omit(args, ["project_id"])) as Record<string, string | number | boolean>)
+        })
+    },
+    {
       name: "gitlab_get_issue",
       title: "Get Issue",
       description: "Get issue by IID.",
@@ -1193,6 +1216,21 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           resolveProjectId(args, context, true),
           getString(args, "issue_iid"),
           toQuery(omit(args, ["project_id", "issue_iid"]))
+        )
+    },
+    {
+      name: "gitlab_delete_issue",
+      title: "Delete Issue",
+      description: "Delete an issue.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        issue_iid: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteIssue(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid")
         )
     },
     {
@@ -1262,6 +1300,82 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           { body, resolved }
         );
       }
+    },
+    {
+      name: "gitlab_list_issue_links",
+      title: "List Issue Links",
+      description: "List related issue links for an issue.",
+      mutating: false,
+      inputSchema: {
+        project_id: z.string().optional(),
+        issue_iid: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.listIssueLinks(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid")
+        )
+    },
+    {
+      name: "gitlab_get_issue_link",
+      title: "Get Issue Link",
+      description: "Get a single issue link by ID.",
+      mutating: false,
+      inputSchema: {
+        project_id: z.string().optional(),
+        issue_iid: z.string().min(1),
+        issue_link_id: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.getIssueLink(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          getString(args, "issue_link_id")
+        )
+    },
+    {
+      name: "gitlab_create_issue_link",
+      title: "Create Issue Link",
+      description: "Create a relation between two issues.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        issue_iid: z.string().min(1),
+        target_project_id: z.string().min(1),
+        target_issue_iid: z.string().min(1),
+        link_type: z.enum(["relates_to", "blocks", "is_blocked_by"]).optional()
+      },
+      handler: async (args, context) =>
+        context.gitlab.createIssueLink(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          {
+            target_project_id: getString(args, "target_project_id"),
+            target_issue_iid: getString(args, "target_issue_iid"),
+            link_type: getOptionalString(args, "link_type") as
+              | "relates_to"
+              | "blocks"
+              | "is_blocked_by"
+              | undefined
+          }
+        )
+    },
+    {
+      name: "gitlab_delete_issue_link",
+      title: "Delete Issue Link",
+      description: "Delete a relation between issues.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        issue_iid: z.string().min(1),
+        issue_link_id: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteIssueLink(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          getString(args, "issue_link_id")
+        )
     },
     {
       name: "gitlab_list_wiki_pages",

@@ -821,6 +821,44 @@ export class GitLabClient {
     });
   }
 
+  deleteIssue(
+    projectId: string,
+    issueIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(`/projects/${encode(projectId)}/issues/${encode(issueIid)}`, options);
+  }
+
+  myIssues(
+    payload: {
+      project_id?: string;
+      state?: "opened" | "closed" | "all";
+      labels?: string;
+      milestone?: string;
+      search?: string;
+      created_after?: string;
+      created_before?: string;
+      updated_after?: string;
+      updated_before?: string;
+      per_page?: number;
+      page?: number;
+      scope?: string;
+    },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    const { project_id: projectId, ...queryPayload } = payload;
+    const path = projectId ? `/projects/${encode(projectId)}/issues` : "/issues";
+
+    return this.get(path, {
+      ...options,
+      query: {
+        scope: queryPayload.scope ?? "assigned_to_me",
+        ...queryPayload,
+        ...(options.query ?? {})
+      }
+    });
+  }
+
   listIssueDiscussions(
     projectId: string,
     issueIid: string,
@@ -869,6 +907,58 @@ export class GitLabClient {
           ...(options.headers ?? {})
         }
       }
+    );
+  }
+
+  listIssueLinks(
+    projectId: string,
+    issueIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/issues/${encode(issueIid)}/links`, options);
+  }
+
+  getIssueLink(
+    projectId: string,
+    issueIid: string,
+    issueLinkId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/issues/${encode(issueIid)}/links/${encode(issueLinkId)}`,
+      options
+    );
+  }
+
+  createIssueLink(
+    projectId: string,
+    issueIid: string,
+    payload: {
+      target_project_id: string;
+      target_issue_iid: string;
+      link_type?: "relates_to" | "blocks" | "is_blocked_by";
+    },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`/projects/${encode(projectId)}/issues/${encode(issueIid)}/links`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  deleteIssueLink(
+    projectId: string,
+    issueIid: string,
+    issueLinkId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(
+      `/projects/${encode(projectId)}/issues/${encode(issueIid)}/links/${encode(issueLinkId)}`,
+      options
     );
   }
 
