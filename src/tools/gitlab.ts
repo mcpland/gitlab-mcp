@@ -1666,7 +1666,7 @@ function assertAuthReady(context: AppContext): void {
   }
 }
 
-function containsGraphqlMutation(query: string): boolean {
+export function containsGraphqlMutation(query: string): boolean {
   const stripped = query
     .replace(/#[^\n]*/g, "")
     .replace(/\s+/g, " ")
