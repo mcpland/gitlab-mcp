@@ -32,6 +32,8 @@
 - `GITLAB_AUTH_COOKIE_PATH`：支持 Netscape cookie 文件认证
 - cookie 文件变更会自动热重载；首次请求前自动 warmup（默认 `/api/v4/user`）
 - `GITLAB_TOKEN_SCRIPT`：可通过外部脚本动态获取 token（支持缓存）
+  - 脚本 stdout 支持原始 token，或 JSON（`{"access_token":"..."}` / `{"token":"..."}`）
+  - 示例脚本：`scripts/get-oauth-token.example.sh`
 - `GITLAB_TOKEN_FILE`：可从文件读取 token，默认校验权限（建议 `chmod 600`）
 - `GITLAB_CLOUDFLARE_BYPASS=true`：启用浏览器兼容头（UA / Accept-Language 等）
 
