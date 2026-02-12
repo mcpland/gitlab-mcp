@@ -6,6 +6,7 @@ import { GitLabApiError, type PushFileAction } from "../lib/gitlab-client.js";
 import { getSessionAuth } from "../lib/auth-context.js";
 import { stripNullsDeep } from "../lib/sanitize.js";
 import type { AppContext } from "../types/context.js";
+import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
 
 type ToolArgs = Record<string, unknown>;
 
@@ -510,6 +511,42 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         context.gitlab.getMergeRequestDiffs(
           resolveProjectId(args, context, true),
           getString(args, "merge_request_iid")
+        )
+    },
+    {
+      name: "gitlab_get_merge_request_code_context",
+      title: "Get Merge Request Code Context",
+      description:
+        "High-signal MR code context with include/exclude filters, sorting, and token-budgeted output.",
+      mutating: false,
+      inputSchema: mergeRequestCodeContextSchema,
+      handler: async (args, context) =>
+        getMergeRequestCodeContext(
+          {
+            projectId: resolveProjectId(args, context, true),
+            mergeRequestIid: getString(args, "merge_request_iid"),
+            includePaths: getOptionalStringArray(args, "include_paths"),
+            excludePaths: getOptionalStringArray(args, "exclude_paths"),
+            extensions: getOptionalStringArray(args, "extensions"),
+            languages: getOptionalStringArray(args, "languages"),
+            maxFiles: getOptionalNumber(args, "max_files") ?? 30,
+            maxTotalChars: getOptionalNumber(args, "max_total_chars") ?? 120_000,
+            contextLines: getOptionalNumber(args, "context_lines") ?? 20,
+            mode:
+              (getOptionalString(args, "mode") as
+                | "patch"
+                | "surrounding"
+                | "fullfile"
+                | undefined) ?? "patch",
+            sort:
+              (getOptionalString(args, "sort") as
+                | "changed_lines"
+                | "path"
+                | "file_size"
+                | undefined) ?? "changed_lines",
+            listOnly: getOptionalBoolean(args, "list_only") ?? false
+          },
+          context
         )
     },
     {
@@ -1791,6 +1828,19 @@ function getOptionalString(args: ToolArgs, key: string): string | undefined {
 
   if (typeof value !== "string") {
     throw new Error(`'${key}' must be a string`);
+  }
+
+  return value;
+}
+
+function getOptionalStringArray(args: ToolArgs, key: string): string[] | undefined {
+  const value = args[key];
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw new Error(`'${key}' must be string[]`);
   }
 
   return value;
