@@ -169,6 +169,21 @@ export class GitLabClient {
     });
   }
 
+  searchCodeBlobs(
+    projectId: string,
+    search: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/search`, {
+      ...options,
+      query: {
+        scope: "blobs",
+        search,
+        ...(options.query ?? {})
+      }
+    });
+  }
+
   // repository/files
   getRepositoryTree(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/repository/tree`, options);

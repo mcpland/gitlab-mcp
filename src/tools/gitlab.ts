@@ -246,6 +246,24 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         })
     },
     {
+      name: "gitlab_search_code_blobs",
+      title: "Search Code Blobs",
+      description: "Search repository code blobs in a specific project.",
+      mutating: false,
+      inputSchema: {
+        project_id: z.string().optional(),
+        search: z.string().min(1),
+        ref: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.searchCodeBlobs(
+          resolveProjectId(args, context, true),
+          getString(args, "search"),
+          { query: toQuery(omit(args, ["project_id", "search"])) }
+        )
+    },
+    {
       name: "gitlab_get_repository_tree",
       title: "Get Repository Tree",
       description: "List files and directories in a repository tree.",
