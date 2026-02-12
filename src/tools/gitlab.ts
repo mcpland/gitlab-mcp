@@ -799,14 +799,18 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: z.string().optional(),
         merge_request_iid: z.string().min(1),
         discussion_id: z.string().min(1),
-        body: z.string().min(1)
+        body: z.string().min(1),
+        created_at: optionalString
       },
       handler: async (args, context) =>
         context.gitlab.createMergeRequestDiscussionNote(
           resolveProjectId(args, context, true),
           getString(args, "merge_request_iid"),
           getString(args, "discussion_id"),
-          { body: getString(args, "body") }
+          {
+            body: getString(args, "body"),
+            created_at: getOptionalString(args, "created_at")
+          }
         )
     },
     {
@@ -823,14 +827,25 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         resolved: optionalBoolean
       },
       handler: async (args, context) => {
+        const body = getOptionalString(args, "body");
+        const resolved = getOptionalBoolean(args, "resolved");
+
+        if (body === undefined && resolved === undefined) {
+          throw new Error("Either body or resolved must be provided");
+        }
+
+        if (body !== undefined && resolved !== undefined) {
+          throw new Error("Provide either body or resolved, not both");
+        }
+
         return context.gitlab.updateMergeRequestDiscussionNote(
           resolveProjectId(args, context, true),
           getString(args, "merge_request_iid"),
           getString(args, "discussion_id"),
           getString(args, "note_id"),
           {
-            body: getOptionalString(args, "body") ?? "",
-            resolved: getOptionalBoolean(args, "resolved")
+            body,
+            resolved
           }
         );
       }
@@ -1280,18 +1295,24 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_create_issue_note",
       title: "Create Issue Note",
-      description: "Create issue comment.",
+      description: "Create issue comment (top-level or discussion note).",
       mutating: true,
       inputSchema: {
         project_id: z.string().optional(),
         issue_iid: z.string().min(1),
-        body: z.string().min(1)
+        discussion_id: optionalString,
+        body: z.string().min(1),
+        created_at: optionalString
       },
       handler: async (args, context) =>
         context.gitlab.createIssueNote(
           resolveProjectId(args, context, true),
           getString(args, "issue_iid"),
-          getString(args, "body")
+          {
+            body: getString(args, "body"),
+            discussion_id: getOptionalString(args, "discussion_id"),
+            created_at: getOptionalString(args, "created_at")
+          }
         )
     },
     {

@@ -450,6 +450,7 @@ export class GitLabClient {
     discussionId: string,
     payload: {
       body: string;
+      created_at?: string;
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
@@ -495,7 +496,7 @@ export class GitLabClient {
     discussionId: string,
     noteId: string,
     payload: {
-      body: string;
+      body?: string;
       resolved?: boolean;
     },
     options: GitLabRequestOptions = {}
@@ -873,12 +874,22 @@ export class GitLabClient {
   createIssueNote(
     projectId: string,
     issueIid: string,
-    body: string,
+    payload: {
+      body: string;
+      discussion_id?: string;
+      created_at?: string;
+    },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/issues/${encode(issueIid)}/notes`, {
+    const discussionPath = payload.discussion_id
+      ? `/discussions/${encode(payload.discussion_id)}/notes`
+      : "/notes";
+    return this.post(`/projects/${encode(projectId)}/issues/${encode(issueIid)}${discussionPath}`, {
       ...options,
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({
+        body: payload.body,
+        created_at: payload.created_at
+      }),
       headers: {
         "Content-Type": "application/json",
         ...(options.headers ?? {})
