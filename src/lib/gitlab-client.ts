@@ -1,3 +1,6 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+
 import { getSessionAuth, type SessionAuth } from "./auth-context.js";
 
 export interface GitLabClientOptions {
@@ -1452,6 +1455,26 @@ export class GitLabClient {
   ): Promise<unknown> {
     const form = new FormData();
     form.append("file", new Blob([content], { type: "text/markdown" }), filename);
+
+    return this.post(`/projects/${encode(projectId)}/uploads`, {
+      ...options,
+      body: form,
+      headers: {
+        Accept: "*/*",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  async uploadMarkdownFile(
+    projectId: string,
+    filePath: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    const content = await fs.readFile(filePath);
+    const filename = path.basename(filePath);
+    const form = new FormData();
+    form.append("file", new Blob([content], { type: "application/octet-stream" }), filename);
 
     return this.post(`/projects/${encode(projectId)}/uploads`, {
       ...options,

@@ -2232,15 +2232,24 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: true,
       inputSchema: {
         project_id: z.string().optional(),
-        content: z.string().min(1),
-        filename: z.string().default("upload.md")
+        content: optionalString,
+        filename: z.string().default("upload.md"),
+        file_path: optionalString
       },
-      handler: async (args, context) =>
-        context.gitlab.uploadMarkdown(
-          resolveProjectId(args, context, true),
-          getString(args, "content"),
-          getString(args, "filename")
-        )
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const filePath = getOptionalString(args, "file_path");
+        if (filePath) {
+          return context.gitlab.uploadMarkdownFile(projectId, filePath);
+        }
+
+        const content = getOptionalString(args, "content");
+        if (!content) {
+          throw new Error("Either file_path or content must be provided");
+        }
+
+        return context.gitlab.uploadMarkdown(projectId, content, getString(args, "filename"));
+      }
     },
     {
       name: "gitlab_download_attachment",
