@@ -12,6 +12,7 @@ import { GitLabClient } from "./lib/gitlab-client.js";
 import { logger } from "./lib/logger.js";
 import { OutputFormatter } from "./lib/output.js";
 import { ToolPolicyEngine } from "./lib/policy.js";
+import { GitLabRequestRuntime } from "./lib/request-runtime.js";
 import { createMcpServer } from "./server/build-server.js";
 import type { AppContext } from "./types/context.js";
 
@@ -30,11 +31,14 @@ interface SessionState {
   };
 }
 
+const requestRuntime = new GitLabRequestRuntime(env, logger);
+
 const context: AppContext = {
   env,
   logger,
   gitlab: new GitLabClient(env.GITLAB_API_URL, env.GITLAB_PERSONAL_ACCESS_TOKEN, {
-    timeoutMs: env.GITLAB_HTTP_TIMEOUT_MS
+    timeoutMs: env.GITLAB_HTTP_TIMEOUT_MS,
+    beforeRequest: (requestContext) => requestRuntime.beforeRequest(requestContext)
   }),
   policy: new ToolPolicyEngine({
     readOnlyMode: env.GITLAB_READ_ONLY_MODE,

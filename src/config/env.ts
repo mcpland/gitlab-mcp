@@ -5,6 +5,7 @@ import { z } from "zod";
 const logLevelSchema = z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
 
 const responseModeSchema = z.enum(["json", "compact-json", "yaml"]);
+const errorDetailModeSchema = z.enum(["safe", "full"]);
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
@@ -42,6 +43,19 @@ const envSchema = z.object({
   GITLAB_RESPONSE_MODE: responseModeSchema.default("json"),
   GITLAB_MAX_RESPONSE_BYTES: z.coerce.number().int().min(1024).max(2_000_000).default(200_000),
   GITLAB_HTTP_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
+  GITLAB_ERROR_DETAIL_MODE: errorDetailModeSchema.optional(),
+  GITLAB_AUTH_COOKIE_PATH: z.string().optional(),
+  GITLAB_COOKIE_WARMUP_PATH: z.string().default("/user"),
+  GITLAB_CLOUDFLARE_BYPASS: z.enum(["true", "false"]).default("false"),
+  GITLAB_USER_AGENT: z.string().optional(),
+  GITLAB_ACCEPT_LANGUAGE: z.string().optional(),
+  GITLAB_TOKEN_SCRIPT: z.string().optional(),
+  GITLAB_TOKEN_SCRIPT_TIMEOUT_MS: z.coerce.number().int().min(500).max(120_000).default(10_000),
+  GITLAB_TOKEN_CACHE_SECONDS: z.coerce.number().int().min(0).max(86_400).default(300),
+  GITLAB_TOKEN_FILE: z.string().optional(),
+  GITLAB_ALLOW_INSECURE_TOKEN_FILE: z.enum(["true", "false"]).default("false"),
+  GITLAB_ALLOW_INSECURE_TLS: z.enum(["true", "false"]).default("false"),
+  NODE_TLS_REJECT_UNAUTHORIZED: z.string().optional(),
   USE_GITLAB_WIKI: z.enum(["true", "false"]).default("true"),
   USE_MILESTONE: z.enum(["true", "false"]).default("true"),
   USE_PIPELINE: z.enum(["true", "false"]).default("true"),
@@ -72,9 +86,20 @@ if (data.ENABLE_DYNAMIC_API_URL === "true" && data.REMOTE_AUTHORIZATION !== "tru
   throw new Error("ENABLE_DYNAMIC_API_URL=true requires REMOTE_AUTHORIZATION=true");
 }
 
+if (data.NODE_TLS_REJECT_UNAUTHORIZED === "0" && data.GITLAB_ALLOW_INSECURE_TLS !== "true") {
+  throw new Error(
+    "NODE_TLS_REJECT_UNAUTHORIZED=0 requires GITLAB_ALLOW_INSECURE_TLS=true acknowledgment"
+  );
+}
+
 export const env = {
   ...data,
   GITLAB_READ_ONLY_MODE: data.GITLAB_READ_ONLY_MODE,
+  GITLAB_ERROR_DETAIL_MODE:
+    data.GITLAB_ERROR_DETAIL_MODE ?? (data.NODE_ENV === "production" ? "safe" : "full"),
+  GITLAB_CLOUDFLARE_BYPASS: parseBoolean(data.GITLAB_CLOUDFLARE_BYPASS, false),
+  GITLAB_ALLOW_INSECURE_TOKEN_FILE: parseBoolean(data.GITLAB_ALLOW_INSECURE_TOKEN_FILE, false),
+  GITLAB_ALLOW_INSECURE_TLS: parseBoolean(data.GITLAB_ALLOW_INSECURE_TLS, false),
   USE_GITLAB_WIKI: parseBoolean(data.USE_GITLAB_WIKI, true),
   USE_MILESTONE: parseBoolean(data.USE_MILESTONE, true),
   USE_PIPELINE: parseBoolean(data.USE_PIPELINE, true),
