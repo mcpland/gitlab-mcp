@@ -589,6 +589,133 @@ export class GitLabClient {
     );
   }
 
+  getDraftNote(
+    projectId: string,
+    mergeRequestIid: string,
+    draftNoteId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}`,
+      options
+    );
+  }
+
+  listDraftNotes(
+    projectId: string,
+    mergeRequestIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes`,
+      options
+    );
+  }
+
+  createDraftNote(
+    projectId: string,
+    mergeRequestIid: string,
+    payload: {
+      body: string;
+      position?: Record<string, unknown>;
+      resolve_discussion?: boolean;
+    },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes`,
+      {
+        ...options,
+        body: JSON.stringify({
+          note: payload.body,
+          position: payload.position,
+          resolve_discussion: payload.resolve_discussion
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers ?? {})
+        }
+      }
+    );
+  }
+
+  updateDraftNote(
+    projectId: string,
+    mergeRequestIid: string,
+    draftNoteId: string,
+    payload: {
+      body?: string;
+      position?: Record<string, unknown>;
+      resolve_discussion?: boolean;
+    },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.put(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}`,
+      {
+        ...options,
+        body: JSON.stringify({
+          note: payload.body,
+          position: payload.position,
+          resolve_discussion: payload.resolve_discussion
+        }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers ?? {})
+        }
+      }
+    );
+  }
+
+  deleteDraftNote(
+    projectId: string,
+    mergeRequestIid: string,
+    draftNoteId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}`,
+      options
+    );
+  }
+
+  publishDraftNote(
+    projectId: string,
+    mergeRequestIid: string,
+    draftNoteId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.put(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}/publish`,
+      {
+        ...options,
+        body: JSON.stringify({}),
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers ?? {})
+        }
+      }
+    );
+  }
+
+  bulkPublishDraftNotes(
+    projectId: string,
+    mergeRequestIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/bulk_publish`,
+      {
+        ...options,
+        body: JSON.stringify({}),
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers ?? {})
+        }
+      }
+    );
+  }
+
   createNote(
     projectId: string,
     noteableType: "issue" | "merge_request",
@@ -719,6 +846,30 @@ export class GitLabClient {
         ...(options.headers ?? {})
       }
     });
+  }
+
+  updateIssueNote(
+    projectId: string,
+    issueIid: string,
+    discussionId: string,
+    noteId: string,
+    payload: {
+      body?: string;
+      resolved?: boolean;
+    },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.put(
+      `/projects/${encode(projectId)}/issues/${encode(issueIid)}/discussions/${encode(discussionId)}/notes/${encode(noteId)}`,
+      {
+        ...options,
+        body: JSON.stringify(payload),
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers ?? {})
+        }
+      }
+    );
   }
 
   // wiki

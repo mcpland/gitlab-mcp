@@ -887,6 +887,144 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_get_draft_note",
+      title: "Get Draft Note",
+      description: "Get a single merge-request draft note.",
+      mutating: false,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1),
+        draft_note_id: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.getDraftNote(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "draft_note_id")
+        )
+    },
+    {
+      name: "gitlab_list_draft_notes",
+      title: "List Draft Notes",
+      description: "List draft notes on a merge request.",
+      mutating: false,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.listDraftNotes(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid")
+        )
+    },
+    {
+      name: "gitlab_create_draft_note",
+      title: "Create Draft Note",
+      description: "Create a merge-request draft note.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1),
+        body: z.string().min(1),
+        position: optionalRecord,
+        resolve_discussion: optionalBoolean
+      },
+      handler: async (args, context) =>
+        context.gitlab.createDraftNote(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          {
+            body: getString(args, "body"),
+            position: getOptionalRecord(args, "position"),
+            resolve_discussion: getOptionalBoolean(args, "resolve_discussion")
+          }
+        )
+    },
+    {
+      name: "gitlab_update_draft_note",
+      title: "Update Draft Note",
+      description: "Update a merge-request draft note.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1),
+        draft_note_id: z.string().min(1),
+        body: optionalString,
+        position: optionalRecord,
+        resolve_discussion: optionalBoolean
+      },
+      handler: async (args, context) => {
+        if (
+          getOptionalString(args, "body") === undefined &&
+          getOptionalRecord(args, "position") === undefined &&
+          getOptionalBoolean(args, "resolve_discussion") === undefined
+        ) {
+          throw new Error("At least one of body, position, or resolve_discussion is required");
+        }
+
+        return context.gitlab.updateDraftNote(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "draft_note_id"),
+          {
+            body: getOptionalString(args, "body"),
+            position: getOptionalRecord(args, "position"),
+            resolve_discussion: getOptionalBoolean(args, "resolve_discussion")
+          }
+        );
+      }
+    },
+    {
+      name: "gitlab_delete_draft_note",
+      title: "Delete Draft Note",
+      description: "Delete a merge-request draft note.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1),
+        draft_note_id: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteDraftNote(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "draft_note_id")
+        )
+    },
+    {
+      name: "gitlab_publish_draft_note",
+      title: "Publish Draft Note",
+      description: "Publish one merge-request draft note.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1),
+        draft_note_id: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.publishDraftNote(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "draft_note_id")
+        )
+    },
+    {
+      name: "gitlab_bulk_publish_draft_notes",
+      title: "Bulk Publish Draft Notes",
+      description: "Publish all merge-request draft notes.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        merge_request_iid: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.bulkPublishDraftNotes(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid")
+        )
+    },
+    {
       name: "gitlab_get_merge_request_note",
       title: "Get Merge Request Note",
       description: "Get a single MR note.",
@@ -1090,6 +1228,40 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           getString(args, "issue_iid"),
           getString(args, "body")
         )
+    },
+    {
+      name: "gitlab_update_issue_note",
+      title: "Update Issue Note",
+      description: "Update an issue discussion note body or resolved state.",
+      mutating: true,
+      inputSchema: {
+        project_id: z.string().optional(),
+        issue_iid: z.string().min(1),
+        discussion_id: z.string().min(1),
+        note_id: z.string().min(1),
+        body: optionalString,
+        resolved: optionalBoolean
+      },
+      handler: async (args, context) => {
+        const body = getOptionalString(args, "body");
+        const resolved = getOptionalBoolean(args, "resolved");
+
+        if (body === undefined && resolved === undefined) {
+          throw new Error("Either body or resolved must be provided");
+        }
+
+        if (body !== undefined && resolved !== undefined) {
+          throw new Error("Provide either body or resolved, not both");
+        }
+
+        return context.gitlab.updateIssueNote(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          getString(args, "discussion_id"),
+          getString(args, "note_id"),
+          { body, resolved }
+        );
+      }
     },
     {
       name: "gitlab_list_wiki_pages",
