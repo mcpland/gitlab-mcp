@@ -20,7 +20,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
     },
     async ({ project }) => {
       try {
-        const item = await context.gitlab.getProject(project);
+        const item = (await context.gitlab.getProject(project)) as GitLabProject;
 
         return {
           content: [
@@ -50,7 +50,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
     },
     async ({ query, limit }) => {
       try {
-        const projects = await context.gitlab.searchProjects(query, limit);
+        const projects = (await context.gitlab.searchProjects(query, limit)) as GitLabProject[];
 
         const lines = projects.length
           ? projects.map((project) => `${project.path_with_namespace} (${project.web_url})`)
