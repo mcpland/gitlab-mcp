@@ -184,6 +184,10 @@ See [docs/architecture.md](docs/architecture.md) for detailed design documentati
 - [Deployment Guide](docs/deployment.md) — Docker, production, and multi-instance
 - [Architecture](docs/architecture.md) — Internal design and patterns
 
+## Acknowledgements
+
+This repository references and learns from parts of the implementation in [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp). Thanks to the maintainers and contributors for their work.
+
 ## License
 
 MIT
