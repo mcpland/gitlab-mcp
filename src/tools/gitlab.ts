@@ -1445,11 +1445,13 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         updated_before: optionalString,
         ...paginationShape
       },
-      handler: async (args, context) =>
-        context.gitlab.myIssues({
-          project_id: getOptionalString(args, "project_id"),
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, false);
+        return context.gitlab.myIssues({
+          project_id: projectId || undefined,
           ...(toQuery(omit(args, ["project_id"])) as Record<string, string | number | boolean>)
-        })
+        });
+      }
     },
     {
       name: "gitlab_get_issue",
