@@ -620,7 +620,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
-        merge_request_iid: z.string().min(1),
+        merge_request_iid: optionalString,
         source_branch: optionalString
       },
       handler: async (args, context) => {
