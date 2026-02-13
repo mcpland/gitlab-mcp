@@ -316,6 +316,10 @@ export class GitLabClient {
     return this.get(`/projects/${encode(projectId)}/merge_requests`, options);
   }
 
+  listGlobalMergeRequests(options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get("/merge_requests", options);
+  }
+
   getMergeRequest(
     projectId: string,
     mergeRequestIid: string,
@@ -334,6 +338,11 @@ export class GitLabClient {
       target_branch: string;
       title: string;
       description?: string;
+      target_project_id?: string | number;
+      assignee_ids?: number[];
+      reviewer_ids?: number[];
+      labels?: string;
+      allow_collaboration?: boolean;
       remove_source_branch?: boolean;
       squash?: boolean;
       draft?: boolean;
@@ -817,6 +826,10 @@ export class GitLabClient {
   // issues
   listIssues(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/issues`, options);
+  }
+
+  listGlobalIssues(options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get("/issues", options);
   }
 
   getIssue(

@@ -39,6 +39,18 @@ const optionalStringArray = z.preprocess(
   (value) => (value === null ? undefined : value),
   z.array(z.string()).optional()
 );
+const optionalNumberArray = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.array(z.number()).optional()
+);
+const optionalStringOrNumber = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.union([z.string(), z.number()]).optional()
+);
+const optionalStringOrStringArray = z.preprocess(
+  (value) => (value === null ? undefined : value),
+  z.union([z.string(), z.array(z.string())]).optional()
+);
 const optionalRecord = z.preprocess(
   (value) => (value === null ? undefined : value),
   z.record(z.string(), z.unknown()).optional()
@@ -133,10 +145,19 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         search: optionalString,
+        search_namespaces: optionalBoolean,
         membership: optionalBoolean,
         owned: optionalBoolean,
         simple: optionalBoolean,
         archived: optionalBoolean,
+        visibility: z.enum(["public", "internal", "private"]).optional(),
+        order_by: z
+          .enum(["id", "name", "path", "created_at", "updated_at", "last_activity_at"])
+          .optional(),
+        sort: z.enum(["asc", "desc"]).optional(),
+        with_issues_enabled: optionalBoolean,
+        with_merge_requests_enabled: optionalBoolean,
+        min_access_level: optionalNumber,
         ...paginationShape
       },
       handler: async (args, context) => context.gitlab.listProjects({ query: toQuery(args) })
@@ -178,6 +199,9 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         query: optionalString,
+        user_ids: optionalNumberArray,
+        skip_users: optionalNumberArray,
+        include_inheritance: optionalBoolean,
         ...paginationShape
       },
       handler: async (args, context) => {
@@ -196,6 +220,20 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         group_id: z.string(),
         include_subgroups: optionalBoolean,
         search: optionalString,
+        order_by: z
+          .enum(["name", "path", "created_at", "updated_at", "last_activity_at"])
+          .optional(),
+        sort: z.enum(["asc", "desc"]).optional(),
+        archived: optionalBoolean,
+        visibility: z.enum(["public", "internal", "private"]).optional(),
+        with_issues_enabled: optionalBoolean,
+        with_merge_requests_enabled: optionalBoolean,
+        min_access_level: optionalNumber,
+        with_programming_language: optionalString,
+        starred: optionalBoolean,
+        statistics: optionalBoolean,
+        with_custom_attributes: optionalBoolean,
+        with_security_reports: optionalBoolean,
         ...paginationShape
       },
       handler: async (args, context) => {
@@ -312,12 +350,14 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         branch: z.string().min(1),
         content: z.string(),
         commit_message: z.string().min(1),
+        previous_path: optionalString,
         author_email: optionalString,
         author_name: optionalString,
         encoding: optionalString,
         execute_filemode: optionalBoolean,
         start_branch: optionalString,
-        last_commit_id: optionalString
+        last_commit_id: optionalString,
+        commit_id: optionalString
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
@@ -330,7 +370,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           encoding: getOptionalString(args, "encoding") as "text" | "base64" | undefined,
           execute_filemode: getOptionalBoolean(args, "execute_filemode"),
           start_branch: getOptionalString(args, "start_branch"),
-          last_commit_id: getOptionalString(args, "last_commit_id")
+          last_commit_id:
+            getOptionalString(args, "last_commit_id") ?? getOptionalString(args, "commit_id")
         });
       }
     },
@@ -343,17 +384,27 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: z.string().optional(),
         branch: z.string().min(1),
         commit_message: z.string().min(1),
-        actions: z.array(
-          z.object({
-            action: z.enum(["create", "delete", "move", "update", "chmod"]),
-            file_path: z.string(),
-            previous_path: optionalString,
-            content: optionalString,
-            encoding: optionalString,
-            execute_filemode: optionalBoolean,
-            last_commit_id: optionalString
-          })
-        ),
+        actions: z
+          .array(
+            z.object({
+              action: z.enum(["create", "delete", "move", "update", "chmod"]),
+              file_path: z.string(),
+              previous_path: optionalString,
+              content: optionalString,
+              encoding: optionalString,
+              execute_filemode: optionalBoolean,
+              last_commit_id: optionalString
+            })
+          )
+          .optional(),
+        files: z
+          .array(
+            z.object({
+              file_path: z.string(),
+              content: z.string()
+            })
+          )
+          .optional(),
         start_branch: optionalString,
         author_name: optionalString,
         author_email: optionalString,
@@ -361,10 +412,31 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
+        const actionsInput = args.actions;
+        const filesInput = args.files;
+
+        let actions: PushFileAction[] = [];
+        if (Array.isArray(actionsInput) && actionsInput.length > 0) {
+          actions = actionsInput as PushFileAction[];
+        } else if (Array.isArray(filesInput) && filesInput.length > 0) {
+          actions = filesInput.map((item) => {
+            const record = item as { file_path: string; content: string };
+            return {
+              action: "create",
+              file_path: record.file_path,
+              content: record.content
+            } satisfies PushFileAction;
+          });
+        }
+
+        if (actions.length === 0) {
+          throw new Error("Either actions or files must contain at least one item");
+        }
+
         return context.gitlab.pushFiles(projectId, {
           branch: getString(args, "branch"),
           commit_message: getString(args, "commit_message"),
-          actions: getArray(args, "actions") as PushFileAction[],
+          actions,
           start_branch: getOptionalString(args, "start_branch"),
           author_name: getOptionalString(args, "author_name"),
           author_email: getOptionalString(args, "author_email"),
@@ -380,13 +452,22 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         branch: z.string().min(1),
-        ref: z.string().min(1)
+        ref: optionalString
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
+        let ref = getOptionalString(args, "ref");
+
+        if (!ref) {
+          const project = (await context.gitlab.getProject(projectId)) as {
+            default_branch?: unknown;
+          };
+          ref = typeof project.default_branch === "string" ? project.default_branch : "main";
+        }
+
         return context.gitlab.createBranch(projectId, {
           branch: getString(args, "branch"),
-          ref: getString(args, "ref")
+          ref
         });
       }
     },
@@ -399,15 +480,23 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: z.string().optional(),
         from: z.string().min(1),
         to: z.string().min(1),
-        straight: optionalBoolean
+        straight: optionalBoolean,
+        excluded_file_patterns: optionalStringArray
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
-        return context.gitlab.getBranchDiffs(projectId, {
-          from: getString(args, "from"),
-          to: getString(args, "to"),
-          straight: getOptionalBoolean(args, "straight")
-        });
+        const query = toQuery({ excluded_file_patterns: args.excluded_file_patterns });
+        return context.gitlab.getBranchDiffs(
+          projectId,
+          {
+            from: getString(args, "from"),
+            to: getString(args, "to"),
+            straight: getOptionalBoolean(args, "straight")
+          },
+          {
+            query
+          }
+        );
       }
     },
     {
@@ -420,6 +509,13 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         ref_name: optionalString,
         since: optionalString,
         until: optionalString,
+        path: optionalString,
+        author: optionalString,
+        all: optionalBoolean,
+        with_stats: optionalBoolean,
+        first_parent: optionalBoolean,
+        order: z.enum(["default", "topo"]).optional(),
+        trailers: optionalBoolean,
         ...paginationShape
       },
       handler: async (args, context) => {
@@ -436,11 +532,14 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
-        sha: z.string().min(1)
+        sha: z.string().min(1),
+        stats: optionalBoolean
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
-        return context.gitlab.getCommit(projectId, getString(args, "sha"));
+        return context.gitlab.getCommit(projectId, getString(args, "sha"), {
+          query: toQuery(omit(args, ["project_id", "sha"]))
+        });
       }
     },
     {
@@ -451,6 +550,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         sha: z.string().min(1),
+        full_diff: optionalBoolean,
         ...paginationShape
       },
       handler: async (args, context) => {
@@ -467,18 +567,47 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
+        assignee_id: optionalStringOrNumber,
+        assignee_username: optionalString,
+        author_id: optionalStringOrNumber,
+        author_username: optionalString,
+        reviewer_id: optionalStringOrNumber,
+        reviewer_username: optionalString,
+        created_after: optionalString,
+        created_before: optionalString,
+        updated_after: optionalString,
+        updated_before: optionalString,
+        labels: optionalStringOrStringArray,
+        milestone: optionalString,
         state: optionalString,
         scope: optionalString,
+        order_by: z
+          .enum([
+            "created_at",
+            "updated_at",
+            "priority",
+            "label_priority",
+            "milestone_due",
+            "popularity"
+          ])
+          .optional(),
+        sort: z.enum(["asc", "desc"]).optional(),
         source_branch: optionalString,
         target_branch: optionalString,
         search: optionalString,
+        wip: z.enum(["yes", "no"]).optional(),
+        with_labels_details: optionalBoolean,
         ...paginationShape
       },
       handler: async (args, context) => {
-        const projectId = resolveProjectId(args, context, true);
-        return context.gitlab.listMergeRequests(projectId, {
-          query: toQuery(omit(args, ["project_id"]))
-        });
+        const projectId = resolveProjectId(args, context, false);
+        const query = toQuery(omit(args, ["project_id"]));
+
+        if (projectId) {
+          return context.gitlab.listMergeRequests(projectId, { query });
+        }
+
+        return context.gitlab.listGlobalMergeRequests({ query });
       }
     },
     {
@@ -488,11 +617,35 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
-        merge_request_iid: z.string().min(1)
+        merge_request_iid: optionalString,
+        source_branch: optionalString
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
-        return context.gitlab.getMergeRequest(projectId, getString(args, "merge_request_iid"));
+        const mergeRequestIid = getOptionalString(args, "merge_request_iid");
+
+        if (mergeRequestIid) {
+          return context.gitlab.getMergeRequest(projectId, mergeRequestIid);
+        }
+
+        const sourceBranch = getOptionalString(args, "source_branch");
+        if (!sourceBranch) {
+          throw new Error("Either merge_request_iid or source_branch must be provided");
+        }
+
+        const candidates = await context.gitlab.listMergeRequests(projectId, {
+          query: {
+            source_branch: sourceBranch,
+            per_page: 100,
+            page: 1
+          }
+        });
+        const match = pickFirstMergeRequest(candidates);
+        if (!match) {
+          throw new Error(`No merge request found for source_branch='${sourceBranch}'`);
+        }
+
+        return match;
       }
     },
     {
@@ -506,6 +659,11 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         target_branch: z.string().min(1),
         title: z.string().min(1),
         description: optionalString,
+        target_project_id: optionalString,
+        assignee_ids: optionalNumberArray,
+        reviewer_ids: optionalNumberArray,
+        labels: optionalStringOrStringArray,
+        allow_collaboration: optionalBoolean,
         remove_source_branch: optionalBoolean,
         squash: optionalBoolean,
         draft: optionalBoolean
@@ -517,6 +675,11 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           target_branch: getString(args, "target_branch"),
           title: getString(args, "title"),
           description: getOptionalString(args, "description"),
+          target_project_id: getOptionalString(args, "target_project_id"),
+          assignee_ids: getOptionalNumberArray(args, "assignee_ids"),
+          reviewer_ids: getOptionalNumberArray(args, "reviewer_ids"),
+          labels: toCsvValue(args.labels),
+          allow_collaboration: getOptionalBoolean(args, "allow_collaboration"),
           remove_source_branch: getOptionalBoolean(args, "remove_source_branch"),
           squash: getOptionalBoolean(args, "squash"),
           draft: getOptionalBoolean(args, "draft")
@@ -561,17 +724,37 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         merge_request_iid: z.string().min(1),
+        source_branch: optionalString,
         title: optionalString,
         description: optionalString,
         target_branch: optionalString,
+        assignee_ids: optionalNumberArray,
+        reviewer_ids: optionalNumberArray,
+        reviewers: optionalStringArray,
+        labels: optionalStringOrStringArray,
         state_event: optionalString,
         squash: optionalBoolean,
-        remove_source_branch: optionalBoolean,
-        reviewers: optionalStringArray
+        draft: optionalBoolean,
+        remove_source_branch: optionalBoolean
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
-        const payload = toQuery(omit(args, ["project_id", "merge_request_iid"]));
+        const payload = toQuery(omit(args, ["project_id", "merge_request_iid"])) as Record<
+          string,
+          unknown
+        >;
+        if (payload.labels === undefined) {
+          payload.labels = toCsvValue(args.labels);
+        }
+        if (Array.isArray(args.assignee_ids)) {
+          payload.assignee_ids = args.assignee_ids as number[];
+        }
+        if (Array.isArray(args.reviewer_ids)) {
+          payload.reviewer_ids = args.reviewer_ids as number[];
+        }
+        if (payload.reviewer_ids === undefined && Array.isArray(args.reviewers)) {
+          payload.reviewer_ids = (args.reviewers as string[]).join(",");
+        }
         return context.gitlab.updateMergeRequest(
           projectId,
           getString(args, "merge_request_iid"),
@@ -587,6 +770,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         merge_request_iid: z.string().min(1),
+        auto_merge: optionalBoolean,
+        merge_when_pipeline_succeeds: optionalBoolean,
         merge_commit_message: optionalString,
         squash_commit_message: optionalString,
         should_remove_source_branch: optionalBoolean,
@@ -609,12 +794,15 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
-        merge_request_iid: z.string().min(1)
+        merge_request_iid: z.string().min(1),
+        view: z.enum(["inline", "parallel"]).optional(),
+        excluded_file_patterns: optionalStringArray
       },
       handler: async (args, context) =>
         context.gitlab.getMergeRequestDiffs(
           resolveProjectId(args, context, true),
-          getString(args, "merge_request_iid")
+          getString(args, "merge_request_iid"),
+          { query: toQuery(omit(args, ["project_id", "merge_request_iid"])) }
         )
     },
     {
@@ -695,13 +883,15 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         merge_request_iid: z.string().min(1),
-        version_id: z.string().min(1)
+        version_id: z.string().min(1),
+        unidiff: optionalBoolean
       },
       handler: async (args, context) =>
         context.gitlab.getMergeRequestVersion(
           resolveProjectId(args, context, true),
           getString(args, "merge_request_iid"),
-          getString(args, "version_id")
+          getString(args, "version_id"),
+          { query: toQuery(omit(args, ["project_id", "merge_request_iid", "version_id"])) }
         )
     },
     {
@@ -712,7 +902,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         merge_request_iid: z.string().min(1),
-        sha: optionalString
+        sha: optionalString,
+        approval_password: optionalString
       },
       handler: async (args, context) =>
         context.gitlab.approveMergeRequest(
@@ -1180,16 +1371,36 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
+        assignee_id: optionalStringOrNumber,
+        assignee_username: optionalStringArray,
+        author_id: optionalStringOrNumber,
+        author_username: optionalString,
+        confidential: optionalBoolean,
+        created_after: optionalString,
+        created_before: optionalString,
+        due_date: optionalString,
+        labels: optionalStringOrStringArray,
+        milestone: optionalString,
+        issue_type: z.enum(["issue", "incident", "test_case", "task"]).optional(),
+        iteration_id: optionalStringOrNumber,
+        scope: z.enum(["created_by_me", "assigned_to_me", "all"]).optional(),
         state: optionalString,
-        labels: optionalString,
         search: optionalString,
-        assignee_id: optionalNumber,
+        updated_after: optionalString,
+        updated_before: optionalString,
+        with_labels_details: optionalBoolean,
         ...paginationShape
       },
-      handler: async (args, context) =>
-        context.gitlab.listIssues(resolveProjectId(args, context, true), {
-          query: toQuery(omit(args, ["project_id"]))
-        })
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, false);
+        const query = toQuery(omit(args, ["project_id"]));
+
+        if (projectId) {
+          return context.gitlab.listIssues(projectId, { query });
+        }
+
+        return context.gitlab.listGlobalIssues({ query });
+      }
     },
     {
       name: "gitlab_my_issues",
@@ -1199,7 +1410,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         state: z.enum(["opened", "closed", "all"]).optional(),
-        labels: optionalString,
+        labels: optionalStringOrStringArray,
         milestone: optionalString,
         search: optionalString,
         created_after: optionalString,
@@ -1235,18 +1446,18 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: z.string().optional(),
         title: z.string().min(1),
         description: optionalString,
-        labels: optionalString,
+        labels: optionalStringOrStringArray,
         milestone_id: optionalNumber,
         due_date: optionalString,
         confidential: optionalBoolean,
         issue_type: optionalString,
-        assignee_ids: z.array(z.number()).optional()
+        assignee_ids: optionalNumberArray
       },
       handler: async (args, context) =>
         context.gitlab.createIssue(resolveProjectId(args, context, true), {
           title: getString(args, "title"),
           description: getOptionalString(args, "description"),
-          labels: getOptionalString(args, "labels"),
+          labels: toCsvValue(args.labels),
           milestone_id: getOptionalNumber(args, "milestone_id"),
           due_date: getOptionalString(args, "due_date"),
           confidential: getOptionalBoolean(args, "confidential"),
@@ -1265,18 +1476,30 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         title: optionalString,
         description: optionalString,
         state_event: optionalString,
-        labels: optionalString,
+        labels: optionalStringOrStringArray,
         milestone_id: optionalNumber,
         due_date: optionalString,
         confidential: optionalBoolean,
-        assignee_ids: z.array(z.number()).optional()
+        assignee_ids: optionalNumberArray,
+        discussion_locked: optionalBoolean,
+        weight: optionalNumber,
+        issue_type: z.enum(["issue", "incident", "test_case", "task"]).optional()
       },
-      handler: async (args, context) =>
-        context.gitlab.updateIssue(
+      handler: async (args, context) => {
+        const payload = toQuery(omit(args, ["project_id", "issue_iid"])) as Record<string, unknown>;
+        if (payload.labels === undefined) {
+          payload.labels = toCsvValue(args.labels);
+        }
+        if (Array.isArray(args.assignee_ids)) {
+          payload.assignee_ids = args.assignee_ids as number[];
+        }
+
+        return context.gitlab.updateIssue(
           resolveProjectId(args, context, true),
           getString(args, "issue_iid"),
-          toQuery(omit(args, ["project_id", "issue_iid"]))
-        )
+          payload
+        );
+      }
     },
     {
       name: "gitlab_delete_issue",
@@ -1555,6 +1778,13 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         scope: optionalString,
         status: optionalString,
         ref: optionalString,
+        sha: optionalString,
+        yaml_errors: optionalBoolean,
+        username: optionalString,
+        updated_after: optionalString,
+        updated_before: optionalString,
+        order_by: z.enum(["id", "status", "ref", "updated_at", "user_id"]).optional(),
+        sort: z.enum(["asc", "desc"]).optional(),
         source: optionalString,
         ...paginationShape
       },
@@ -1767,8 +1997,13 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       requiresFeature: "milestone",
       inputSchema: {
         project_id: z.string().optional(),
+        iids: optionalNumberArray,
         state: optionalString,
+        title: optionalString,
         search: optionalString,
+        include_ancestors: optionalBoolean,
+        updated_before: optionalString,
+        updated_after: optionalString,
         ...paginationShape
       },
       handler: async (args, context) =>
@@ -1949,8 +2184,9 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       requiresFeature: "release",
       inputSchema: {
         project_id: z.string().optional(),
-        order_by: optionalString,
-        sort: optionalString,
+        order_by: z.enum(["released_at", "created_at"]).optional(),
+        sort: z.enum(["asc", "desc"]).optional(),
+        include_html_description: optionalBoolean,
         ...paginationShape
       },
       handler: async (args, context) =>
@@ -1966,12 +2202,14 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       requiresFeature: "release",
       inputSchema: {
         project_id: z.string().optional(),
-        tag_name: z.string().min(1)
+        tag_name: z.string().min(1),
+        include_html_description: optionalBoolean
       },
       handler: async (args, context) =>
         context.gitlab.getRelease(
           resolveProjectId(args, context, true),
-          getString(args, "tag_name")
+          getString(args, "tag_name"),
+          { query: toQuery(omit(args, ["project_id", "tag_name"])) }
         )
     },
     {
@@ -2075,6 +2313,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
+        with_counts: optionalBoolean,
+        include_ancestor_groups: optionalBoolean,
         search: optionalString,
         ...paginationShape
       },
@@ -2090,10 +2330,17 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
-        label_id: z.string().min(1)
+        label_id: z.string().min(1),
+        include_ancestor_groups: optionalBoolean
       },
       handler: async (args, context) =>
-        context.gitlab.getLabel(resolveProjectId(args, context, true), getString(args, "label_id"))
+        context.gitlab.getLabel(
+          resolveProjectId(args, context, true),
+          getString(args, "label_id"),
+          {
+            query: toQuery(omit(args, ["project_id", "label_id"]))
+          }
+        )
     },
     {
       name: "gitlab_create_label",
@@ -2201,6 +2448,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         target_type: optionalString,
         before: optionalString,
         after: optionalString,
+        scope: optionalString,
         sort: optionalString,
         ...paginationShape
       },
@@ -2257,10 +2505,31 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       description: "Download attachment by URL/path and return base64.",
       mutating: false,
       inputSchema: {
-        url_or_path: z.string().min(1)
+        project_id: z.string().optional(),
+        url_or_path: optionalString,
+        secret: optionalString,
+        filename: optionalString,
+        local_path: optionalString
       },
-      handler: async (args, context) =>
-        context.gitlab.downloadAttachment(getString(args, "url_or_path"))
+      handler: async (args, context) => {
+        const urlOrPath = getOptionalString(args, "url_or_path");
+        if (urlOrPath) {
+          return context.gitlab.downloadAttachment(urlOrPath);
+        }
+
+        const secret = getOptionalString(args, "secret");
+        const filename = getOptionalString(args, "filename");
+        if (!secret || !filename) {
+          throw new Error(
+            "Either url_or_path must be provided, or both secret and filename must be provided"
+          );
+        }
+
+        const projectId = resolveProjectId(args, context, true);
+        const apiRelativePath = `api/v4/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(secret)}/${encodeURIComponent(filename)}`;
+
+        return context.gitlab.downloadAttachment(apiRelativePath);
+      }
     },
     {
       name: "gitlab_execute_graphql_query",
@@ -2502,6 +2771,36 @@ function toQuery(args: ToolArgs): Record<string, string | number | boolean | und
   }
 
   return output;
+}
+
+function toCsvValue(value: unknown): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const items = value.filter((item): item is string => typeof item === "string");
+    return items.length > 0 ? items.join(",") : undefined;
+  }
+
+  return undefined;
+}
+
+function pickFirstMergeRequest(value: unknown): Record<string, unknown> | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const first = value[0];
+  if (typeof first !== "object" || first === null) {
+    return undefined;
+  }
+
+  return first as Record<string, unknown>;
 }
 
 function getString(args: ToolArgs, key: string): string {
