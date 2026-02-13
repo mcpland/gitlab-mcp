@@ -15,20 +15,6 @@ A production-ready [MCP](https://modelcontextprotocol.io/) server for GitLab. Pr
 - **Enterprise networking** — HTTP/HTTPS proxy, custom CA certificates, Cloudflare bypass, multi-instance API rotation
 - **Output control** — JSON, compact JSON, or YAML formatting with configurable response size limits
 
-## Quick Start
-
-```bash
-pnpm install
-cp .env.example .env
-pnpm build
-
-# stdio (local MCP)
-pnpm start
-
-# streamable HTTP server (http://127.0.0.1:3333/mcp)
-pnpm start:http
-```
-
 ## Usage
 
 ### Supported clients
@@ -293,6 +279,20 @@ docker run -d \
 - JSON config files do not support comments (`//`).
 
 ## MCP Server Configuration
+
+## HTTP server
+
+```bash
+pnpm install
+cp .env.example .env
+pnpm build
+
+# stdio (local MCP)
+pnpm start
+
+# streamable HTTP server (http://127.0.0.1:3333/mcp)
+pnpm start:http
+```
 
 ### Transport and entrypoint
 
