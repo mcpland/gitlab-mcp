@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 
@@ -30,6 +31,14 @@ interface SessionState {
     windowStart: number;
     count: number;
   };
+}
+
+interface SseSessionState {
+  sessionId: string;
+  server: McpServer;
+  transport: SSEServerTransport;
+  lastAccessAt: number;
+  closed: boolean;
 }
 
 const requestRuntime = new GitLabRequestRuntime(env, logger);
@@ -67,18 +76,114 @@ app.use(express.json({ limit: "2mb" }));
 
 const sessions = new Map<string, SessionState>();
 const pendingSessions = new Set<SessionState>();
+const sseSessions = new Map<string, SseSessionState>();
 
 app.get("/healthz", (_req, res) => {
   res.status(200).json({
-    status: sessions.size >= env.MAX_SESSIONS ? "degraded" : "ok",
+    status: sessions.size + sseSessions.size >= env.MAX_SESSIONS ? "degraded" : "ok",
     server: env.MCP_SERVER_NAME,
     activeSessions: sessions.size,
+    activeSseSessions: sseSessions.size,
     pendingSessions: pendingSessions.size,
     maxSessions: env.MAX_SESSIONS,
     remoteAuthorization: env.REMOTE_AUTHORIZATION,
-    readOnlyMode: env.GITLAB_READ_ONLY_MODE
+    readOnlyMode: env.GITLAB_READ_ONLY_MODE,
+    sseEnabled: env.SSE
   });
 });
+
+if (env.SSE) {
+  app.get("/sse", async (req, res) => {
+    let sessionId: string | undefined;
+    try {
+      const parsedAuth = parseRequestAuth(req);
+      const fallbackToken = env.REMOTE_AUTHORIZATION ? undefined : env.GITLAB_PERSONAL_ACCESS_TOKEN;
+
+      if (sessions.size + pendingSessions.size + sseSessions.size >= env.MAX_SESSIONS) {
+        res.status(503).send(`Maximum ${env.MAX_SESSIONS} concurrent sessions reached`);
+        return;
+      }
+
+      const server = createMcpServer(context);
+      const transport = new SSEServerTransport("/messages", res);
+      sessionId = transport.sessionId;
+      const state: SseSessionState = {
+        sessionId,
+        server,
+        transport,
+        lastAccessAt: Date.now(),
+        closed: false
+      };
+      sseSessions.set(sessionId, state);
+      const currentSessionId = sessionId;
+
+      res.on("close", () => {
+        void closeSseSession(currentSessionId, "client-close");
+      });
+
+      await runWithSessionAuth(
+        {
+          sessionId,
+          token: parsedAuth?.token ?? fallbackToken,
+          apiUrl: parsedAuth?.apiUrl ?? env.GITLAB_API_URL,
+          header: parsedAuth?.header,
+          updatedAt: Date.now()
+        },
+        async () => {
+          await server.connect(transport);
+        }
+      );
+      logger.info({ sessionId }, "MCP SSE session initialized");
+    } catch (error) {
+      if (sessionId) {
+        await closeSseSession(sessionId, "connect-error");
+      }
+      logger.error({ err: error, sessionId }, "Failed to initialize SSE session");
+      if (!res.headersSent) {
+        res.status(500).send("Failed to initialize SSE session");
+      }
+    }
+  });
+
+  app.post("/messages", async (req, res) => {
+    let sessionId: string | undefined;
+    try {
+      sessionId = String(req.query.sessionId ?? "");
+      if (!sessionId) {
+        res.status(400).send("Missing sessionId");
+        return;
+      }
+
+      const session = sseSessions.get(sessionId);
+      if (!session || session.closed) {
+        res.status(400).send("No transport found for sessionId");
+        return;
+      }
+
+      const parsedAuth = parseRequestAuth(req);
+      const fallbackToken = env.REMOTE_AUTHORIZATION ? undefined : env.GITLAB_PERSONAL_ACCESS_TOKEN;
+      session.lastAccessAt = Date.now();
+
+      await runWithSessionAuth(
+        {
+          sessionId,
+          token: parsedAuth?.token ?? fallbackToken,
+          apiUrl: parsedAuth?.apiUrl ?? env.GITLAB_API_URL,
+          header: parsedAuth?.header,
+          updatedAt: Date.now()
+        },
+        async () => {
+          await session.transport.handlePostMessage(req, res);
+        }
+      );
+    } catch (error) {
+      logger.error({ err: error, sessionId }, "SSE post message failed");
+      if (!res.headersSent) {
+        res.status(500).send("SSE message processing failed");
+      }
+    }
+  });
+}
 
 app.all("/mcp", async (req, res) => {
   const incomingSessionId = req.header("mcp-session-id") ?? undefined;
@@ -177,7 +282,7 @@ httpServer.listen(env.HTTP_PORT, env.HTTP_HOST, () => {
     {
       host: env.HTTP_HOST,
       port: env.HTTP_PORT,
-      transport: "streamable-http",
+      transport: env.SSE ? "streamable-http+sse" : "streamable-http",
       jsonOnly: env.HTTP_JSON_ONLY,
       maxSessions: env.MAX_SESSIONS,
       sessionTimeoutSeconds: env.SESSION_TIMEOUT_SECONDS,
@@ -353,6 +458,18 @@ async function garbageCollectSessions(): Promise<void> {
 
     await closeSession(sessionId, "idle-timeout");
   }
+
+  for (const [sessionId, session] of sseSessions) {
+    if (session.closed) {
+      continue;
+    }
+
+    if (now - session.lastAccessAt < timeoutMs) {
+      continue;
+    }
+
+    await closeSseSession(sessionId, "idle-timeout");
+  }
 }
 
 async function closeSession(
@@ -382,13 +499,43 @@ async function closeSession(
   logger.info({ sessionId, reason }, "MCP session closed");
 }
 
+async function closeSseSession(
+  sessionId: string,
+  reason: "client-close" | "connect-error" | "idle-timeout" | "shutdown"
+): Promise<void> {
+  const session = sseSessions.get(sessionId);
+  if (!session || session.closed) {
+    return;
+  }
+
+  session.closed = true;
+  sseSessions.delete(sessionId);
+
+  try {
+    await session.transport.close();
+  } catch (error) {
+    logger.warn({ err: error, sessionId, reason }, "Failed to close SSE transport cleanly");
+  }
+
+  try {
+    await session.server.close();
+  } catch (error) {
+    logger.warn({ err: error, sessionId, reason }, "Failed to close SSE MCP server cleanly");
+  }
+
+  logger.info({ sessionId, reason }, "MCP SSE session closed");
+}
+
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   logger.info({ signal }, "Shutting down HTTP server");
 
   clearInterval(gcInterval);
 
   const pendingClose = [...sessions.keys()].map((sessionId) => closeSession(sessionId, "shutdown"));
-  await Promise.allSettled(pendingClose);
+  const pendingSseClose = [...sseSessions.keys()].map((sessionId) =>
+    closeSseSession(sessionId, "shutdown")
+  );
+  await Promise.allSettled([...pendingClose, ...pendingSseClose]);
 
   await new Promise<void>((resolve, reject) => {
     httpServer.close((error) => {
