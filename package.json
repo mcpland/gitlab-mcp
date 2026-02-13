@@ -22,7 +22,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint-staged": "lint-staged",
-    "inspector": "pnpm dlx @modelcontextprotocol/inspector node dist/index.js",
+    "inspector": "pnpm exec @modelcontextprotocol/inspector node dist/index.js",
     "prepare": "husky"
   },
   "dependencies": {
@@ -40,12 +40,12 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^9.39.2",
     "@modelcontextprotocol/inspector": "^0.20.0",
     "@types/express": "^5.0.6",
     "@types/node": "^25.2.3",
     "@types/picomatch": "^4.0.2",
-    "eslint": "^10.0.0",
+    "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
