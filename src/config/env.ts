@@ -31,8 +31,16 @@ const envSchema = z.object({
   LOG_LEVEL: logLevelSchema.default("info"),
   MCP_SERVER_NAME: z.string().min(1).default("gitlab-mcp"),
   MCP_SERVER_VERSION: z.string().min(1).default("0.1.0"),
-  GITLAB_API_URL: z.string().url().default("https://gitlab.com/api/v4"),
+  GITLAB_API_URL: z.string().min(1).default("https://gitlab.com/api/v4"),
   GITLAB_PERSONAL_ACCESS_TOKEN: z.string().min(1).optional(),
+  GITLAB_USE_OAUTH: z.enum(["true", "false"]).default("false"),
+  GITLAB_OAUTH_CLIENT_ID: z.string().optional(),
+  GITLAB_OAUTH_CLIENT_SECRET: z.string().optional(),
+  GITLAB_OAUTH_GITLAB_URL: z.string().optional(),
+  GITLAB_OAUTH_REDIRECT_URI: z.string().url().optional(),
+  GITLAB_OAUTH_SCOPES: z.string().default("api"),
+  GITLAB_OAUTH_TOKEN_PATH: z.string().optional(),
+  GITLAB_OAUTH_AUTO_OPEN_BROWSER: z.enum(["true", "false"]).default("true"),
   GITLAB_READ_ONLY_MODE: z
     .enum(["true", "false"])
     .default("false")
@@ -56,6 +64,9 @@ const envSchema = z.object({
   GITLAB_ALLOW_INSECURE_TOKEN_FILE: z.enum(["true", "false"]).default("false"),
   GITLAB_ALLOW_INSECURE_TLS: z.enum(["true", "false"]).default("false"),
   NODE_TLS_REJECT_UNAUTHORIZED: z.string().optional(),
+  GITLAB_CA_CERT_PATH: z.string().optional(),
+  HTTP_PROXY: z.string().optional(),
+  HTTPS_PROXY: z.string().optional(),
   USE_GITLAB_WIKI: z.enum(["true", "false"]).default("true"),
   USE_MILESTONE: z.enum(["true", "false"]).default("true"),
   USE_PIPELINE: z.enum(["true", "false"]).default("true"),
@@ -67,7 +78,8 @@ const envSchema = z.object({
   MAX_REQUESTS_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(300),
   HTTP_HOST: z.string().min(1).default("127.0.0.1"),
   HTTP_PORT: z.coerce.number().int().min(1).max(65_535).default(3333),
-  HTTP_JSON_ONLY: z.enum(["true", "false"]).default("false")
+  HTTP_JSON_ONLY: z.enum(["true", "false"]).default("false"),
+  SSE: z.enum(["true", "false"]).default("false")
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -81,9 +93,30 @@ if (!parsed.success) {
 }
 
 const data = parsed.data;
+const rawApiUrls = parseCsv(data.GITLAB_API_URL);
+
+if (rawApiUrls.length === 0) {
+  throw new Error("GITLAB_API_URL must contain at least one URL");
+}
+
+const normalizedApiUrls = rawApiUrls.map((item) => {
+  try {
+    return normalizeApiUrl(item);
+  } catch {
+    throw new Error(`Invalid GITLAB_API_URL entry: '${item}'`);
+  }
+});
 
 if (data.ENABLE_DYNAMIC_API_URL === "true" && data.REMOTE_AUTHORIZATION !== "true") {
   throw new Error("ENABLE_DYNAMIC_API_URL=true requires REMOTE_AUTHORIZATION=true");
+}
+
+if (data.GITLAB_USE_OAUTH === "true" && !data.GITLAB_OAUTH_CLIENT_ID) {
+  throw new Error("GITLAB_USE_OAUTH=true requires GITLAB_OAUTH_CLIENT_ID");
+}
+
+if (data.SSE === "true" && data.REMOTE_AUTHORIZATION === "true") {
+  throw new Error("SSE=true is not compatible with REMOTE_AUTHORIZATION=true");
 }
 
 if (data.NODE_TLS_REJECT_UNAUTHORIZED === "0" && data.GITLAB_ALLOW_INSECURE_TLS !== "true") {
@@ -97,6 +130,8 @@ export const env = {
   GITLAB_READ_ONLY_MODE: data.GITLAB_READ_ONLY_MODE,
   GITLAB_ERROR_DETAIL_MODE:
     data.GITLAB_ERROR_DETAIL_MODE ?? (data.NODE_ENV === "production" ? "safe" : "full"),
+  GITLAB_USE_OAUTH: parseBoolean(data.GITLAB_USE_OAUTH, false),
+  GITLAB_OAUTH_AUTO_OPEN_BROWSER: parseBoolean(data.GITLAB_OAUTH_AUTO_OPEN_BROWSER, true),
   GITLAB_CLOUDFLARE_BYPASS: parseBoolean(data.GITLAB_CLOUDFLARE_BYPASS, false),
   GITLAB_ALLOW_INSECURE_TOKEN_FILE: parseBoolean(data.GITLAB_ALLOW_INSECURE_TOKEN_FILE, false),
   GITLAB_ALLOW_INSECURE_TLS: parseBoolean(data.GITLAB_ALLOW_INSECURE_TLS, false),
@@ -107,10 +142,11 @@ export const env = {
   REMOTE_AUTHORIZATION: parseBoolean(data.REMOTE_AUTHORIZATION, false),
   ENABLE_DYNAMIC_API_URL: parseBoolean(data.ENABLE_DYNAMIC_API_URL, false),
   HTTP_JSON_ONLY: parseBoolean(data.HTTP_JSON_ONLY, false),
+  SSE: parseBoolean(data.SSE, false),
   GITLAB_ALLOWED_PROJECT_IDS: parseCsv(data.GITLAB_ALLOWED_PROJECT_IDS),
   GITLAB_ALLOWED_TOOLS: parseCsv(data.GITLAB_ALLOWED_TOOLS),
-  GITLAB_API_URLS: parseCsv(data.GITLAB_API_URL).map((item) => normalizeApiUrl(item)),
-  GITLAB_API_URL: normalizeApiUrl(data.GITLAB_API_URL)
+  GITLAB_API_URLS: normalizedApiUrls,
+  GITLAB_API_URL: normalizedApiUrls[0] ?? normalizeApiUrl("https://gitlab.com/api/v4")
 };
 
 export type AppEnv = typeof env;

@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { env } from "./config/env.js";
 import { GitLabClient } from "./lib/gitlab-client.js";
 import { logger } from "./lib/logger.js";
+import { configureNetworkRuntime } from "./lib/network.js";
 import { OutputFormatter } from "./lib/output.js";
 import { ToolPolicyEngine } from "./lib/policy.js";
 import { GitLabRequestRuntime } from "./lib/request-runtime.js";
@@ -13,12 +14,14 @@ async function main(): Promise<void> {
   const deniedToolsRegex = env.GITLAB_DENIED_TOOLS_REGEX
     ? new RegExp(env.GITLAB_DENIED_TOOLS_REGEX)
     : undefined;
+  configureNetworkRuntime(env, logger);
   const requestRuntime = new GitLabRequestRuntime(env, logger);
 
   const context: AppContext = {
     env,
     logger,
     gitlab: new GitLabClient(env.GITLAB_API_URL, env.GITLAB_PERSONAL_ACCESS_TOKEN, {
+      apiUrls: env.GITLAB_API_URLS,
       timeoutMs: env.GITLAB_HTTP_TIMEOUT_MS,
       beforeRequest: (requestContext) => requestRuntime.beforeRequest(requestContext)
     }),

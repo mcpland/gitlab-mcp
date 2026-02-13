@@ -29,9 +29,12 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "fetch-cookie": "^3.2.0",
+    "open": "^11.0.0",
     "picomatch": "^4.0.3",
     "pino": "^10.1.0",
+    "pkce-challenge": "^6.0.0",
     "tough-cookie": "^6.0.0",
+    "undici": "^7.21.0",
     "yaml": "^2.8.1",
     "zod": "^4.3.6"
   },

@@ -5,6 +5,7 @@ import { getSessionAuth, type SessionAuth } from "./auth-context.js";
 
 export interface GitLabClientOptions {
   timeoutMs?: number;
+  apiUrls?: string[];
   beforeRequest?: (
     context: GitLabBeforeRequestContext
   ) => Promise<GitLabBeforeRequestResult | void>;
@@ -76,12 +77,18 @@ export class GitLabApiError extends Error {
 
 export class GitLabClient {
   private readonly baseApiUrl: string;
+  private readonly apiUrls: string[];
+  private nextApiUrlIndex = 0;
   private readonly defaultToken?: string;
   private readonly timeoutMs: number;
   private readonly beforeRequest?: GitLabClientOptions["beforeRequest"];
 
   constructor(baseApiUrl: string, defaultToken?: string, options: GitLabClientOptions = {}) {
     this.baseApiUrl = normalizeApiUrl(baseApiUrl);
+    const configuredApiUrls = options.apiUrls
+      ?.map((item) => normalizeApiUrl(item))
+      .filter((item) => item.length > 0) ?? [this.baseApiUrl];
+    this.apiUrls = configuredApiUrls.length > 0 ? configuredApiUrls : [this.baseApiUrl];
     this.defaultToken = defaultToken;
     this.timeoutMs = options.timeoutMs ?? 20_000;
     this.beforeRequest = options.beforeRequest;
@@ -1655,13 +1662,23 @@ export class GitLabClient {
 
   private resolveRequestConfig(options: GitLabRequestOptions): { apiUrl: string; token?: string } {
     const sessionAuth = getSessionAuth();
-    const apiUrl = options.apiUrl ?? sessionAuth?.apiUrl ?? this.baseApiUrl;
+    const apiUrl = options.apiUrl ?? sessionAuth?.apiUrl ?? this.pickApiUrl();
     const token = options.token ?? sessionAuth?.token ?? this.defaultToken;
 
     return {
       apiUrl: normalizeApiUrl(apiUrl),
       token
     };
+  }
+
+  private pickApiUrl(): string {
+    if (this.apiUrls.length <= 1) {
+      return this.baseApiUrl;
+    }
+
+    const index = this.nextApiUrlIndex % this.apiUrls.length;
+    this.nextApiUrlIndex = (this.nextApiUrlIndex + 1) % this.apiUrls.length;
+    return this.apiUrls[index] ?? this.baseApiUrl;
   }
 
   private resolveAbsoluteUrl(raw: string, apiUrl: string): URL {
