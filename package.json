@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "description": "Production-ready GitLab MCP server template",
   "type": "module",
-  "private": true,
   "packageManager": "pnpm@10.28.1",
   "engines": {
     "node": ">=20.11.0"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "repository": {
     "type": "git",

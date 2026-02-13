@@ -1,6 +1,10 @@
 # gitlab-mcp
 
-A production-ready [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for GitLab. Provides **80+ tools** that let AI assistants read and manage GitLab projects, merge requests, issues, pipelines, wikis, releases, and more through a unified, policy-controlled interface.
+![Node CI](https://github.com/mcpland/gitlab-mcp/workflows/Node%20CI/badge.svg)
+[![npm](https://img.shields.io/npm/v/gitlab-mcp.svg)](https://www.npmjs.com/package/gitlab-mcp)
+![license](https://img.shields.io/npm/l/gitlab-mcp)
+
+A production-ready [MCP](https://modelcontextprotocol.io/) server for GitLab. Provides **80+ tools** that let AI assistants read and manage GitLab projects, merge requests, issues, pipelines, wikis, releases, and more through a unified, policy-controlled interface.
 
 ## Highlights
 
@@ -13,9 +17,25 @@ A production-ready [Model Context Protocol](https://modelcontextprotocol.io/) (M
 
 ## Quick Start
 
-### Client configuration examples
+```bash
+pnpm install
+cp .env.example .env
+pnpm build
 
-Current format references:
+# stdio (local MCP)
+pnpm start
+
+# streamable HTTP server (http://127.0.0.1:3333/mcp)
+pnpm start:http
+```
+
+## Usage
+
+### Supported clients
+
+Claude Desktop, Claude Code, VS Code, GitHub Copilot Chat (VS Code), Cursor, JetBrains AI Assistant, GitLab Duo, and any MCP client that supports stdio or streamable HTTP.
+
+Current client format references:
 
 - [MCP transports and protocol](https://modelcontextprotocol.io/docs/concepts/transports)
 - [Claude Code MCP](https://docs.anthropic.com/en/docs/claude-code/mcp)
@@ -23,9 +43,20 @@ Current format references:
 - [Cursor MCP](https://docs.cursor.com/context/model-context-protocol)
 - [JetBrains AI Assistant MCP](https://www.jetbrains.com/help/ai-assistant/configure-an-mcp-server.html)
 
-#### Claude Desktop / Claude Code (stdio)
+### Authentication methods
 
-Claude Desktop reads `claude_desktop_config.json`; Claude Code supports project-level `.mcp.json` and `claude mcp add-json`.
+The server supports three auth patterns:
+
+1. Personal Access Token (PAT)
+2. OAuth 2.0 PKCE (recommended for local interactive use)
+3. Remote per-request auth (`REMOTE_AUTHORIZATION=true`, HTTP mode)
+
+### OAuth2 setup (stdio, recommended for local interactive use)
+
+1. Create a GitLab OAuth application in `Settings -> Applications`.
+2. Set redirect URI to `http://127.0.0.1:8765/callback` (or your custom callback).
+3. Set scope to `api`.
+4. Copy the Application ID as `GITLAB_OAUTH_CLIENT_ID`.
 
 ```json
 {
@@ -34,21 +65,161 @@ Claude Desktop reads `claude_desktop_config.json`; Claude Code supports project-
       "command": "npx",
       "args": ["-y", "gitlab-mcp@latest"],
       "env": {
+        "GITLAB_USE_OAUTH": "true",
+        "GITLAB_OAUTH_CLIENT_ID": "your_oauth_client_id",
+        "GITLAB_OAUTH_REDIRECT_URI": "http://127.0.0.1:8765/callback",
         "GITLAB_API_URL": "https://gitlab.com/api/v4",
-        "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx"
+        "GITLAB_ALLOWED_PROJECT_IDS": "",
+        "GITLAB_READ_ONLY_MODE": "false",
+        "USE_GITLAB_WIKI": "true",
+        "USE_MILESTONE": "true",
+        "USE_PIPELINE": "true"
       }
     }
   }
 }
 ```
 
-Project-local Claude Code config can be added via:
+If your OAuth app is confidential, also set `GITLAB_OAUTH_CLIENT_SECRET`.
 
-```bash
-claude mcp add-json gitlab '{"type":"stdio","command":"npx","args":["-y","gitlab-mcp@latest"],"env":{"GITLAB_API_URL":"https://gitlab.com/api/v4","GITLAB_PERSONAL_ACCESS_TOKEN":"glpat-xxxxxxxxxxxxxxxxxxxx"}}'
+### Personal Access Token setup (stdio)
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "npx",
+      "args": ["-y", "gitlab-mcp@latest"],
+      "env": {
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
+        "GITLAB_API_URL": "https://gitlab.com/api/v4",
+        "GITLAB_ALLOWED_PROJECT_IDS": "",
+        "GITLAB_READ_ONLY_MODE": "false",
+        "USE_GITLAB_WIKI": "true",
+        "USE_MILESTONE": "true",
+        "USE_PIPELINE": "true"
+      }
+    }
+  }
+}
 ```
 
-#### Claude Desktop / Claude Code (remote HTTP)
+### VS Code `.vscode/mcp.json` examples
+
+PAT with secure prompt input:
+
+```json
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "gitlab_token",
+      "description": "GitLab Personal Access Token",
+      "password": true
+    }
+  ],
+  "servers": {
+    "gitlab": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/absolute/path/to/gitlab-mcp/dist/index.js"],
+      "env": {
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "${input:gitlab_token}",
+        "GITLAB_API_URL": "https://gitlab.com/api/v4",
+        "GITLAB_READ_ONLY_MODE": "false"
+      }
+    }
+  }
+}
+```
+
+OAuth (confidential app) with secure prompt input:
+
+```json
+{
+  "inputs": [
+    {
+      "type": "promptString",
+      "id": "gitlab_oauth_secret",
+      "description": "GitLab OAuth Client Secret",
+      "password": true
+    }
+  ],
+  "servers": {
+    "gitlab": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/absolute/path/to/gitlab-mcp/dist/index.js"],
+      "env": {
+        "GITLAB_USE_OAUTH": "true",
+        "GITLAB_OAUTH_CLIENT_ID": "your_oauth_client_id",
+        "GITLAB_OAUTH_CLIENT_SECRET": "${input:gitlab_oauth_secret}",
+        "GITLAB_OAUTH_REDIRECT_URI": "http://127.0.0.1:8765/callback",
+        "GITLAB_API_URL": "https://gitlab.com/api/v4"
+      }
+    }
+  }
+}
+```
+
+GitHub Copilot Chat in VS Code uses the same `.vscode/mcp.json` format.
+
+### Claude Desktop / Claude Code / Cursor
+
+Claude Desktop reads `claude_desktop_config.json`.
+Claude Code supports project-level `.mcp.json` and `claude mcp add-json`.
+Cursor uses `.cursor/mcp.json`.
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "node",
+      "args": ["/absolute/path/to/gitlab-mcp/dist/index.js"],
+      "env": {
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
+        "GITLAB_API_URL": "https://gitlab.com/api/v4"
+      }
+    }
+  }
+}
+```
+
+### GitLab Duo (`~/.gitlab/duo/mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "node",
+      "args": ["/absolute/path/to/gitlab-mcp/dist/index.js"],
+      "env": {
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
+        "GITLAB_API_URL": "https://gitlab.com/api/v4"
+      }
+    }
+  },
+  "approvedTools": ["gitlab_get_project", "gitlab_list_merge_requests"]
+}
+```
+
+### JetBrains AI Assistant
+
+JetBrains can import an existing MCP JSON config or register the server manually.
+Use stdio command `node /absolute/path/to/gitlab-mcp/dist/index.js`, or HTTP endpoint `http://127.0.0.1:3333/mcp` with required headers.
+
+### Remote authorization (multi-user HTTP)
+
+Start server:
+
+```bash
+REMOTE_AUTHORIZATION=true \
+HTTP_HOST=0.0.0.0 \
+HTTP_PORT=3333 \
+node dist/http.js
+```
+
+Client config:
 
 ```json
 {
@@ -63,7 +234,17 @@ claude mcp add-json gitlab '{"type":"stdio","command":"npx","args":["-y","gitlab
 }
 ```
 
-If `ENABLE_DYNAMIC_API_URL=true`, add:
+Dynamic per-request API URL:
+
+```bash
+REMOTE_AUTHORIZATION=true \
+ENABLE_DYNAMIC_API_URL=true \
+HTTP_HOST=0.0.0.0 \
+HTTP_PORT=3333 \
+node dist/http.js
+```
+
+Add header in client requests:
 
 ```json
 {
@@ -74,89 +255,7 @@ If `ENABLE_DYNAMIC_API_URL=true`, add:
 }
 ```
 
-#### VS Code (`.vscode/mcp.json`)
-
-```json
-{
-  "servers": {
-    "gitlab": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["/absolute/path/to/gitlab-mcp/dist/index.js"],
-      "envFile": "${workspaceFolder}/.env"
-    }
-  }
-}
-```
-
-```json
-{
-  "inputs": [
-    {
-      "type": "promptString",
-      "id": "gitlab_pat",
-      "description": "GitLab Personal Access Token",
-      "password": true
-    }
-  ],
-  "servers": {
-    "gitlab": {
-      "type": "http",
-      "url": "http://127.0.0.1:3333/mcp",
-      "headers": {
-        "Authorization": "Bearer ${input:gitlab_pat}"
-      }
-    }
-  }
-}
-```
-
-GitHub Copilot Chat in VS Code uses the same `.vscode/mcp.json` server format.
-
-#### Cursor (`.cursor/mcp.json`)
-
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "command": "node",
-      "args": ["/absolute/path/to/gitlab-mcp/dist/index.js"],
-      "env": {
-        "GITLAB_API_URL": "https://gitlab.com/api/v4",
-        "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx"
-      }
-    }
-  }
-}
-```
-
-#### GitLab Duo (`~/.gitlab/duo/mcp.json`)
-
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "command": "node",
-      "args": ["/absolute/path/to/gitlab-mcp/dist/index.js"],
-      "env": {
-        "GITLAB_API_URL": "https://gitlab.com/api/v4",
-        "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx"
-      }
-    }
-  },
-  "approvedTools": ["gitlab_get_project", "gitlab_list_merge_requests"]
-}
-```
-
-#### JetBrains AI Assistant
-
-JetBrains can import existing MCP JSON (for example Claude Desktop config), or you can add this server manually in MCP settings:
-
-- stdio command: `node /absolute/path/to/gitlab-mcp/dist/index.js`
-- env: same variables shown above (`GITLAB_API_URL`, token/auth settings)
-- remote URL mode: `http://127.0.0.1:3333/mcp` with required headers
-
-#### Remote auth behavior matrix
+Remote auth behavior matrix:
 
 | Server Mode                                                 | Required Request Headers                                                        | Token Fallback Chain |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------- |
@@ -164,13 +263,34 @@ JetBrains can import existing MCP JSON (for example Claude Desktop config), or y
 | `REMOTE_AUTHORIZATION=true`                                 | `Authorization: Bearer <token>` or `Private-Token: <token>`                     | disabled             |
 | `REMOTE_AUTHORIZATION=true` + `ENABLE_DYNAMIC_API_URL=true` | `Authorization` or `Private-Token`, and `X-GitLab-API-URL: https://host/api/v4` | disabled             |
 
-#### Docker
+### Docker
+
+For containerized deployments, PAT or remote auth is recommended.
+OAuth interactive callback flow is usually less convenient in containers.
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 
-The HTTP server will be available at `http://127.0.0.1:3333`.
+or:
+
+```bash
+docker build -t gitlab-mcp .
+
+docker run -d \
+  --name gitlab-mcp \
+  -p 3333:3333 \
+  -e GITLAB_API_URL=https://gitlab.com/api/v4 \
+  -e GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
+  gitlab-mcp
+```
+
+### Compatibility notes
+
+- `GITLAB_PROJECT_ID` is not a supported environment variable in this repository.
+- To set an effective default project, use `GITLAB_ALLOWED_PROJECT_IDS` with one project ID, or pass `project_id` in tool arguments.
+- CLI argument overrides such as `--token` or `--api-url` are not implemented.
+- JSON config files do not support comments (`//`).
 
 ## MCP Server Configuration
 
@@ -185,63 +305,24 @@ The HTTP server will be available at `http://127.0.0.1:3333`.
 
 `SSE=true` is not compatible with `REMOTE_AUTHORIZATION=true`.
 
-### Server runtime patterns
-
-#### 1) Local default mode (token fallback chain enabled)
-
-```bash
-GITLAB_API_URL=https://gitlab.com/api/v4
-GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
-node dist/http.js
-```
-
-When `REMOTE_AUTHORIZATION=false`, the server resolves credentials in this order:
-`GITLAB_PERSONAL_ACCESS_TOKEN` -> OAuth PKCE (`GITLAB_USE_OAUTH=true`) -> `GITLAB_TOKEN_SCRIPT` -> `GITLAB_TOKEN_FILE`.
-
-#### 2) Shared remote mode (strict per-request auth)
-
-```bash
-REMOTE_AUTHORIZATION=true
-HTTP_HOST=0.0.0.0
-HTTP_PORT=3333
-node dist/http.js
-```
-
-Every request must include either `Authorization: Bearer <token>` or `Private-Token: <token>`.
-
-#### 3) Multi-instance remote mode (dynamic API URL per request)
-
-```bash
-REMOTE_AUTHORIZATION=true
-ENABLE_DYNAMIC_API_URL=true
-HTTP_HOST=0.0.0.0
-HTTP_PORT=3333
-node dist/http.js
-```
-
-In this mode each request must include:
-
-- `Authorization` or `Private-Token`
-- `X-GitLab-API-URL: https://your-gitlab-instance/api/v4`
-
 ## Tool Categories
 
-All tools are prefixed with `gitlab_` and organized into these categories:
+Tools are organized into these categories. All GitLab tools use the `gitlab_` prefix, except `health_check`.
 
 | Category            | Examples                                                                  | Count |
 | ------------------- | ------------------------------------------------------------------------- | ----- |
 | **Projects**        | `get_project`, `list_projects`, `create_repository`, `fork_repository`    | 8     |
-| **Repository**      | `get_repository_tree`, `get_file_contents`, `push_files`, `create_branch` | 8     |
+| **Repository**      | `get_repository_tree`, `get_file_contents`, `push_files`, `create_branch` | 7     |
 | **Merge Requests**  | `list_merge_requests`, `create_merge_request`, `merge_merge_request`      | 12    |
 | **MR Code Context** | `get_merge_request_code_context` (advanced code review)                   | 1     |
 | **MR Discussions**  | `list_merge_request_discussions`, `create_merge_request_thread`           | 7     |
-| **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                   | 6     |
+| **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                   | 7     |
 | **Draft Notes**     | `list_draft_notes`, `create_draft_note`, `bulk_publish_draft_notes`       | 7     |
-| **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                | 12    |
+| **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                | 13    |
 | **Pipelines**       | `list_pipelines`, `get_pipeline_job_output`, `create_pipeline`            | 12    |
 | **Commits**         | `list_commits`, `get_commit`, `get_commit_diff`                           | 3     |
 | **Labels**          | `list_labels`, `create_label`, `update_label`                             | 5     |
-| **Milestones**      | `list_milestones`, `create_milestone`, burndown events                    | 9     |
+| **Milestones**      | `list_milestones`, `create_milestone`, burndown events                    | 10    |
 | **Releases**        | `list_releases`, `create_release`, `download_release_asset`               | 7     |
 | **Wiki**            | `list_wiki_pages`, `create_wiki_page`, `update_wiki_page`                 | 5     |
 | **Uploads**         | `upload_markdown`, `download_attachment`                                  | 2     |
