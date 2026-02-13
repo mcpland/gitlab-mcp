@@ -2614,6 +2614,31 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: async (args, context) => {
         const urlOrPath = getOptionalString(args, "url_or_path");
         if (urlOrPath) {
+          const projectId = resolveProjectId(args, context, false);
+          const upload = parseProjectUploadReference(urlOrPath);
+
+          if (context.env.GITLAB_ALLOWED_PROJECT_IDS.length > 0) {
+            if (!projectId) {
+              throw new Error(
+                "project_id is required when GITLAB_ALLOWED_PROJECT_IDS is configured"
+              );
+            }
+
+            if (!upload) {
+              throw new Error(
+                "In project-scoped mode, url_or_path must be a GitLab upload URL/path like '/uploads/<secret>/<filename>'"
+              );
+            }
+
+            const apiRelativePath = `api/v4/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
+            return context.gitlab.downloadAttachment(apiRelativePath);
+          }
+
+          if (projectId && upload) {
+            const apiRelativePath = `api/v4/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
+            return context.gitlab.downloadAttachment(apiRelativePath);
+          }
+
           return context.gitlab.downloadAttachment(urlOrPath);
         }
 
@@ -2738,6 +2763,50 @@ export function containsGraphqlMutation(query: string): boolean {
     .replace(/"(?:\\.|[^"\\])*"/g, " ");
 
   return /\bmutation\b\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\(|\{)/i.test(normalized);
+}
+
+export function parseProjectUploadReference(
+  input: string
+): { secret: string; filename: string } | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  let pathValue = trimmed;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      pathValue = new URL(trimmed).pathname;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const [pathOnly] = pathValue.split(/[?#]/, 1);
+  if (!pathOnly) {
+    return undefined;
+  }
+
+  const marker = "/uploads/";
+  const markerIndex = pathOnly.lastIndexOf(marker);
+  if (markerIndex < 0) {
+    return undefined;
+  }
+
+  const suffix = pathOnly.slice(markerIndex + marker.length);
+  const [secret, ...filenameParts] = suffix.split("/").filter((segment) => segment.length > 0);
+
+  if (!secret || filenameParts.length === 0) {
+    return undefined;
+  }
+
+  const filename = decodeURIComponent(filenameParts.join("/"));
+  if (!filename) {
+    return undefined;
+  }
+
+  return { secret, filename };
 }
 
 export function shouldDisableGraphqlTools(
