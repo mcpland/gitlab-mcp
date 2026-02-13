@@ -13,58 +13,6 @@ A production-ready [Model Context Protocol](https://modelcontextprotocol.io/) (M
 
 ## Quick Start
 
-## MCP Server Configuration
-
-### Transport and entrypoint
-
-| Transport           | Entry Point          | Endpoint                     | Best For                             |
-| ------------------- | -------------------- | ---------------------------- | ------------------------------------ |
-| **stdio**           | `node dist/index.js` | stdin/stdout                 | Local single-user MCP clients        |
-| **Streamable HTTP** | `node dist/http.js`  | `POST/GET/DELETE /mcp`       | Remote/shared deployments            |
-| **SSE (legacy)**    | `node dist/http.js`  | `GET /sse`, `POST /messages` | Legacy SSE-only clients (`SSE=true`) |
-| **Health**          | `node dist/http.js`  | `GET /healthz`               | Liveness/readiness checks            |
-
-`SSE=true` is not compatible with `REMOTE_AUTHORIZATION=true`.
-
-### Server runtime patterns
-
-#### 1) Local default mode (token fallback chain enabled)
-
-```bash
-GITLAB_API_URL=https://gitlab.com/api/v4
-GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
-node dist/http.js
-```
-
-When `REMOTE_AUTHORIZATION=false`, the server resolves credentials in this order:
-`GITLAB_PERSONAL_ACCESS_TOKEN` -> OAuth PKCE (`GITLAB_USE_OAUTH=true`) -> `GITLAB_TOKEN_SCRIPT` -> `GITLAB_TOKEN_FILE`.
-
-#### 2) Shared remote mode (strict per-request auth)
-
-```bash
-REMOTE_AUTHORIZATION=true
-HTTP_HOST=0.0.0.0
-HTTP_PORT=3333
-node dist/http.js
-```
-
-Every request must include either `Authorization: Bearer <token>` or `Private-Token: <token>`.
-
-#### 3) Multi-instance remote mode (dynamic API URL per request)
-
-```bash
-REMOTE_AUTHORIZATION=true
-ENABLE_DYNAMIC_API_URL=true
-HTTP_HOST=0.0.0.0
-HTTP_PORT=3333
-node dist/http.js
-```
-
-In this mode each request must include:
-
-- `Authorization` or `Private-Token`
-- `X-GitLab-API-URL: https://your-gitlab-instance/api/v4`
-
 ### Client configuration examples
 
 Current format references:
@@ -223,6 +171,58 @@ docker compose up --build
 ```
 
 The HTTP server will be available at `http://127.0.0.1:3333`.
+
+## MCP Server Configuration
+
+### Transport and entrypoint
+
+| Transport           | Entry Point          | Endpoint                     | Best For                             |
+| ------------------- | -------------------- | ---------------------------- | ------------------------------------ |
+| **stdio**           | `node dist/index.js` | stdin/stdout                 | Local single-user MCP clients        |
+| **Streamable HTTP** | `node dist/http.js`  | `POST/GET/DELETE /mcp`       | Remote/shared deployments            |
+| **SSE (legacy)**    | `node dist/http.js`  | `GET /sse`, `POST /messages` | Legacy SSE-only clients (`SSE=true`) |
+| **Health**          | `node dist/http.js`  | `GET /healthz`               | Liveness/readiness checks            |
+
+`SSE=true` is not compatible with `REMOTE_AUTHORIZATION=true`.
+
+### Server runtime patterns
+
+#### 1) Local default mode (token fallback chain enabled)
+
+```bash
+GITLAB_API_URL=https://gitlab.com/api/v4
+GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
+node dist/http.js
+```
+
+When `REMOTE_AUTHORIZATION=false`, the server resolves credentials in this order:
+`GITLAB_PERSONAL_ACCESS_TOKEN` -> OAuth PKCE (`GITLAB_USE_OAUTH=true`) -> `GITLAB_TOKEN_SCRIPT` -> `GITLAB_TOKEN_FILE`.
+
+#### 2) Shared remote mode (strict per-request auth)
+
+```bash
+REMOTE_AUTHORIZATION=true
+HTTP_HOST=0.0.0.0
+HTTP_PORT=3333
+node dist/http.js
+```
+
+Every request must include either `Authorization: Bearer <token>` or `Private-Token: <token>`.
+
+#### 3) Multi-instance remote mode (dynamic API URL per request)
+
+```bash
+REMOTE_AUTHORIZATION=true
+ENABLE_DYNAMIC_API_URL=true
+HTTP_HOST=0.0.0.0
+HTTP_PORT=3333
+node dist/http.js
+```
+
+In this mode each request must include:
+
+- `Authorization` or `Private-Token`
+- `X-GitLab-API-URL: https://your-gitlab-instance/api/v4`
 
 ## Tool Categories
 
