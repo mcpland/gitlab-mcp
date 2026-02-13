@@ -371,9 +371,32 @@ async function createSession(initialAuth?: SessionAuth): Promise<SessionState> {
     logger.error({ err: error, sessionId: state.sessionId }, "MCP transport error");
   };
 
-  await server.connect(transport);
+  try {
+    await server.connect(transport);
+    return state;
+  } catch (error) {
+    pendingSessions.delete(state);
 
-  return state;
+    if (state.sessionId) {
+      await closeSession(state.sessionId, "transport-close");
+      throw error;
+    }
+
+    state.closed = true;
+    try {
+      await transport.close();
+    } catch (closeError) {
+      logger.warn({ err: closeError }, "Failed to close transport after session init failure");
+    }
+
+    try {
+      await server.close();
+    } catch (closeError) {
+      logger.warn({ err: closeError }, "Failed to close MCP server after session init failure");
+    }
+
+    throw error;
+  }
 }
 
 function checkSessionRateLimit(session: SessionState): boolean {
