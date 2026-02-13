@@ -13,29 +13,6 @@ A production-ready [Model Context Protocol](https://modelcontextprotocol.io/) (M
 
 ## Quick Start
 
-### Remote Server Run
-
-```bash
-# Development (stdio, with hot-reload)
-pnpm dev
-
-# Development (HTTP server, with hot-reload)
-pnpm dev:http
-
-# Production
-pnpm build
-pnpm start        # stdio
-pnpm start:http   # HTTP on 127.0.0.1:3333
-```
-
-### Docker
-
-```bash
-docker compose up --build
-```
-
-The HTTP server will be available at `http://127.0.0.1:3333`.
-
 ## Client Configuration
 
 ### Claude Desktop / Claude Code (stdio)
@@ -69,6 +46,29 @@ The HTTP server will be available at `http://127.0.0.1:3333`.
   }
 }
 ```
+
+### Remote Server Run
+
+```bash
+# Development (stdio, with hot-reload)
+pnpm dev
+
+# Development (HTTP server, with hot-reload)
+pnpm dev:http
+
+# Production
+pnpm build
+pnpm start        # stdio
+pnpm start:http   # HTTP on 127.0.0.1:3333
+```
+
+### Docker
+
+```bash
+docker compose up --build
+```
+
+The HTTP server will be available at `http://127.0.0.1:3333`.
 
 ## Transport Modes
 
@@ -153,10 +153,10 @@ See [docs/configuration.md](docs/configuration.md) for the complete reference.
 
 Authentication behavior depends on mode:
 
-1. **`REMOTE_AUTHORIZATION=true` (HTTP strong mode)**  
-   Each request must include `Authorization: Bearer <token>` or `Private-Token: <token>`.  
+1. **`REMOTE_AUTHORIZATION=true` (HTTP strong mode)**
+   Each request must include `Authorization: Bearer <token>` or `Private-Token: <token>`.
    When `ENABLE_DYNAMIC_API_URL=true`, each request must also include `X-GitLab-API-URL`.
-2. **`REMOTE_AUTHORIZATION=false` (default mode)**  
+2. **`REMOTE_AUTHORIZATION=false` (default mode)**
    The server resolves credentials in this order:
    `GITLAB_PERSONAL_ACCESS_TOKEN` -> OAuth PKCE (`GITLAB_USE_OAUTH=true`) -> `GITLAB_TOKEN_SCRIPT` -> `GITLAB_TOKEN_FILE`.
 
