@@ -63,6 +63,10 @@ const paginationShape = {
 
 export function registerGitLabTools(server: McpServer, context: AppContext): void {
   const definitions = getGitLabToolDefinitions();
+  const disableGraphqlTools = shouldDisableGraphqlTools(
+    context.env.GITLAB_ALLOWED_PROJECT_IDS,
+    context.env.GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE
+  );
   const filtered = context.policy.filterTools(
     definitions.map((item) => ({
       name: item.name,
@@ -74,6 +78,10 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
 
   for (const definition of definitions) {
     if (!enabledNames.has(definition.name)) {
+      continue;
+    }
+
+    if (disableGraphqlTools && isGraphqlToolName(definition.name)) {
       continue;
     }
 
@@ -2730,6 +2738,21 @@ export function containsGraphqlMutation(query: string): boolean {
     .replace(/"(?:\\.|[^"\\])*"/g, " ");
 
   return /\bmutation\b\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\(|\{)/i.test(normalized);
+}
+
+export function shouldDisableGraphqlTools(
+  allowedProjectIds: string[],
+  allowGraphqlWithProjectScope: boolean
+): boolean {
+  return allowedProjectIds.length > 0 && !allowGraphqlWithProjectScope;
+}
+
+function isGraphqlToolName(name: string): boolean {
+  return (
+    name === "gitlab_execute_graphql_query" ||
+    name === "gitlab_execute_graphql_mutation" ||
+    name === "gitlab_execute_graphql"
+  );
 }
 
 function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean): string {

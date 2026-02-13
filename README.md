@@ -124,6 +124,9 @@ GITLAB_DENIED_TOOLS_REGEX=^gitlab_(delete|create)_
 # Restrict to specific projects
 GITLAB_ALLOWED_PROJECT_IDS=123,456,789
 
+# Keep GraphQL tools enabled in project-scoped mode (disabled by default)
+GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE=true
+
 # Disable feature groups
 USE_PIPELINE=false
 USE_GITLAB_WIKI=false

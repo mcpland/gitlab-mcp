@@ -48,6 +48,7 @@ const envSchema = z.object({
   GITLAB_ALLOWED_PROJECT_IDS: z.string().optional(),
   GITLAB_ALLOWED_TOOLS: z.string().optional(),
   GITLAB_DENIED_TOOLS_REGEX: z.string().optional(),
+  GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: z.enum(["true", "false"]).default("false"),
   GITLAB_RESPONSE_MODE: responseModeSchema.default("json"),
   GITLAB_MAX_RESPONSE_BYTES: z.coerce.number().int().min(1024).max(2_000_000).default(200_000),
   GITLAB_HTTP_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
@@ -145,6 +146,10 @@ export const env = {
   SSE: parseBoolean(data.SSE, false),
   GITLAB_ALLOWED_PROJECT_IDS: parseCsv(data.GITLAB_ALLOWED_PROJECT_IDS),
   GITLAB_ALLOWED_TOOLS: parseCsv(data.GITLAB_ALLOWED_TOOLS),
+  GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: parseBoolean(
+    data.GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE,
+    false
+  ),
   GITLAB_API_URLS: normalizedApiUrls,
   GITLAB_API_URL: normalizedApiUrls[0] ?? normalizeApiUrl("https://gitlab.com/api/v4")
 };

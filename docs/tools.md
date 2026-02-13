@@ -290,3 +290,5 @@ Requires `USE_RELEASE=true` (default).
 | `gitlab_execute_graphql`          | No\*     | Backward-compatible executor. Automatically detects mutations and enforces read-only policy. |
 
 \* `gitlab_execute_graphql` is registered as non-mutating but dynamically checks mutation content against the policy engine at execution time.
+
+When `GITLAB_ALLOWED_PROJECT_IDS` is configured, GraphQL tools are disabled by default. Set `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE=true` to enable them explicitly.
