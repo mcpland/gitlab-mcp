@@ -5,8 +5,11 @@
 - 大规模 GitLab 工具集（项目、仓库、MR、Issue、Pipeline、Release、Wiki、GraphQL）
 - 策略层（readonly、allowlist、deny regex、feature toggle）
 - Streamable HTTP 会话治理（每会话串行队列、TTL 回收、容量上限、限流、remote auth）
+- 可选 SSE transport（兼容旧客户端）
 - 输出控制（`json` / `compact-json` / `yaml` + 大响应截断）
 - 认证与兼容增强（cookie 文件热重载 + warmup、外部 token script/file、Cloudflare 兼容头）
+- 内建 OAuth PKCE（本地回调 + refresh token）
+- 网络层增强（HTTP/HTTPS proxy、自定义 CA、多 API URL 轮询）
 - 高阶代码审查工具：`gitlab_get_merge_request_code_context`
 
 ## 核心能力
@@ -36,6 +39,7 @@
   - 示例脚本：`scripts/get-oauth-token.example.sh`
 - `GITLAB_TOKEN_FILE`：可从文件读取 token，默认校验权限（建议 `chmod 600`）
 - `GITLAB_CLOUDFLARE_BYPASS=true`：启用浏览器兼容头（UA / Accept-Language 等）
+- `GITLAB_USE_OAUTH=true`：启用内建 OAuth PKCE 登录与 token 刷新
 
 ### 3) MR Code Context（plan 重点特性）
 
@@ -67,6 +71,19 @@ npm run dev:http
 - MCP endpoint: `POST/GET/DELETE /mcp`
 - Health endpoint: `GET /healthz`
 
+### SSE 模式（兼容）
+
+在 HTTP 模式下设置：
+
+```bash
+SSE=true
+```
+
+端点：
+
+- `GET /sse`
+- `POST /messages?sessionId=<id>`
+
 ## Remote Authorization（HTTP）
 
 当 `REMOTE_AUTHORIZATION=true` 时，token 由请求头按 session 注入：
@@ -87,6 +104,23 @@ npm run dev:http
   - `GITLAB_ALLOW_INSECURE_TLS=true`
 - token 文件默认要求严格权限；如需放宽需显式设置：
   - `GITLAB_ALLOW_INSECURE_TOKEN_FILE=true`
+
+## OAuth 与代理
+
+- OAuth:
+  - `GITLAB_USE_OAUTH=true`
+  - `GITLAB_OAUTH_CLIENT_ID` 必填
+  - 可选：`GITLAB_OAUTH_CLIENT_SECRET`（confidential app）
+  - 支持自动刷新和本地 token 持久化
+- 代理与证书:
+  - `HTTP_PROXY` / `HTTPS_PROXY`
+  - `GITLAB_CA_CERT_PATH`（企业自签 CA）
+  - `NODE_TLS_REJECT_UNAUTHORIZED=0` 仅建议测试环境使用
+
+## 多实例 API URL
+
+- `GITLAB_API_URL` 支持逗号分隔多个实例
+- 非动态 URL 模式下默认按轮询分发请求（round-robin）
 
 ## 工具目录（主要）
 
