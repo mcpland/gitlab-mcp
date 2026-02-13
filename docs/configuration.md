@@ -15,10 +15,10 @@ You can set variables in a `.env` file (loaded automatically via `dotenv`) or pa
 
 ## GitLab API
 
-| Variable                       | Type   | Default                     | Description                                                                                                                              |
-| ------------------------------ | ------ | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `GITLAB_API_URL`               | string | `https://gitlab.com/api/v4` | Base API URL. Supports **comma-separated** URLs for multi-instance rotation. Each URL is automatically normalized to end with `/api/v4`. |
-| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —                           | Static personal access token. Used as fallback in stdio mode. In `REMOTE_AUTHORIZATION` mode this can be omitted.                        |
+| Variable                       | Type   | Default                     | Description                                                                                                                                |
+| ------------------------------ | ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GITLAB_API_URL`               | string | `https://gitlab.com/api/v4` | Base API URL. Supports **comma-separated** URLs for multi-instance rotation. Each URL is automatically normalized to end with `/api/v4`.   |
+| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —                           | Static default token for requests. Overridden by per-request auth headers. If omitted, runtime can still resolve OAuth/script/file tokens. |
 
 ### Multi-Instance Example
 
@@ -32,9 +32,9 @@ The client will normalize each entry and rotate across them for load distributio
 
 ### Personal Access Token
 
-| Variable                       | Type   | Default | Description             |
-| ------------------------------ | ------ | ------- | ----------------------- |
-| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —       | Token with `api` scope. |
+| Variable                       | Type   | Default | Description                                                         |
+| ------------------------------ | ------ | ------- | ------------------------------------------------------------------- |
+| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —       | Token with `api` scope. Used as the default request token when set. |
 
 ### OAuth 2.0 PKCE
 
@@ -73,19 +73,19 @@ The client will normalize each entry and rotate across them for load distributio
 
 ### Remote Authorization (HTTP Mode)
 
-| Variable                 | Type    | Default | Description                                                                                     |
-| ------------------------ | ------- | ------- | ----------------------------------------------------------------------------------------------- |
-| `REMOTE_AUTHORIZATION`   | boolean | `false` | Accept per-request tokens via `Authorization` (Bearer) or `Private-Token` headers.              |
-| `ENABLE_DYNAMIC_API_URL` | boolean | `false` | Accept per-request API URL via `X-GitLab-API-URL` header. Requires `REMOTE_AUTHORIZATION=true`. |
+| Variable                 | Type    | Default | Description                                                                                                                       |
+| ------------------------ | ------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `REMOTE_AUTHORIZATION`   | boolean | `false` | Accept per-request tokens via `Authorization` (Bearer) or `Private-Token` headers. If absent, normal fallback auth still applies. |
+| `ENABLE_DYNAMIC_API_URL` | boolean | `false` | Accept per-request API URL via `X-GitLab-API-URL` header. Requires `REMOTE_AUTHORIZATION=true`.                                   |
 
 ## Policy
 
 | Variable                     | Type    | Default | Description                                                                                                                                             |
-| ---------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| ---------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GITLAB_READ_ONLY_MODE`      | boolean | `false` | Disable all mutating tools (create, update, delete, merge, etc.).                                                                                       |
 | `GITLAB_ALLOWED_PROJECT_IDS` | string  | —       | Comma-separated project IDs. If set, only these projects can be accessed. Empty = no restriction.                                                       |
 | `GITLAB_ALLOWED_TOOLS`       | string  | —       | Comma-separated tool allowlist. Accepts names with or without `gitlab_` prefix (e.g. `get_project` or `gitlab_get_project`). Empty = all tools enabled. |
-| `GITLAB_DENIED_TOOLS_REGEX`  | string  | —       | Regex pattern to deny tools by name (e.g. `^gitlab\_(delete                                                                                             | create)\_`). |
+| `GITLAB_DENIED_TOOLS_REGEX`  | string  | —       | Regex pattern to deny tools by name (example: `^gitlab_delete_`).                                                                                       |
 
 ## Feature Toggles
 

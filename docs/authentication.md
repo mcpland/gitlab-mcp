@@ -1,17 +1,18 @@
 # Authentication Guide
 
-gitlab-mcp supports multiple authentication methods with automatic fallback. The server resolves tokens in a priority chain — the first method that returns a valid token wins.
+gitlab-mcp supports multiple authentication methods. For each request, token resolution follows a fixed priority chain.
 
 ## Token Resolution Order
 
 ```
 Per-request auth (HTTP mode)
-  └─> OAuth 2.0 PKCE
-      └─> External token script
-          └─> Token file
-              └─> Cookie-based auth
-                  └─> Static PAT (GITLAB_PERSONAL_ACCESS_TOKEN)
+  └─> Static PAT (GITLAB_PERSONAL_ACCESS_TOKEN)
+      └─> OAuth 2.0 PKCE
+          └─> External token script
+              └─> Token file
 ```
+
+Cookie-based auth (`GITLAB_AUTH_COOKIE_PATH`) is applied independently through a cookie jar and is not part of the token chain.
 
 ---
 
@@ -23,7 +24,7 @@ The simplest method. Create a token at **GitLab > Settings > Access Tokens** wit
 GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
 ```
 
-This token is used as the final fallback in all modes. In stdio mode, it is typically the primary auth method.
+This token is the default request token in both stdio and HTTP modes. Per-request tokens override it. OAuth/script/file resolution is used when no token is available from request headers or PAT.
 
 ---
 
@@ -200,6 +201,8 @@ In HTTP transport mode, the server can accept per-request tokens from the client
 REMOTE_AUTHORIZATION=true
 ```
 
+`REMOTE_AUTHORIZATION=true` enables per-request credentials, but it does not disable fallback auth methods automatically. If no request token is provided, the server still tries PAT, then OAuth/script/file.
+
 ### Client Headers
 
 The server accepts tokens via:
@@ -228,7 +231,7 @@ X-GitLab-API-URL: https://other-gitlab.example.com/api/v4
 2. The server extracts the token and optional API URL from headers
 3. Auth context is stored in `AsyncLocalStorage` for the duration of the request
 4. All GitLab API calls within that request use the per-session credentials
-5. If no per-request token is provided and `REMOTE_AUTHORIZATION` is enabled, the request fails
+5. If no per-request token is provided, the server falls back to PAT, then OAuth/script/file; if nothing resolves, GitLab typically responds with 401/403
 
 ---
 

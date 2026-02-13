@@ -16,7 +16,7 @@ A production-ready [Model Context Protocol](https://modelcontextprotocol.io/) (M
 ### Prerequisites
 
 - Node.js >= 20.11.0
-- pnpm (or npm/yarn)
+- pnpm
 - A GitLab personal access token with `api` scope
 
 ### Installation
@@ -169,14 +169,15 @@ See [docs/configuration.md](docs/configuration.md) for the complete reference.
 
 ## Authentication Methods
 
-The server supports a token resolution chain with automatic fallback:
+The server resolves credentials per request in this order:
 
 1. **Per-request auth** — `Authorization` or `Private-Token` header (HTTP mode with `REMOTE_AUTHORIZATION=true`)
-2. **OAuth 2.0 PKCE** — Built-in browser-based flow (`GITLAB_USE_OAUTH=true`)
-3. **External token script** — Execute a command to obtain tokens (`GITLAB_TOKEN_SCRIPT`)
-4. **Token file** — Read token from a file with permission checks (`GITLAB_TOKEN_FILE`)
-5. **Cookie-based auth** — Netscape cookie file with session warmup (`GITLAB_AUTH_COOKIE_PATH`)
-6. **Static PAT** — Fallback to `GITLAB_PERSONAL_ACCESS_TOKEN`
+2. **Static PAT** — `GITLAB_PERSONAL_ACCESS_TOKEN` (default token for stdio and HTTP)
+3. **OAuth 2.0 PKCE** — Used only when no token is available from steps 1-2 (`GITLAB_USE_OAUTH=true`)
+4. **External token script** — `GITLAB_TOKEN_SCRIPT`
+5. **Token file** — `GITLAB_TOKEN_FILE`
+
+Cookie-based auth (`GITLAB_AUTH_COOKIE_PATH`) is applied independently via a cookie jar and can work with or without a token.
 
 See [docs/authentication.md](docs/authentication.md) for setup guides.
 

@@ -177,7 +177,7 @@ Orchestrates authentication and request modifications:
 
 1. **Cookie management** — Loads Netscape cookie files, auto-reloads on changes, creates `fetch-cookie` wrapper
 2. **Session warmup** — Sends a warmup request to establish cookie sessions
-3. **Token resolution** — Tries OAuth, token script, token file in order
+3. **Token resolution** — When no request/session/PAT token is present, tries OAuth, then token script, then token file
 4. **Compatibility headers** — Applies User-Agent, Accept-Language for Cloudflare bypass
 5. **Token caching** — Caches resolved tokens with configurable TTL
 

@@ -4,7 +4,7 @@ This document lists all MCP tools provided by gitlab-mcp. Each tool is prefixed 
 
 All project-scoped tools accept an optional `project_id` parameter. When `GITLAB_ALLOWED_PROJECT_IDS` is configured with a single project, `project_id` is automatically inferred.
 
-Pagination parameters `page` and `per_page` are available on all list endpoints unless otherwise noted.
+Most list endpoints support `page` and `per_page`. Notable exceptions are `gitlab_list_merge_request_versions` and `gitlab_list_draft_notes`.
 
 ---
 
