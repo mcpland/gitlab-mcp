@@ -15,6 +15,7 @@ import { configureNetworkRuntime } from "./lib/network.js";
 import { OutputFormatter } from "./lib/output.js";
 import { ToolPolicyEngine } from "./lib/policy.js";
 import { GitLabRequestRuntime } from "./lib/request-runtime.js";
+import { hasReachedSessionCapacity } from "./lib/session-capacity.js";
 import { createMcpServer } from "./server/build-server.js";
 import type { AppContext } from "./types/context.js";
 
@@ -99,7 +100,14 @@ if (env.SSE) {
       const parsedAuth = parseRequestAuth(req);
       const fallbackToken = env.REMOTE_AUTHORIZATION ? undefined : env.GITLAB_PERSONAL_ACCESS_TOKEN;
 
-      if (sessions.size + pendingSessions.size + sseSessions.size >= env.MAX_SESSIONS) {
+      if (
+        hasReachedSessionCapacity({
+          streamableSessions: sessions.size,
+          pendingSessions: pendingSessions.size,
+          sseSessions: sseSessions.size,
+          maxSessions: env.MAX_SESSIONS
+        })
+      ) {
         res.status(503).send(`Maximum ${env.MAX_SESSIONS} concurrent sessions reached`);
         return;
       }
@@ -243,7 +251,14 @@ app.all("/mcp", async (req, res) => {
         return;
       }
 
-      if (sessions.size + pendingSessions.size >= env.MAX_SESSIONS) {
+      if (
+        hasReachedSessionCapacity({
+          streamableSessions: sessions.size,
+          pendingSessions: pendingSessions.size,
+          sseSessions: sseSessions.size,
+          maxSessions: env.MAX_SESSIONS
+        })
+      ) {
         res.status(503).json({
           jsonrpc: "2.0",
           error: {
