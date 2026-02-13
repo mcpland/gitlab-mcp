@@ -18,6 +18,7 @@
 
 - `GITLAB_READ_ONLY_MODE=true` 时，所有 mutating 工具自动禁用
 - `GITLAB_ALLOWED_TOOLS` 支持显式白名单
+  - 兼容不带前缀写法（如 `get_project` 会自动匹配 `gitlab_get_project`）
 - `GITLAB_DENIED_TOOLS_REGEX` 支持统一 deny 规则
 - GraphQL 按 query/mutation 拆分：
   - `gitlab_execute_graphql_query`
@@ -40,6 +41,11 @@
 - `GITLAB_TOKEN_FILE`：可从文件读取 token，默认校验权限（建议 `chmod 600`）
 - `GITLAB_CLOUDFLARE_BYPASS=true`：启用浏览器兼容头（UA / Accept-Language 等）
 - `GITLAB_USE_OAUTH=true`：启用内建 OAuth PKCE 登录与 token 刷新
+- 参数兼容增强（对标 `other/`）：
+  - `gitlab_push_files` 同时支持 `actions` 与旧格式 `files`
+  - `gitlab_download_attachment` 同时支持 `url_or_path` 与 `secret+filename`
+  - `gitlab_list_issues` / `gitlab_list_merge_requests` 支持无 `project_id` 的全局列表
+  - 多个 list/filter 工具已补齐更多 GitLab 官方过滤参数
 
 ### 3) MR Code Context（plan 重点特性）
 
