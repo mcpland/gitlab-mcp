@@ -77,6 +77,14 @@
       "path": "cz-conventional-changelog"
     }
   },
+  "keywords": [
+    "gitlab",
+    "mcp",
+    "ai",
+    "agent",
+    "tool",
+    "automation"
+  ],
   "author": "unadlib",
   "license": "MIT"
 }
