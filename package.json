@@ -29,6 +29,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint-staged": "lint-staged",
+    "commit": "git-cz",
     "inspector": "pnpm exec @modelcontextprotocol/inspector node dist/index.js",
     "prepare": "husky"
   },
@@ -52,6 +53,7 @@
     "@types/express": "^5.0.6",
     "@types/node": "^25.2.3",
     "@types/picomatch": "^4.0.2",
+    "commitizen": "^4.3.1",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
@@ -69,5 +71,12 @@
     "*.ts": [
       "eslint --fix"
     ]
-  }
+  },
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
+  "author": "unadlib",
+  "license": "MIT"
 }
