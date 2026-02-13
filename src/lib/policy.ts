@@ -17,7 +17,13 @@ export interface ToolPolicyConfig {
 }
 
 export class ToolPolicyEngine {
-  constructor(private readonly config: ToolPolicyConfig) {}
+  private readonly normalizedAllowedTools: Set<string>;
+
+  constructor(private readonly config: ToolPolicyConfig) {
+    this.normalizedAllowedTools = new Set(
+      config.allowedTools.flatMap((name) => normalizeAllowedToolName(name))
+    );
+  }
 
   filterTools(tools: ToolPolicyMeta[]): ToolPolicyMeta[] {
     return tools.filter((tool) => this.isToolEnabled(tool));
@@ -38,7 +44,7 @@ export class ToolPolicyEngine {
       return false;
     }
 
-    if (this.config.allowedTools.length > 0 && !this.config.allowedTools.includes(tool.name)) {
+    if (this.normalizedAllowedTools.size > 0 && !this.normalizedAllowedTools.has(tool.name)) {
       return false;
     }
 
@@ -56,4 +62,17 @@ export class ToolPolicyEngine {
 
     return this.config.enabledFeatures[tool.requiresFeature];
   }
+}
+
+function normalizeAllowedToolName(name: string): string[] {
+  const value = name.trim();
+  if (value.length === 0) {
+    return [];
+  }
+
+  if (value.startsWith("gitlab_")) {
+    return [value];
+  }
+
+  return [value, `gitlab_${value}`];
 }

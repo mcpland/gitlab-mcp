@@ -45,6 +45,26 @@ describe("ToolPolicyEngine", () => {
     ).toEqual([{ name: "gitlab_get_project", mutating: false }]);
   });
 
+  it("supports allowlist names without gitlab_ prefix", () => {
+    const engine = new ToolPolicyEngine({
+      readOnlyMode: false,
+      allowedTools: ["get_project"],
+      enabledFeatures: {
+        wiki: true,
+        milestone: true,
+        pipeline: true,
+        release: true
+      }
+    });
+
+    expect(
+      engine.filterTools([
+        { name: "gitlab_get_project", mutating: false },
+        { name: "gitlab_list_projects", mutating: false }
+      ])
+    ).toEqual([{ name: "gitlab_get_project", mutating: false }]);
+  });
+
   it("respects feature flags", () => {
     const engine = new ToolPolicyEngine({
       readOnlyMode: false,
