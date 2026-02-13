@@ -13,28 +13,7 @@ A production-ready [Model Context Protocol](https://modelcontextprotocol.io/) (M
 
 ## Quick Start
 
-### Prerequisites
-
-- Node.js >= 20.11.0
-- pnpm
-- A GitLab personal access token with `api` scope
-
-### Installation
-
-```bash
-git clone <repo-url> && cd gitlab-mcp
-pnpm install
-cp .env.example .env
-```
-
-Edit `.env` and set your token:
-
-```bash
-GITLAB_API_URL=https://gitlab.com/api/v4
-GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
-```
-
-### Run
+### Remote Server Run
 
 ```bash
 # Development (stdio, with hot-reload)
@@ -65,11 +44,11 @@ The HTTP server will be available at `http://127.0.0.1:3333`.
 {
   "mcpServers": {
     "gitlab": {
-      "command": "node",
-      "args": ["/path/to/gitlab-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "gitlab-mcp@latest"],
       "env": {
-        "GITLAB_API_URL": "https://gitlab.com/api/v4",
-        "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx"
+        "GITLAB_API_URL": "your_gitlab_url",
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "your_token"
       }
     }
   }
@@ -84,7 +63,7 @@ The HTTP server will be available at `http://127.0.0.1:3333`.
     "gitlab": {
       "url": "http://127.0.0.1:3333/mcp",
       "headers": {
-        "Authorization": "Bearer glpat-xxxxxxxxxxxxxxxxxxxx"
+        "Authorization": "your_token"
       }
     }
   }
@@ -93,11 +72,11 @@ The HTTP server will be available at `http://127.0.0.1:3333`.
 
 ## Transport Modes
 
-| Mode                | Entry Point     | Endpoint     | Use Case                                      |
-| ------------------- | --------------- | ------------ | --------------------------------------------- |
-| **stdio**           | `dist/index.js` | stdin/stdout | Local CLI tools (Claude Desktop, Claude Code) |
-| **Streamable HTTP** | `dist/http.js`  | `POST /mcp`  | Remote/shared deployments                     |
-| **SSE** (optional)  | `dist/http.js`  | `GET /sse`   | Legacy SSE clients (`SSE=true`)               |
+| Mode                | Endpoint     | Use Case                                      |
+| ------------------- | ------------ | --------------------------------------------- |
+| **stdio**           | stdin/stdout | Local CLI tools (Claude Desktop, Claude Code) |
+| **Streamable HTTP** | `POST /mcp`  | Remote/shared deployments                     |
+| **SSE** (optional)  | `GET /sse`   | Legacy SSE clients (`SSE=true`)               |
 
 The HTTP server also exposes `GET /healthz` for liveness checks.
 
@@ -195,32 +174,6 @@ pnpm inspector     # Launch MCP Inspector
 
 ### Project Structure
 
-```
-src/
-├── index.ts                 # Stdio entry point
-├── http.ts                  # HTTP server entry point
-├── config/
-│   └── env.ts               # Environment config with Zod validation
-├── server/
-│   └── build-server.ts      # MCP server factory
-├── tools/
-│   ├── gitlab.ts            # All GitLab tool definitions
-│   ├── health.ts            # Health check tool
-│   └── mr-code-context.ts   # MR code context extraction
-├── lib/
-│   ├── gitlab-client.ts     # GitLab REST API client
-│   ├── policy.ts            # Tool policy engine
-│   ├── auth-context.ts      # Per-session auth (AsyncLocalStorage)
-│   ├── request-runtime.ts   # Request preprocessing (cookies, tokens, OAuth)
-│   ├── oauth.ts             # GitLab OAuth PKCE manager
-│   ├── network.ts           # Proxy and TLS configuration
-│   ├── output.ts            # Response formatting
-│   ├── sanitize.ts          # Null-stripping utility
-│   └── logger.ts            # Pino logger
-└── types/
-    └── context.ts           # AppContext interface
-```
-
 See [docs/architecture.md](docs/architecture.md) for detailed design documentation.
 
 ## Documentation
@@ -233,4 +186,4 @@ See [docs/architecture.md](docs/architecture.md) for detailed design documentati
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+MIT
