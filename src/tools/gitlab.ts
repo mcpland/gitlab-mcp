@@ -2717,25 +2717,17 @@ function assertAuthReady(context: AppContext): void {
 }
 
 export function containsGraphqlMutation(query: string): boolean {
-  const stripped = query
-    .replace(/#[^\n]*/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-
-  if (!stripped) {
+  if (!query.trim()) {
     return false;
   }
 
-  if (stripped.startsWith("mutation ")) {
-    return true;
-  }
+  // Remove comments and string values to avoid false positives from text content.
+  const normalized = query
+    .replace(/#[^\n]*/g, " ")
+    .replace(/"""[\s\S]*?"""/g, " ")
+    .replace(/"(?:\\.|[^"\\])*"/g, " ");
 
-  if (stripped.startsWith("mutation{")) {
-    return true;
-  }
-
-  return /^\w+\s+mutation\b/.test(stripped);
+  return /\bmutation\b\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\(|\{)/i.test(normalized);
 }
 
 function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean): string {
