@@ -10,6 +10,7 @@ import { Cookie, CookieJar } from "tough-cookie";
 
 import type { AppEnv } from "../config/env.js";
 import type { GitLabBeforeRequestContext, GitLabBeforeRequestResult } from "./gitlab-client.js";
+import { deriveGitLabBaseUrl, GitLabOAuthManager } from "./oauth.js";
 
 const execAsync = promisify(execCb);
 const DEFAULT_BROWSER_UA =
@@ -25,6 +26,7 @@ export class GitLabRequestRuntime {
   private readonly warmupPath: string;
   private readonly tokenFilePath?: string;
   private readonly tokenScript?: string;
+  private readonly oauthManager?: GitLabOAuthManager;
 
   private fetchImpl: typeof fetch = fetch;
   private cookieJar: CookieJar | null = null;
@@ -41,6 +43,21 @@ export class GitLabRequestRuntime {
     this.warmupPath = normalizeWarmupPath(env.GITLAB_COOKIE_WARMUP_PATH);
     this.tokenFilePath = resolveHomePath(env.GITLAB_TOKEN_FILE);
     this.tokenScript = env.GITLAB_TOKEN_SCRIPT?.trim() || undefined;
+
+    if (env.GITLAB_USE_OAUTH && env.GITLAB_OAUTH_CLIENT_ID) {
+      this.oauthManager = new GitLabOAuthManager(
+        {
+          clientId: env.GITLAB_OAUTH_CLIENT_ID,
+          clientSecret: env.GITLAB_OAUTH_CLIENT_SECRET,
+          gitlabUrl: env.GITLAB_OAUTH_GITLAB_URL || deriveGitLabBaseUrl(env.GITLAB_API_URL),
+          redirectUri: env.GITLAB_OAUTH_REDIRECT_URI || "http://127.0.0.1:8765/callback",
+          scopes: parseOauthScopes(env.GITLAB_OAUTH_SCOPES),
+          tokenStoragePath: resolveHomePath(env.GITLAB_OAUTH_TOKEN_PATH),
+          autoOpenBrowser: env.GITLAB_OAUTH_AUTO_OPEN_BROWSER
+        },
+        this.logger
+      );
+    }
   }
 
   async beforeRequest(context: GitLabBeforeRequestContext): Promise<GitLabBeforeRequestResult> {
@@ -69,6 +86,13 @@ export class GitLabRequestRuntime {
     const now = Date.now();
     if (this.cachedToken && this.cachedToken.expiresAt > now) {
       return this.cachedToken.value;
+    }
+
+    if (this.oauthManager) {
+      const token = await this.oauthManager.getAccessToken();
+      if (token) {
+        return token;
+      }
     }
 
     if (this.tokenScript) {
@@ -342,4 +366,11 @@ function parseTokenOutput(rawOutput: string): string | undefined {
 function getStringField(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function parseOauthScopes(rawScopes: string): string[] {
+  return rawScopes
+    .split(/[,\s]+/)
+    .map((scope) => scope.trim())
+    .filter((scope) => scope.length > 0);
 }
