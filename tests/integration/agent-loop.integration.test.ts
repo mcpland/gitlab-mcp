@@ -53,7 +53,13 @@ class ScriptedLLM implements LLM {
     if (this.callIndex >= this.script.length) {
       throw new Error(`ScriptedLLM: script exhausted after ${this.callIndex} calls`);
     }
-    return this.script[this.callIndex++];
+    const response = this.script[this.callIndex];
+    if (!response) {
+      throw new Error(`ScriptedLLM: missing response at index ${this.callIndex}`);
+    }
+
+    this.callIndex += 1;
+    return response;
   }
 }
 
@@ -293,7 +299,7 @@ describe("Agent Loop Integration (ScriptedLLM + MCP server)", () => {
 
         // Verify tool was called
         expect(result.toolCalls).toHaveLength(1);
-        expect(result.toolCalls[0].name).toBe("health_check");
+        expect(result.toolCalls[0]!.name).toBe("health_check");
 
         // Verify tool result was successful
         const toolResult = result.toolResults[0] as { isError?: boolean };
@@ -327,7 +333,7 @@ describe("Agent Loop Integration (ScriptedLLM + MCP server)", () => {
         });
 
         expect(result.toolCalls).toHaveLength(1);
-        expect(result.toolCalls[0].name).toBe("gitlab_list_projects");
+        expect(result.toolCalls[0]!.name).toBe("gitlab_list_projects");
 
         // Verify the mocked gitlab client was called
         expect(context.gitlab.listProjects).toHaveBeenCalled();
@@ -390,9 +396,9 @@ describe("Agent Loop Integration (ScriptedLLM + MCP server)", () => {
         });
 
         expect(result.toolCalls).toHaveLength(2);
-        expect(result.toolCalls[0].name).toBe("gitlab_list_projects");
-        expect(result.toolCalls[1].name).toBe("gitlab_get_project");
-        expect(result.toolCalls[1].arguments).toEqual({ project_id: "group/project-alpha" });
+        expect(result.toolCalls[0]!.name).toBe("gitlab_list_projects");
+        expect(result.toolCalls[1]!.name).toBe("gitlab_get_project");
+        expect(result.toolCalls[1]!.arguments).toEqual({ project_id: "group/project-alpha" });
 
         expect(context.gitlab.listProjects).toHaveBeenCalled();
         expect(context.gitlab.getProject).toHaveBeenCalledWith("group/project-alpha");

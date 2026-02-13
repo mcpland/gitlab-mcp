@@ -421,9 +421,7 @@ describe("GitLabClient", () => {
       await client.listProjects();
       await client.listProjects();
 
-      const urls = fetchMock.mock.calls.map(
-        (call: [URL | string, RequestInit]) => new URL(String(call[0])).origin
-      );
+      const urls = fetchMock.mock.calls.map((call) => new URL(String(call[0])).origin);
 
       expect(urls[0]).toBe("https://a.example.com");
       expect(urls[1]).toBe("https://b.example.com");

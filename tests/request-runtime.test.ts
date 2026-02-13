@@ -6,8 +6,8 @@
  * For deeper testing we extract testable logic patterns.
  */
 import { describe, expect, it } from "vitest";
-import os from "node:os";
-import path from "node:path";
+import * as os from "node:os";
+import * as path from "node:path";
 
 /**
  * Replicate the parseTokenOutput logic for testing.
