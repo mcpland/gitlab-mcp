@@ -168,7 +168,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       description: "Create a new GitLab project/repository.",
       mutating: true,
       inputSchema: {
-        name: z.string().min(1),
+        name: optionalString,
         description: optionalString,
         visibility: z.enum(["private", "internal", "public"]).optional(),
         initialize_with_readme: optionalBoolean,
@@ -328,15 +328,18 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         file_path: z.string().min(1),
-        ref: z.string().default("main")
+        ref: optionalString
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
-        return context.gitlab.getFileContents(
-          projectId,
-          getString(args, "file_path"),
-          getString(args, "ref")
-        );
+        let ref = getOptionalString(args, "ref");
+        if (!ref) {
+          const project = (await context.gitlab.getProject(projectId)) as {
+            default_branch?: unknown;
+          };
+          ref = typeof project.default_branch === "string" ? project.default_branch : "main";
+        }
+        return context.gitlab.getFileContents(projectId, getString(args, "file_path"), ref);
       }
     },
     {
@@ -617,7 +620,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         project_id: z.string().optional(),
-        merge_request_iid: optionalString,
+        merge_request_iid: z.string().min(1),
         source_branch: optionalString
       },
       handler: async (args, context) => {
@@ -769,7 +772,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: true,
       inputSchema: {
         project_id: z.string().optional(),
-        merge_request_iid: z.string().min(1),
+        merge_request_iid: optionalString,
+        source_branch: optionalString,
         auto_merge: optionalBoolean,
         merge_when_pipeline_succeeds: optionalBoolean,
         merge_commit_message: optionalString,
@@ -780,10 +784,32 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
+        let mergeRequestIid = getOptionalString(args, "merge_request_iid");
+        if (!mergeRequestIid) {
+          const sourceBranch = getOptionalString(args, "source_branch");
+          if (!sourceBranch) {
+            throw new Error("Either merge_request_iid or source_branch must be provided");
+          }
+
+          const candidates = await context.gitlab.listMergeRequests(projectId, {
+            query: {
+              source_branch: sourceBranch,
+              per_page: 100,
+              page: 1
+            }
+          });
+          const match = pickFirstMergeRequest(candidates);
+          const iid = match?.iid;
+          if (typeof iid !== "number" && typeof iid !== "string") {
+            throw new Error(`No merge request found for source_branch='${sourceBranch}'`);
+          }
+          mergeRequestIid = String(iid);
+        }
+
         return context.gitlab.mergeMergeRequest(
           projectId,
-          getString(args, "merge_request_iid"),
-          toQuery(omit(args, ["project_id", "merge_request_iid"]))
+          mergeRequestIid,
+          toQuery(omit(args, ["project_id", "merge_request_iid", "source_branch"]))
         );
       }
     },
@@ -1775,8 +1801,22 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: z.string().optional(),
-        scope: optionalString,
-        status: optionalString,
+        scope: z.enum(["running", "pending", "finished", "branches", "tags"]).optional(),
+        status: z
+          .enum([
+            "created",
+            "waiting_for_resource",
+            "preparing",
+            "pending",
+            "running",
+            "success",
+            "failed",
+            "canceled",
+            "skipped",
+            "manual",
+            "scheduled"
+          ])
+          .optional(),
         ref: optionalString,
         sha: optionalString,
         yaml_errors: optionalBoolean,
@@ -1818,7 +1858,18 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         pipeline_id: z.string().min(1),
-        scope: optionalString,
+        scope: z
+          .enum([
+            "created",
+            "pending",
+            "running",
+            "failed",
+            "success",
+            "canceled",
+            "skipped",
+            "manual"
+          ])
+          .optional(),
         include_retried: optionalBoolean,
         ...paginationShape
       },
@@ -1838,7 +1889,22 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: z.string().optional(),
         pipeline_id: z.string().min(1),
-        scope: optionalString,
+        scope: z
+          .enum([
+            "canceled",
+            "canceling",
+            "created",
+            "failed",
+            "manual",
+            "pending",
+            "preparing",
+            "running",
+            "scheduled",
+            "skipped",
+            "success",
+            "waiting_for_resource"
+          ])
+          .optional(),
         ...paginationShape
       },
       handler: async (args, context) =>
@@ -2220,8 +2286,9 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       requiresFeature: "release",
       inputSchema: {
         project_id: z.string().optional(),
-        name: z.string().min(1),
+        name: optionalString,
         tag_name: z.string().min(1),
+        tag_message: optionalString,
         description: optionalString,
         ref: optionalString,
         released_at: optionalString,
@@ -2367,17 +2434,24 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: true,
       inputSchema: {
         project_id: z.string().optional(),
-        name: z.string().min(1),
+        name: optionalString,
+        label_id: optionalString,
         new_name: optionalString,
         color: optionalString,
         description: optionalString,
         priority: optionalNumber
       },
-      handler: async (args, context) =>
-        context.gitlab.updateLabel(
-          resolveProjectId(args, context, true),
-          toQuery(omit(args, ["project_id"]))
-        )
+      handler: async (args, context) => {
+        const payload = toQuery(omit(args, ["project_id"])) as Record<string, unknown>;
+        if (payload.name === undefined) {
+          payload.name = getOptionalString(args, "label_id");
+        }
+        if (payload.name === undefined) {
+          throw new Error("Either name or label_id must be provided");
+        }
+
+        return context.gitlab.updateLabel(resolveProjectId(args, context, true), payload);
+      }
     },
     {
       name: "gitlab_delete_label",
@@ -2386,10 +2460,16 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: true,
       inputSchema: {
         project_id: z.string().optional(),
-        name: z.string().min(1)
+        name: optionalString,
+        label_id: optionalString
       },
-      handler: async (args, context) =>
-        context.gitlab.deleteLabel(resolveProjectId(args, context, true), getString(args, "name"))
+      handler: async (args, context) => {
+        const labelName = getOptionalString(args, "name") ?? getOptionalString(args, "label_id");
+        if (!labelName) {
+          throw new Error("Either name or label_id must be provided");
+        }
+        return context.gitlab.deleteLabel(resolveProjectId(args, context, true), labelName);
+      }
     },
     {
       name: "gitlab_list_namespaces",
@@ -2398,6 +2478,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       mutating: false,
       inputSchema: {
         search: optionalString,
+        owned: optionalBoolean,
         ...paginationShape
       },
       handler: async (args, context) => context.gitlab.listNamespaces({ query: toQuery(args) })
@@ -2408,10 +2489,19 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       description: "Get namespace by ID or path.",
       mutating: false,
       inputSchema: {
-        namespace_id_or_path: z.string().min(1)
+        namespace_id_or_path: optionalString,
+        namespace_id: optionalString
       },
-      handler: async (args, context) =>
-        context.gitlab.getNamespace(getString(args, "namespace_id_or_path"))
+      handler: async (args, context) => {
+        const namespaceId =
+          getOptionalString(args, "namespace_id_or_path") ??
+          getOptionalString(args, "namespace_id");
+        if (!namespaceId) {
+          throw new Error("Either namespace_id_or_path or namespace_id must be provided");
+        }
+
+        return context.gitlab.getNamespace(namespaceId);
+      }
     },
     {
       name: "gitlab_verify_namespace",
