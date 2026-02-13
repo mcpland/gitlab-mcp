@@ -1,204 +1,235 @@
 # gitlab-mcp
 
-面向生产的 GitLab MCP 服务器（TypeScript + MCP SDK v1），综合参考 `other/` 与 `plan.md`，实现了：
+A production-ready [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server for GitLab. Provides **80+ tools** that let AI assistants read and manage GitLab projects, merge requests, issues, pipelines, wikis, releases, and more through a unified, policy-controlled interface.
 
-- 大规模 GitLab 工具集（项目、仓库、MR、Issue、Pipeline、Release、Wiki、GraphQL）
-- 策略层（readonly、allowlist、deny regex、feature toggle）
-- Streamable HTTP 会话治理（每会话串行队列、TTL 回收、容量上限、限流、remote auth）
-- 可选 SSE transport（兼容旧客户端）
-- 输出控制（`json` / `compact-json` / `yaml` + 大响应截断）
-- 认证与兼容增强（cookie 文件热重载 + warmup、外部 token script/file、Cloudflare 兼容头）
-- 内建 OAuth PKCE（本地回调 + refresh token）
-- 网络层增强（HTTP/HTTPS proxy、自定义 CA、多 API URL 轮询）
-- 高阶代码审查工具：`gitlab_get_merge_request_code_context`
+## Highlights
 
-## 核心能力
+- **Comprehensive GitLab coverage** — projects, merge requests (with code-context analysis), issues, pipelines, wikis, milestones, releases, labels, commits, branches, GraphQL, and file management
+- **Multiple transports** — stdio for local CLI usage, Streamable HTTP for remote deployments, optional SSE
+- **Flexible authentication** — personal access tokens, OAuth 2.0 PKCE, external token scripts, token files, cookie-based auth, and per-request remote authorization
+- **Policy engine** — read-only mode, tool allowlist/denylist, feature toggles, and project-scoped restrictions
+- **Enterprise networking** — HTTP/HTTPS proxy, custom CA certificates, Cloudflare bypass, multi-instance API rotation
+- **Output control** — JSON, compact JSON, or YAML formatting with configurable response size limits
 
-### 1) Tool Policy（对应 plan 的 P0）
+## Quick Start
 
-- `GITLAB_READ_ONLY_MODE=true` 时，所有 mutating 工具自动禁用
-- `GITLAB_ALLOWED_TOOLS` 支持显式白名单
-  - 兼容不带前缀写法（如 `get_project` 会自动匹配 `gitlab_get_project`）
-- `GITLAB_DENIED_TOOLS_REGEX` 支持统一 deny 规则
-- GraphQL 按 query/mutation 拆分：
-  - `gitlab_execute_graphql_query`
-  - `gitlab_execute_graphql_mutation`（readonly 下禁用）
+### Prerequisites
 
-### 2) 会话与并发（对应 plan 的 P1）
+- Node.js >= 20.11.0
+- pnpm (or npm/yarn)
+- A GitLab personal access token with `api` scope
 
-- 同一 session 的请求进入串行队列，避免并发卡死
-- 空闲 session 自动回收（`SESSION_TIMEOUT_SECONDS`）
-- `MAX_SESSIONS` 容量保护
-- `MAX_REQUESTS_PER_MINUTE` 每 session 限流
-
-### 2.5) 认证与兼容增强（补齐 plan 的 P1/P2）
-
-- `GITLAB_AUTH_COOKIE_PATH`：支持 Netscape cookie 文件认证
-- cookie 文件变更会自动热重载；首次请求前自动 warmup（默认 `/api/v4/user`）
-- `GITLAB_TOKEN_SCRIPT`：可通过外部脚本动态获取 token（支持缓存）
-  - 脚本 stdout 支持原始 token，或 JSON（`{"access_token":"..."}` / `{"token":"..."}`）
-  - 示例脚本：`scripts/get-oauth-token.example.sh`
-- `GITLAB_TOKEN_FILE`：可从文件读取 token，默认校验权限（建议 `chmod 600`）
-- `GITLAB_CLOUDFLARE_BYPASS=true`：启用浏览器兼容头（UA / Accept-Language 等）
-- `GITLAB_USE_OAUTH=true`：启用内建 OAuth PKCE 登录与 token 刷新
-- 参数兼容增强（对标 `other/`）：
-  - `gitlab_push_files` 同时支持 `actions` 与旧格式 `files`
-  - `gitlab_download_attachment` 同时支持 `url_or_path` 与 `secret+filename`
-  - `gitlab_list_issues` / `gitlab_list_merge_requests` 支持无 `project_id` 的全局列表
-  - 多个 list/filter 工具已补齐更多 GitLab 官方过滤参数
-
-### 3) MR Code Context（plan 重点特性）
-
-`gitlab_get_merge_request_code_context` 支持：
-
-- `include_paths` / `exclude_paths`
-- `extensions` / `languages`
-- `mode = patch | surrounding | fullfile`
-- `max_files` + `max_total_chars`（预算截断）
-- `sort = changed_lines | path | file_size`
-- `list_only` 二段式拉取
-
-## 快速开始
+### Installation
 
 ```bash
+git clone <repo-url> && cd gitlab-mcp
+pnpm install
 cp .env.example .env
-npm install
-npm run dev
 ```
 
-`npm run dev` 为 `stdio` 模式。
-
-### HTTP 模式
+Edit `.env` and set your token:
 
 ```bash
-npm run dev:http
+GITLAB_API_URL=https://gitlab.com/api/v4
+GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
 ```
 
-- MCP endpoint: `POST/GET/DELETE /mcp`
-- Health endpoint: `GET /healthz`
-
-### SSE 模式（兼容）
-
-在 HTTP 模式下设置：
+### Run
 
 ```bash
-SSE=true
+# Development (stdio, with hot-reload)
+pnpm dev
+
+# Development (HTTP server, with hot-reload)
+pnpm dev:http
+
+# Production
+pnpm build
+pnpm start        # stdio
+pnpm start:http   # HTTP on 127.0.0.1:3333
 ```
 
-端点：
-
-- `GET /sse`
-- `POST /messages?sessionId=<id>`
-
-## Remote Authorization（HTTP）
-
-当 `REMOTE_AUTHORIZATION=true` 时，token 由请求头按 session 注入：
-
-- `Authorization: Bearer <token>` 或 `Private-Token: <token>`
-- 若 `ENABLE_DYNAMIC_API_URL=true`，可额外提供：
-  - `x-gitlab-api-url: https://your.gitlab.example.com/api/v4`
-
-说明：
-
-- tools/list 不依赖 token，可先发现工具
-- tool call 时才校验会话是否具备有效 auth
-
-## TLS 与安全
-
-- 生产环境默认建议 `GITLAB_ERROR_DETAIL_MODE=safe`，避免泄露上游错误细节
-- 若设置 `NODE_TLS_REJECT_UNAUTHORIZED=0`，必须同时显式确认：
-  - `GITLAB_ALLOW_INSECURE_TLS=true`
-- token 文件默认要求严格权限；如需放宽需显式设置：
-  - `GITLAB_ALLOW_INSECURE_TOKEN_FILE=true`
-
-## OAuth 与代理
-
-- OAuth:
-  - `GITLAB_USE_OAUTH=true`
-  - `GITLAB_OAUTH_CLIENT_ID` 必填
-  - 可选：`GITLAB_OAUTH_CLIENT_SECRET`（confidential app）
-  - 支持自动刷新和本地 token 持久化
-- 代理与证书:
-  - `HTTP_PROXY` / `HTTPS_PROXY`
-  - `GITLAB_CA_CERT_PATH`（企业自签 CA）
-  - `NODE_TLS_REJECT_UNAUTHORIZED=0` 仅建议测试环境使用
-
-## 多实例 API URL
-
-- `GITLAB_API_URL` 支持逗号分隔多个实例
-- 非动态 URL 模式下默认按轮询分发请求（round-robin）
-
-## 工具目录（主要）
-
-- 项目与组织
-  - `gitlab_get_project`
-  - `gitlab_list_projects`
-  - `gitlab_list_project_members`
-  - `gitlab_list_group_projects`
-  - `gitlab_list_namespaces`
-  - `gitlab_get_namespace`
-- 仓库与文件
-  - `gitlab_get_repository_tree`
-  - `gitlab_get_file_contents`
-  - `gitlab_search_code_blobs`
-  - `gitlab_create_or_update_file`
-  - `gitlab_push_files`
-  - `gitlab_create_branch`
-  - `gitlab_get_branch_diffs`
-- Merge Request
-  - `gitlab_list_merge_requests`
-  - `gitlab_get_merge_request`
-  - `gitlab_get_merge_request_diffs`
-  - `gitlab_list_merge_request_versions`
-  - `gitlab_get_merge_request_version`
-  - `gitlab_get_merge_request_code_context`
-  - `gitlab_merge_merge_request`
-  - `gitlab_approve_merge_request`
-- MR 评论与讨论
-  - `gitlab_list_merge_request_discussions`
-  - `gitlab_create_merge_request_discussion_note`
-  - `gitlab_update_merge_request_discussion_note`
-  - `gitlab_delete_merge_request_discussion_note`
-  - `gitlab_resolve_merge_request_thread`
-  - `gitlab_list_merge_request_notes`
-- Issues
-  - `gitlab_list_issues`
-  - `gitlab_get_issue`
-  - `gitlab_create_issue`
-  - `gitlab_update_issue`
-  - `gitlab_create_issue_note`
-- Pipelines（可由 `USE_PIPELINE` 开关控制）
-  - `gitlab_list_pipelines`
-  - `gitlab_get_pipeline`
-  - `gitlab_list_pipeline_jobs`
-  - `gitlab_get_pipeline_job_output`
-  - `gitlab_create_pipeline`
-  - `gitlab_retry_pipeline`
-  - `gitlab_cancel_pipeline`
-- Releases / Wiki / Milestones
-  - `gitlab_list_releases`, `gitlab_create_release` 等
-  - `gitlab_list_wiki_pages`, `gitlab_create_wiki_page` 等
-  - `gitlab_list_milestones`, `gitlab_create_milestone` 等
-- GraphQL / 附件
-  - `gitlab_execute_graphql_query`
-  - `gitlab_execute_graphql_mutation`
-  - `gitlab_execute_graphql`（兼容别名）
-  - `gitlab_upload_markdown`（支持 `content` 或 `file_path`）
-  - `gitlab_download_attachment`
-
-## 质量与构建
+### Docker
 
 ```bash
-npm run lint
-npm run typecheck
-npm run test
-npm run build
+docker compose up --build
 ```
 
-## Docker
+The HTTP server will be available at `http://127.0.0.1:3333`.
+
+## Client Configuration
+
+### Claude Desktop / Claude Code (stdio)
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "node",
+      "args": ["/path/to/gitlab-mcp/dist/index.js"],
+      "env": {
+        "GITLAB_API_URL": "https://gitlab.com/api/v4",
+        "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+### Remote HTTP Client
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "url": "http://127.0.0.1:3333/mcp",
+      "headers": {
+        "Authorization": "Bearer glpat-xxxxxxxxxxxxxxxxxxxx"
+      }
+    }
+  }
+}
+```
+
+## Transport Modes
+
+| Mode                | Entry Point     | Endpoint     | Use Case                                      |
+| ------------------- | --------------- | ------------ | --------------------------------------------- |
+| **stdio**           | `dist/index.js` | stdin/stdout | Local CLI tools (Claude Desktop, Claude Code) |
+| **Streamable HTTP** | `dist/http.js`  | `POST /mcp`  | Remote/shared deployments                     |
+| **SSE** (optional)  | `dist/http.js`  | `GET /sse`   | Legacy SSE clients (`SSE=true`)               |
+
+The HTTP server also exposes `GET /healthz` for liveness checks.
+
+## Tool Categories
+
+All tools are prefixed with `gitlab_` and organized into these categories:
+
+| Category            | Examples                                                                  | Count |
+| ------------------- | ------------------------------------------------------------------------- | ----- |
+| **Projects**        | `get_project`, `list_projects`, `create_repository`, `fork_repository`    | 8     |
+| **Repository**      | `get_repository_tree`, `get_file_contents`, `push_files`, `create_branch` | 8     |
+| **Merge Requests**  | `list_merge_requests`, `create_merge_request`, `merge_merge_request`      | 12    |
+| **MR Code Context** | `get_merge_request_code_context` (advanced code review)                   | 1     |
+| **MR Discussions**  | `list_merge_request_discussions`, `create_merge_request_thread`           | 7     |
+| **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                   | 6     |
+| **Draft Notes**     | `list_draft_notes`, `create_draft_note`, `bulk_publish_draft_notes`       | 7     |
+| **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                | 12    |
+| **Pipelines**       | `list_pipelines`, `get_pipeline_job_output`, `create_pipeline`            | 12    |
+| **Commits**         | `list_commits`, `get_commit`, `get_commit_diff`                           | 3     |
+| **Labels**          | `list_labels`, `create_label`, `update_label`                             | 5     |
+| **Milestones**      | `list_milestones`, `create_milestone`, burndown events                    | 9     |
+| **Releases**        | `list_releases`, `create_release`, `download_release_asset`               | 7     |
+| **Wiki**            | `list_wiki_pages`, `create_wiki_page`, `update_wiki_page`                 | 5     |
+| **Uploads**         | `upload_markdown`, `download_attachment`                                  | 2     |
+| **GraphQL**         | `execute_graphql_query`, `execute_graphql_mutation`                       | 3     |
+| **Users & Groups**  | `get_users`, `list_namespaces`, `list_events`                             | 6     |
+| **Health**          | `health_check`                                                            | 1     |
+
+See [docs/tools.md](docs/tools.md) for the complete reference.
+
+## Policy & Security
+
+The policy engine controls which tools are available at registration time:
 
 ```bash
-docker compose up -d --build
+# Read-only mode — disables all mutating tools
+GITLAB_READ_ONLY_MODE=true
+
+# Only expose specific tools (supports with or without gitlab_ prefix)
+GITLAB_ALLOWED_TOOLS=get_project,list_merge_requests,get_merge_request
+
+# Block tools by regex pattern
+GITLAB_DENIED_TOOLS_REGEX=^gitlab_(delete|create)_
+
+# Restrict to specific projects
+GITLAB_ALLOWED_PROJECT_IDS=123,456,789
+
+# Disable feature groups
+USE_PIPELINE=false
+USE_GITLAB_WIKI=false
 ```
 
-默认入口：`node dist/http.js`。
+## Configuration
+
+All configuration is done through environment variables. Key settings:
+
+| Variable                       | Default                     | Description                                                   |
+| ------------------------------ | --------------------------- | ------------------------------------------------------------- |
+| `GITLAB_API_URL`               | `https://gitlab.com/api/v4` | GitLab API base URL (supports comma-separated multi-instance) |
+| `GITLAB_PERSONAL_ACCESS_TOKEN` | —                           | Personal access token for stdio mode                          |
+| `GITLAB_READ_ONLY_MODE`        | `false`                     | Disable all mutating operations                               |
+| `GITLAB_RESPONSE_MODE`         | `json`                      | Output format: `json`, `compact-json`, `yaml`                 |
+| `GITLAB_MAX_RESPONSE_BYTES`    | `200000`                    | Maximum response size (1KB–2MB)                               |
+| `GITLAB_HTTP_TIMEOUT_MS`       | `20000`                     | API request timeout (1–120s)                                  |
+| `HTTP_PORT`                    | `3333`                      | HTTP server port                                              |
+| `REMOTE_AUTHORIZATION`         | `false`                     | Accept per-request auth tokens                                |
+
+See [docs/configuration.md](docs/configuration.md) for the complete reference.
+
+## Authentication Methods
+
+The server supports a token resolution chain with automatic fallback:
+
+1. **Per-request auth** — `Authorization` or `Private-Token` header (HTTP mode with `REMOTE_AUTHORIZATION=true`)
+2. **OAuth 2.0 PKCE** — Built-in browser-based flow (`GITLAB_USE_OAUTH=true`)
+3. **External token script** — Execute a command to obtain tokens (`GITLAB_TOKEN_SCRIPT`)
+4. **Token file** — Read token from a file with permission checks (`GITLAB_TOKEN_FILE`)
+5. **Cookie-based auth** — Netscape cookie file with session warmup (`GITLAB_AUTH_COOKIE_PATH`)
+6. **Static PAT** — Fallback to `GITLAB_PERSONAL_ACCESS_TOKEN`
+
+See [docs/authentication.md](docs/authentication.md) for setup guides.
+
+## Development
+
+```bash
+pnpm dev           # stdio mode with hot-reload
+pnpm dev:http      # HTTP mode with hot-reload
+pnpm test          # Run tests
+pnpm test:watch    # Run tests in watch mode
+pnpm lint          # Lint
+pnpm typecheck     # Type check
+pnpm inspector     # Launch MCP Inspector
+```
+
+### Project Structure
+
+```
+src/
+├── index.ts                 # Stdio entry point
+├── http.ts                  # HTTP server entry point
+├── config/
+│   └── env.ts               # Environment config with Zod validation
+├── server/
+│   └── build-server.ts      # MCP server factory
+├── tools/
+│   ├── gitlab.ts            # All GitLab tool definitions
+│   ├── health.ts            # Health check tool
+│   └── mr-code-context.ts   # MR code context extraction
+├── lib/
+│   ├── gitlab-client.ts     # GitLab REST API client
+│   ├── policy.ts            # Tool policy engine
+│   ├── auth-context.ts      # Per-session auth (AsyncLocalStorage)
+│   ├── request-runtime.ts   # Request preprocessing (cookies, tokens, OAuth)
+│   ├── oauth.ts             # GitLab OAuth PKCE manager
+│   ├── network.ts           # Proxy and TLS configuration
+│   ├── output.ts            # Response formatting
+│   ├── sanitize.ts          # Null-stripping utility
+│   └── logger.ts            # Pino logger
+└── types/
+    └── context.ts           # AppContext interface
+```
+
+See [docs/architecture.md](docs/architecture.md) for detailed design documentation.
+
+## Documentation
+
+- [Configuration Reference](docs/configuration.md) — All environment variables
+- [Tools Reference](docs/tools.md) — Complete list of MCP tools
+- [Authentication Guide](docs/authentication.md) — Auth methods and setup
+- [Deployment Guide](docs/deployment.md) — Docker, production, and multi-instance
+- [Architecture](docs/architecture.md) — Internal design and patterns
+
+## License
+
+See [LICENSE](LICENSE) for details.
