@@ -83,4 +83,44 @@ describe("GitLabClient", () => {
     expect(url.searchParams.get("simple")).toBe("true");
     expect(url.searchParams.get("per_page")).toBe("7");
   });
+
+  it("supports global merge request listing endpoint", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const client = new GitLabClient("https://gitlab.example.com");
+    await client.listGlobalMergeRequests({
+      query: { state: "opened", per_page: 5 }
+    });
+
+    const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+    const url = new URL(String(requestUrl));
+    expect(url.pathname).toBe("/api/v4/merge_requests");
+    expect(url.searchParams.get("state")).toBe("opened");
+    expect(url.searchParams.get("per_page")).toBe("5");
+  });
+
+  it("supports global issue listing endpoint", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+
+    const client = new GitLabClient("https://gitlab.example.com");
+    await client.listGlobalIssues({
+      query: { scope: "assigned_to_me", page: 2 }
+    });
+
+    const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+    const url = new URL(String(requestUrl));
+    expect(url.pathname).toBe("/api/v4/issues");
+    expect(url.searchParams.get("scope")).toBe("assigned_to_me");
+    expect(url.searchParams.get("page")).toBe("2");
+  });
 });
