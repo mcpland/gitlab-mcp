@@ -72,6 +72,10 @@ describe("parseProjectUploadReference", () => {
     expect(parseProjectUploadReference("not a url at all")).toBeUndefined();
   });
 
+  it("returns undefined for malformed percent-encoding", () => {
+    expect(parseProjectUploadReference("/uploads/abc123/%E0%A4%A")).toBeUndefined();
+  });
+
   it("handles upload path without leading slash", () => {
     // This depends on implementation, but should handle gracefully
     const result = parseProjectUploadReference("uploads/abc123/file.txt");

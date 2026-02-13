@@ -2801,7 +2801,14 @@ export function parseProjectUploadReference(
     return undefined;
   }
 
-  const filename = decodeURIComponent(filenameParts.join("/"));
+  let filename: string;
+
+  try {
+    filename = decodeURIComponent(filenameParts.join("/"));
+  } catch {
+    return undefined;
+  }
+
   if (!filename) {
     return undefined;
   }
