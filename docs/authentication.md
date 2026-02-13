@@ -1,16 +1,27 @@
 # Authentication Guide
 
-gitlab-mcp supports multiple authentication methods. For each request, token resolution follows a fixed priority chain.
+gitlab-mcp supports multiple authentication methods. Token behavior depends on whether remote authorization is enabled.
 
-## Token Resolution Order
+## Token Resolution
+
+### Default Mode (`REMOTE_AUTHORIZATION=false`)
 
 ```
-Per-request auth (HTTP mode)
-  └─> Static PAT (GITLAB_PERSONAL_ACCESS_TOKEN)
-      └─> OAuth 2.0 PKCE
-          └─> External token script
-              └─> Token file
+Static PAT (GITLAB_PERSONAL_ACCESS_TOKEN)
+  └─> OAuth 2.0 PKCE
+      └─> External token script
+          └─> Token file
 ```
+
+### Remote Authorization Mode (`REMOTE_AUTHORIZATION=true`, HTTP)
+
+```
+Per-request auth only (required)
+```
+
+In remote authorization mode, each request must include `Authorization: Bearer <token>` or
+`Private-Token: <token>`. If `ENABLE_DYNAMIC_API_URL=true`, each request must also include
+`X-GitLab-API-URL`.
 
 Cookie-based auth (`GITLAB_AUTH_COOKIE_PATH`) is applied independently through a cookie jar and is not part of the token chain.
 
@@ -24,7 +35,8 @@ The simplest method. Create a token at **GitLab > Settings > Access Tokens** wit
 GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
 ```
 
-This token is the default request token in both stdio and HTTP modes. Per-request tokens override it. OAuth/script/file resolution is used when no token is available from request headers or PAT.
+This token is the default request token in stdio and HTTP modes when `REMOTE_AUTHORIZATION=false`.
+When `REMOTE_AUTHORIZATION=true`, request headers are required and PAT fallback is disabled.
 
 ---
 
@@ -195,13 +207,13 @@ Lines starting with `#HttpOnly_` are parsed as HttpOnly cookies.
 
 ## 6. Remote Authorization (HTTP Mode)
 
-In HTTP transport mode, the server can accept per-request tokens from the client. This is the recommended approach for shared/multi-user deployments.
+In HTTP transport mode, this enables strict per-request credentials. This is the recommended approach for shared/multi-user deployments.
 
 ```bash
 REMOTE_AUTHORIZATION=true
 ```
 
-`REMOTE_AUTHORIZATION=true` enables per-request credentials, but it does not disable fallback auth methods automatically. If no request token is provided, the server still tries PAT, then OAuth/script/file.
+`REMOTE_AUTHORIZATION=true` enforces per-request credentials. If a request does not include a token header, the request is rejected.
 
 ### Client Headers
 
@@ -228,10 +240,10 @@ X-GitLab-API-URL: https://other-gitlab.example.com/api/v4
 ### Authentication Flow (HTTP Mode)
 
 1. Client sends a request with auth headers
-2. The server extracts the token and optional API URL from headers
+2. The server extracts the token and required API URL (when dynamic API URLs are enabled) from headers
 3. Auth context is stored in `AsyncLocalStorage` for the duration of the request
 4. All GitLab API calls within that request use the per-session credentials
-5. If no per-request token is provided, the server falls back to PAT, then OAuth/script/file; if nothing resolves, GitLab typically responds with 401/403
+5. Requests missing required headers are rejected before tool execution
 
 ---
 

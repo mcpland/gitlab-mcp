@@ -142,19 +142,20 @@ All configuration is done through environment variables. Key settings:
 | `GITLAB_MAX_RESPONSE_BYTES`    | `200000`                    | Maximum response size (1KB–2MB)                               |
 | `GITLAB_HTTP_TIMEOUT_MS`       | `20000`                     | API request timeout (1–120s)                                  |
 | `HTTP_PORT`                    | `3333`                      | HTTP server port                                              |
-| `REMOTE_AUTHORIZATION`         | `false`                     | Accept per-request auth tokens                                |
+| `REMOTE_AUTHORIZATION`         | `false`                     | Require per-request auth tokens in HTTP mode                  |
 
 See [docs/configuration.md](docs/configuration.md) for the complete reference.
 
 ## Authentication Methods
 
-The server resolves credentials per request in this order:
+Authentication behavior depends on mode:
 
-1. **Per-request auth** — `Authorization` or `Private-Token` header (HTTP mode with `REMOTE_AUTHORIZATION=true`)
-2. **Static PAT** — `GITLAB_PERSONAL_ACCESS_TOKEN` (default token for stdio and HTTP)
-3. **OAuth 2.0 PKCE** — Used only when no token is available from steps 1-2 (`GITLAB_USE_OAUTH=true`)
-4. **External token script** — `GITLAB_TOKEN_SCRIPT`
-5. **Token file** — `GITLAB_TOKEN_FILE`
+1. **`REMOTE_AUTHORIZATION=true` (HTTP strong mode)**  
+   Each request must include `Authorization: Bearer <token>` or `Private-Token: <token>`.  
+   When `ENABLE_DYNAMIC_API_URL=true`, each request must also include `X-GitLab-API-URL`.
+2. **`REMOTE_AUTHORIZATION=false` (default mode)**  
+   The server resolves credentials in this order:
+   `GITLAB_PERSONAL_ACCESS_TOKEN` -> OAuth PKCE (`GITLAB_USE_OAUTH=true`) -> `GITLAB_TOKEN_SCRIPT` -> `GITLAB_TOKEN_FILE`.
 
 Cookie-based auth (`GITLAB_AUTH_COOKIE_PATH`) is applied independently via a cookie jar and can work with or without a token.
 

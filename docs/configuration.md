@@ -15,10 +15,10 @@ You can set variables in a `.env` file (loaded automatically via `dotenv`) or pa
 
 ## GitLab API
 
-| Variable                       | Type   | Default                     | Description                                                                                                                                |
-| ------------------------------ | ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GITLAB_API_URL`               | string | `https://gitlab.com/api/v4` | Base API URL. Supports **comma-separated** URLs for multi-instance rotation. Each URL is automatically normalized to end with `/api/v4`.   |
-| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —                           | Static default token for requests. Overridden by per-request auth headers. If omitted, runtime can still resolve OAuth/script/file tokens. |
+| Variable                       | Type   | Default                     | Description                                                                                                                                       |
+| ------------------------------ | ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GITLAB_API_URL`               | string | `https://gitlab.com/api/v4` | Base API URL. Supports **comma-separated** URLs for multi-instance rotation. Each URL is automatically normalized to end with `/api/v4`.          |
+| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —                           | Static default token for requests in default mode (`REMOTE_AUTHORIZATION=false`). If omitted, runtime can still resolve OAuth/script/file tokens. |
 
 ### Multi-Instance Example
 
@@ -73,10 +73,10 @@ The client will normalize each entry and rotate across them for load distributio
 
 ### Remote Authorization (HTTP Mode)
 
-| Variable                 | Type    | Default | Description                                                                                                                       |
-| ------------------------ | ------- | ------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `REMOTE_AUTHORIZATION`   | boolean | `false` | Accept per-request tokens via `Authorization` (Bearer) or `Private-Token` headers. If absent, normal fallback auth still applies. |
-| `ENABLE_DYNAMIC_API_URL` | boolean | `false` | Accept per-request API URL via `X-GitLab-API-URL` header. Requires `REMOTE_AUTHORIZATION=true`.                                   |
+| Variable                 | Type    | Default | Description                                                                                                                         |
+| ------------------------ | ------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `REMOTE_AUTHORIZATION`   | boolean | `false` | Require per-request tokens via `Authorization` (Bearer) or `Private-Token` headers for HTTP requests. Disables fallback auth chain. |
+| `ENABLE_DYNAMIC_API_URL` | boolean | `false` | Require per-request API URL via `X-GitLab-API-URL` header. Requires `REMOTE_AUTHORIZATION=true`.                                    |
 
 ## Policy
 

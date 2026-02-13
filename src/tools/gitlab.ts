@@ -2704,6 +2704,7 @@ function assertAuthReady(context: AppContext): void {
 
   const hasFallbackAuth =
     Boolean(context.env.GITLAB_PERSONAL_ACCESS_TOKEN) ||
+    Boolean(context.env.GITLAB_USE_OAUTH && context.env.GITLAB_OAUTH_CLIENT_ID) ||
     Boolean(context.env.GITLAB_TOKEN_SCRIPT) ||
     Boolean(context.env.GITLAB_TOKEN_FILE) ||
     Boolean(context.env.GITLAB_AUTH_COOKIE_PATH);

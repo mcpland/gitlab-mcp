@@ -190,6 +190,32 @@ app.all("/mcp", async (req, res) => {
   const parsedAuth = parseRequestAuth(req);
 
   try {
+    if (env.REMOTE_AUTHORIZATION && !parsedAuth?.token) {
+      res.status(401).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32010,
+          message:
+            "Missing remote authorization token. Provide 'Authorization: Bearer <token>' or 'Private-Token'."
+        },
+        id: null
+      });
+      return;
+    }
+
+    if (env.REMOTE_AUTHORIZATION && env.ENABLE_DYNAMIC_API_URL && !parsedAuth?.apiUrl) {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32011,
+          message:
+            "Missing 'X-GitLab-API-URL' while ENABLE_DYNAMIC_API_URL=true and REMOTE_AUTHORIZATION=true."
+        },
+        id: null
+      });
+      return;
+    }
+
     let session = incomingSessionId ? sessions.get(incomingSessionId) : undefined;
 
     if (incomingSessionId && !session) {
@@ -389,6 +415,10 @@ function buildRuntimeAuth(session: SessionState): SessionAuth | undefined {
 }
 
 function parseRequestAuth(req: express.Request): SessionAuth | undefined {
+  if (!env.REMOTE_AUTHORIZATION) {
+    return undefined;
+  }
+
   const privateToken = req.header("private-token")?.trim();
   const authorization = req.header("authorization")?.trim();
 
