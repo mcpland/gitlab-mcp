@@ -1513,10 +1513,32 @@ export class GitLabClient {
     const requestConfig = this.resolveRequestConfig(options);
     const url = this.resolveAttachmentUrl(urlOrPath, requestConfig.apiUrl);
 
-    const headers = new Headers(options.headers);
-    this.attachAuth(headers, requestConfig.token);
+    let headers = new Headers(options.headers);
+    let token = requestConfig.token;
+    let fetchImpl: typeof fetch = fetch;
 
-    const response = await fetch(url, {
+    if (this.beforeRequest) {
+      const override = await this.beforeRequest({
+        url,
+        method: "GET",
+        headers,
+        token
+      });
+
+      if (override?.headers) {
+        headers = override.headers;
+      }
+      if (override?.token !== undefined) {
+        token = override.token;
+      }
+      if (override?.fetchImpl) {
+        fetchImpl = override.fetchImpl;
+      }
+    }
+
+    this.attachAuth(headers, token);
+
+    const response = await fetchImpl(url, {
       method: "GET",
       headers,
       signal: AbortSignal.timeout(this.timeoutMs)

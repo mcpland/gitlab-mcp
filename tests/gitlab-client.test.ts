@@ -157,4 +157,25 @@ describe("GitLabClient", () => {
     expect(Buffer.from(result.base64, "base64").toString("utf8")).toBe("hello");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("applies beforeRequest token overrides to attachment downloads", async () => {
+    fetchMock.mockResolvedValue(
+      new Response("ok", {
+        status: 200,
+        headers: {
+          "content-type": "text/plain",
+          "content-disposition": 'attachment; filename="ok.txt"'
+        }
+      })
+    );
+
+    const client = new GitLabClient("https://gitlab.example.com", undefined, {
+      beforeRequest: async () => ({ token: "token-from-hook" })
+    });
+
+    await client.downloadAttachment("https://gitlab.example.com/uploads/secret/ok.txt");
+
+    const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+    expect(new Headers(init.headers).get("PRIVATE-TOKEN")).toBe("token-from-hook");
+  });
 });
