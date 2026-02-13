@@ -1511,7 +1511,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<{ fileName: string; contentType: string; base64: string }> {
     const requestConfig = this.resolveRequestConfig(options);
-    const url = this.resolveAbsoluteUrl(urlOrPath, requestConfig.apiUrl);
+    const url = this.resolveAttachmentUrl(urlOrPath, requestConfig.apiUrl);
 
     const headers = new Headers(options.headers);
     this.attachAuth(headers, requestConfig.token);
@@ -1701,6 +1701,19 @@ export class GitLabClient {
 
     const base = new URL(apiUrl);
     return new URL(raw.replace(/^\//, ""), `${base.origin}/`);
+  }
+
+  private resolveAttachmentUrl(raw: string, apiUrl: string): URL {
+    const base = new URL(apiUrl);
+    const resolved = this.resolveAbsoluteUrl(raw, apiUrl);
+
+    if (resolved.origin !== base.origin) {
+      throw new Error(
+        `Refusing to download cross-origin attachment URL '${resolved.origin}'. Only '${base.origin}' is allowed.`
+      );
+    }
+
+    return resolved;
   }
 
   private attachAuth(headers: Headers, token?: string): void {

@@ -123,4 +123,38 @@ describe("GitLabClient", () => {
     expect(url.searchParams.get("scope")).toBe("assigned_to_me");
     expect(url.searchParams.get("page")).toBe("2");
   });
+
+  it("rejects cross-origin attachment URLs", async () => {
+    const client = new GitLabClient("https://gitlab.example.com", "token-123");
+
+    const error = await client
+      .downloadAttachment("https://evil.example.net/uploads/secret/file.txt")
+      .catch((reason) => reason);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("cross-origin");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows same-origin attachment URLs", async () => {
+    fetchMock.mockResolvedValue(
+      new Response("hello", {
+        status: 200,
+        headers: {
+          "content-type": "text/plain",
+          "content-disposition": 'attachment; filename="hello.txt"'
+        }
+      })
+    );
+
+    const client = new GitLabClient("https://gitlab.example.com", "token-123");
+    const result = await client.downloadAttachment(
+      "https://gitlab.example.com/uploads/secret/hello.txt"
+    );
+
+    expect(result.fileName).toBe("hello.txt");
+    expect(result.contentType).toBe("text/plain");
+    expect(Buffer.from(result.base64, "base64").toString("utf8")).toBe("hello");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

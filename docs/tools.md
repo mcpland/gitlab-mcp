@@ -274,10 +274,10 @@ Requires `USE_RELEASE=true` (default).
 
 ## Uploads & Attachments
 
-| Tool                         | Mutating | Description                                                                                                       |
-| ---------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------- |
-| `gitlab_upload_markdown`     | **Yes**  | Upload markdown file/attachment to project. Provide either `file_path` (local file) or `content` with `filename`. |
-| `gitlab_download_attachment` | No       | Download attachment. Provide either `url_or_path` or both `secret` and `filename`. Returns base64 content.        |
+| Tool                         | Mutating | Description                                                                                                                                                                           |
+| ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_upload_markdown`     | **Yes**  | Upload markdown file/attachment to project. Provide either `file_path` (local file) or `content` with `filename`.                                                                     |
+| `gitlab_download_attachment` | No       | Download attachment. Provide either `url_or_path` or both `secret` and `filename`. Absolute `url_or_path` must be same-origin with configured GitLab API URL. Returns base64 content. |
 
 ---
 
