@@ -187,7 +187,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
             updatedAt: Date.now()
           },
           async () => {
-            await session.transport.handlePostMessage(req, res);
+            await session.transport.handlePostMessage(req, res, req.body);
           }
         );
       } catch (error) {
