@@ -12,14 +12,10 @@
  * The GitLabClient is stubbed so no real network calls are made.
  */
 import { describe, expect, it, vi } from "vitest";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-
-import { createMcpServer } from "../../src/server/build-server.js";
-import { OutputFormatter } from "../../src/lib/output.js";
-import { ToolPolicyEngine } from "../../src/lib/policy.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { AppContext } from "../../src/types/context.js";
+
+import { buildContext, createLinkedPair } from "./_helpers.js";
 
 /* ------------------------------------------------------------------ */
 /*  LLM abstraction                                                    */
@@ -148,126 +144,31 @@ async function runAgentLoop(params: {
 /*  Test helpers                                                       */
 /* ------------------------------------------------------------------ */
 
-function buildTestContext(gitlabStub?: Partial<AppContext["gitlab"]>): AppContext {
-  const defaultFeatures = {
-    wiki: true,
-    milestone: true,
-    pipeline: true,
-    release: true
-  };
-
-  return {
-    env: {
-      NODE_ENV: "test",
-      LOG_LEVEL: "silent",
-      MCP_SERVER_NAME: "agent-test-server",
-      MCP_SERVER_VERSION: "0.0.1",
-      GITLAB_API_URL: "https://gitlab.example.com/api/v4",
-      GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
-      GITLAB_PERSONAL_ACCESS_TOKEN: "test-token",
-      GITLAB_USE_OAUTH: false,
-      GITLAB_OAUTH_AUTO_OPEN_BROWSER: false,
-      GITLAB_OAUTH_SCOPES: "api",
-      GITLAB_READ_ONLY_MODE: false,
-      GITLAB_ALLOWED_PROJECT_IDS: [],
-      GITLAB_ALLOWED_TOOLS: [],
-      GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: false,
-      GITLAB_RESPONSE_MODE: "json",
-      GITLAB_MAX_RESPONSE_BYTES: 200_000,
-      GITLAB_HTTP_TIMEOUT_MS: 20_000,
-      GITLAB_ERROR_DETAIL_MODE: "full",
-      GITLAB_CLOUDFLARE_BYPASS: false,
-      GITLAB_ALLOW_INSECURE_TOKEN_FILE: false,
-      GITLAB_ALLOW_INSECURE_TLS: false,
-      GITLAB_COOKIE_WARMUP_PATH: "/user",
-      USE_GITLAB_WIKI: true,
-      USE_MILESTONE: true,
-      USE_PIPELINE: true,
-      USE_RELEASE: true,
-      REMOTE_AUTHORIZATION: false,
-      ENABLE_DYNAMIC_API_URL: false,
-      HTTP_JSON_ONLY: false,
-      SSE: false,
-      SESSION_TIMEOUT_SECONDS: 3600,
-      MAX_SESSIONS: 1000,
-      MAX_REQUESTS_PER_MINUTE: 300,
-      HTTP_HOST: "127.0.0.1",
-      HTTP_PORT: 3333,
-      GITLAB_TOKEN_CACHE_SECONDS: 300,
-      GITLAB_TOKEN_SCRIPT_TIMEOUT_MS: 10_000,
-      GITLAB_OAUTH_GITLAB_URL: undefined,
-      GITLAB_OAUTH_CLIENT_ID: undefined,
-      GITLAB_OAUTH_CLIENT_SECRET: undefined,
-      GITLAB_OAUTH_REDIRECT_URI: undefined,
-      GITLAB_OAUTH_TOKEN_PATH: undefined,
-      GITLAB_AUTH_COOKIE_PATH: undefined,
-      GITLAB_USER_AGENT: undefined,
-      GITLAB_ACCEPT_LANGUAGE: undefined,
-      GITLAB_TOKEN_SCRIPT: undefined,
-      GITLAB_TOKEN_FILE: undefined,
-      GITLAB_CA_CERT_PATH: undefined,
-      GITLAB_DENIED_TOOLS_REGEX: undefined,
-      NODE_TLS_REJECT_UNAUTHORIZED: undefined,
-      HTTP_PROXY: undefined,
-      HTTPS_PROXY: undefined
-    } as AppContext["env"],
-    logger: {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-      trace: vi.fn(),
-      fatal: vi.fn(),
-      child: () => ({}) as never
-    } as unknown as AppContext["logger"],
-    gitlab: {
-      listProjects: vi.fn().mockResolvedValue([
-        { id: 1, name: "project-alpha", path_with_namespace: "group/project-alpha" },
-        { id: 2, name: "project-beta", path_with_namespace: "group/project-beta" }
-      ]),
-      getProject: vi.fn().mockResolvedValue({
-        id: 1,
-        name: "project-alpha",
-        path_with_namespace: "group/project-alpha",
-        description: "Test project",
-        default_branch: "main",
-        web_url: "https://gitlab.example.com/group/project-alpha"
-      }),
-      listIssues: vi.fn().mockResolvedValue([
-        { iid: 1, title: "Fix bug", state: "opened" },
-        { iid: 2, title: "Add feature", state: "opened" }
-      ]),
-      ...gitlabStub
-    } as unknown as AppContext["gitlab"],
-    policy: new ToolPolicyEngine({
-      readOnlyMode: false,
-      allowedTools: [],
-      enabledFeatures: defaultFeatures
-    }),
-    formatter: new OutputFormatter({
-      responseMode: "json",
-      maxBytes: 200_000
+function createAgentTestPair(gitlabStub?: Partial<AppContext["gitlab"]>) {
+  return createLinkedPair(
+    buildContext({
+      serverName: "agent-test-server",
+      gitlabStub: {
+        listProjects: vi.fn().mockResolvedValue([
+          { id: 1, name: "project-alpha", path_with_namespace: "group/project-alpha" },
+          { id: 2, name: "project-beta", path_with_namespace: "group/project-beta" }
+        ]),
+        getProject: vi.fn().mockResolvedValue({
+          id: 1,
+          name: "project-alpha",
+          path_with_namespace: "group/project-alpha",
+          description: "Test project",
+          default_branch: "main",
+          web_url: "https://gitlab.example.com/group/project-alpha"
+        }),
+        listIssues: vi.fn().mockResolvedValue([
+          { iid: 1, title: "Fix bug", state: "opened" },
+          { iid: 2, title: "Add feature", state: "opened" }
+        ]),
+        ...gitlabStub
+      }
     })
-  };
-}
-
-async function createAgentTestPair(gitlabStub?: Partial<AppContext["gitlab"]>): Promise<{
-  client: Client;
-  server: McpServer;
-  clientTransport: InMemoryTransport;
-  serverTransport: InMemoryTransport;
-  context: AppContext;
-}> {
-  const context = buildTestContext(gitlabStub);
-  const server = createMcpServer(context);
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-
-  await server.connect(serverTransport);
-
-  const client = new Client({ name: "agent-test-client", version: "0.0.1" }, { capabilities: {} });
-  await client.connect(clientTransport);
-
-  return { client, server, clientTransport, serverTransport, context };
+  );
 }
 
 /* ------------------------------------------------------------------ */
