@@ -318,6 +318,18 @@ describe("GitLabClient", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it("rejects same-origin non-upload URLs", async () => {
+      const client = new GitLabClient("https://gitlab.example.com", "token-123");
+
+      const error = await client
+        .downloadAttachment("https://gitlab.example.com/api/v4/projects")
+        .catch((reason) => reason);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("non-upload");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("allows same-origin attachment URLs", async () => {
       fetchMock.mockResolvedValue(
         new Response("hello", {

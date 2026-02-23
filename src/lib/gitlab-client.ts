@@ -1758,6 +1758,12 @@ export class GitLabClient {
       );
     }
 
+    if (!resolved.pathname.includes("/uploads/")) {
+      throw new Error(
+        `Refusing to download non-upload path '${resolved.pathname}'. Only GitLab upload URLs containing '/uploads/' are allowed.`
+      );
+    }
+
     return resolved;
   }
 
