@@ -1,5 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { Kind, parse } from "graphql";
 import { z } from "zod";
 
 import { GitLabApiError, type PushFileAction } from "../lib/gitlab-client.js";
@@ -2756,13 +2757,23 @@ export function containsGraphqlMutation(query: string): boolean {
     return false;
   }
 
-  // Remove comments and string values to avoid false positives from text content.
-  const normalized = query
-    .replace(/#[^\n]*/g, " ")
-    .replace(/"""[\s\S]*?"""/g, " ")
-    .replace(/"(?:\\.|[^"\\])*"/g, " ");
+  try {
+    const document = parse(query, { noLocation: true });
+    return document.definitions.some(
+      (definition) =>
+        definition.kind === Kind.OPERATION_DEFINITION && definition.operation === "mutation"
+    );
+  } catch {
+    // Keep a conservative fallback for malformed GraphQL payloads.
+    const normalized = query
+      .replace(/#[^\n]*/g, " ")
+      .replace(/"""[\s\S]*?"""/g, " ")
+      .replace(/"(?:\\.|[^"\\])*"/g, " ");
 
-  return /\bmutation\b\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\(|\{)/i.test(normalized);
+    return /\bmutation\b\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\([^)]*\))?\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?\s*)*\{/i.test(
+      normalized
+    );
+  }
 }
 
 export function parseProjectUploadReference(

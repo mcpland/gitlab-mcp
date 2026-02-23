@@ -21,6 +21,17 @@ describe("containsGraphqlMutation", () => {
     ).toBeTruthy();
   });
 
+  it("detects mutation operations with directives", () => {
+    expect(containsGraphqlMutation("mutation @client { createIssue(input: {}) { id } }")).toBe(
+      true
+    );
+    expect(
+      containsGraphqlMutation(
+        "mutation CreateIssue($input: CreateIssueInput!) @client { createIssue(input: $input) { id } }"
+      )
+    ).toBe(true);
+  });
+
   it("detects mutation operations not at the beginning of a document", () => {
     const document = `
       fragment SharedFields on Issue {
@@ -47,6 +58,10 @@ describe("containsGraphqlMutation", () => {
     expect(
       containsGraphqlMutation('query GetProject { project(fullPath: "group/app") { id } }')
     ).toBeFalsy();
+  });
+
+  it("does not flag query fields named mutation", () => {
+    expect(containsGraphqlMutation("query { mutation { id } }")).toBeFalsy();
   });
 
   it("ignores mutation keyword inside string literals", () => {
