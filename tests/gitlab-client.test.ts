@@ -108,6 +108,54 @@ describe("GitLabClient", () => {
     });
   });
 
+  describe("response size limits", () => {
+    it("rejects responses when declared content-length exceeds configured limit", async () => {
+      fetchMock.mockResolvedValue(
+        new Response("123456789", {
+          status: 200,
+          headers: {
+            "content-type": "text/plain",
+            "content-length": "9"
+          }
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxResponseBodyBytes: 8
+      });
+      const error = await client.listProjects().catch((reason) => reason);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("Response body size");
+    });
+
+    it("rejects responses when streamed bytes exceed configured limit", async () => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("12345"));
+          controller.enqueue(new TextEncoder().encode("67890"));
+          controller.close();
+        }
+      });
+      fetchMock.mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: {
+            "content-type": "text/plain"
+          }
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxResponseBodyBytes: 9
+      });
+      const error = await client.listProjects().catch((reason) => reason);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("Response body size");
+    });
+  });
+
   describe("URL normalization", () => {
     it("normalizes base URL to include /api/v4", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));

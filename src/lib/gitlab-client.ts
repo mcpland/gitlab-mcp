@@ -7,6 +7,7 @@ export interface GitLabClientOptions {
   timeoutMs?: number;
   apiUrls?: string[];
   maxAttachmentBytes?: number;
+  maxResponseBodyBytes?: number;
   beforeRequest?: (
     context: GitLabBeforeRequestContext
   ) => Promise<GitLabBeforeRequestResult | void>;
@@ -78,6 +79,7 @@ export class GitLabApiError extends Error {
 
 export class GitLabClient {
   private static readonly DEFAULT_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+  private static readonly DEFAULT_MAX_RESPONSE_BODY_BYTES = 25 * 1024 * 1024;
 
   private readonly baseApiUrl: string;
   private readonly apiUrls: string[];
@@ -85,6 +87,7 @@ export class GitLabClient {
   private readonly defaultToken?: string;
   private readonly timeoutMs: number;
   private readonly maxAttachmentBytes: number;
+  private readonly maxResponseBodyBytes: number;
   private readonly beforeRequest?: GitLabClientOptions["beforeRequest"];
 
   constructor(baseApiUrl: string, defaultToken?: string, options: GitLabClientOptions = {}) {
@@ -97,6 +100,8 @@ export class GitLabClient {
     this.timeoutMs = options.timeoutMs ?? 20_000;
     this.maxAttachmentBytes =
       options.maxAttachmentBytes ?? GitLabClient.DEFAULT_MAX_ATTACHMENT_BYTES;
+    this.maxResponseBodyBytes =
+      options.maxResponseBodyBytes ?? GitLabClient.DEFAULT_MAX_RESPONSE_BODY_BYTES;
     this.beforeRequest = options.beforeRequest;
   }
 
@@ -1558,17 +1563,12 @@ export class GitLabClient {
       );
     }
 
-    const declaredContentLength = parseContentLength(response.headers.get("content-length"));
-    if (declaredContentLength !== undefined && declaredContentLength > this.maxAttachmentBytes) {
-      throw new Error(
-        `Attachment size ${declaredContentLength} bytes exceeds limit ${this.maxAttachmentBytes} bytes`
-      );
-    }
+    assertContentLengthWithinLimit(response, this.maxAttachmentBytes, "Attachment");
 
     const contentType = response.headers.get("content-type") ?? "application/octet-stream";
     const disposition = response.headers.get("content-disposition") ?? "";
     const fileName = extractFileName(disposition) ?? `attachment-${Date.now()}`;
-    const bytes = await readResponseBytesWithLimit(response, this.maxAttachmentBytes);
+    const bytes = await readResponseBytesWithLimit(response, this.maxAttachmentBytes, "Attachment");
 
     return {
       fileName,
@@ -1699,13 +1699,23 @@ export class GitLabClient {
   }
 
   private async parseResponseBody(response: Response): Promise<unknown> {
+    assertContentLengthWithinLimit(response, this.maxResponseBodyBytes, "Response body");
+    const text = await readResponseTextWithLimit(
+      response,
+      this.maxResponseBodyBytes,
+      "Response body"
+    );
     const contentType = response.headers.get("content-type") ?? "";
 
     if (contentType.includes("application/json")) {
-      return response.json();
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
     }
 
-    return response.text();
+    return text;
   }
 
   private resolveRequestConfig(options: GitLabRequestOptions): { apiUrl: string; token?: string } {
@@ -1835,11 +1845,31 @@ function parseContentLength(value: string | null): number | undefined {
   return parsed;
 }
 
-async function readResponseBytesWithLimit(response: Response, maxBytes: number): Promise<Buffer> {
+function assertContentLengthWithinLimit(response: Response, maxBytes: number, label: string): void {
+  const declaredContentLength = parseContentLength(response.headers.get("content-length"));
+  if (declaredContentLength !== undefined && declaredContentLength > maxBytes) {
+    throw new Error(`${label} size ${declaredContentLength} bytes exceeds limit ${maxBytes} bytes`);
+  }
+}
+
+async function readResponseTextWithLimit(
+  response: Response,
+  maxBytes: number,
+  label: string
+): Promise<string> {
+  const bytes = await readResponseBytesWithLimit(response, maxBytes, label);
+  return bytes.toString("utf8");
+}
+
+async function readResponseBytesWithLimit(
+  response: Response,
+  maxBytes: number,
+  label: string
+): Promise<Buffer> {
   if (!response.body) {
     const bytes = Buffer.from(await response.arrayBuffer());
     if (bytes.length > maxBytes) {
-      throw new Error(`Attachment size ${bytes.length} bytes exceeds limit ${maxBytes} bytes`);
+      throw new Error(`${label} size ${bytes.length} bytes exceeds limit ${maxBytes} bytes`);
     }
     return bytes;
   }
@@ -1862,7 +1892,7 @@ async function readResponseBytesWithLimit(response: Response, maxBytes: number):
       total += value.byteLength;
       if (total > maxBytes) {
         await reader.cancel();
-        throw new Error(`Attachment size ${total} bytes exceeds limit ${maxBytes} bytes`);
+        throw new Error(`${label} size ${total} bytes exceeds limit ${maxBytes} bytes`);
       }
 
       chunks.push(Buffer.from(value));
