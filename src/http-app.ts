@@ -204,6 +204,8 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   app.all("/mcp", async (req, res) => {
     const incomingSessionId = req.header("mcp-session-id") ?? undefined;
     const parsedAuth = parseRequestAuth(req);
+    let session = incomingSessionId ? sessions.get(incomingSessionId) : undefined;
+    let createdSession = false;
 
     try {
       if (appEnv.REMOTE_AUTHORIZATION && !parsedAuth?.token) {
@@ -231,8 +233,6 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         });
         return;
       }
-
-      let session = incomingSessionId ? sessions.get(incomingSessionId) : undefined;
 
       if (incomingSessionId && !session) {
         res.status(404).json({
@@ -279,11 +279,17 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         }
 
         session = await createSession(parsedAuth);
+        createdSession = true;
       } else {
         refreshSessionAuth(session, parsedAuth);
       }
 
-      if (!checkSessionRateLimit(session)) {
+      if (!session) {
+        throw new Error("Session state missing after initialization");
+      }
+      const activeSession = session;
+
+      if (!checkSessionRateLimit(activeSession)) {
         res.status(429).json({
           jsonrpc: "2.0",
           error: {
@@ -295,10 +301,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         return;
       }
 
-      await enqueueSessionRequest(session, async () => {
-        const runtimeAuth = buildRuntimeAuth(session);
+      await enqueueSessionRequest(activeSession, async () => {
+        const runtimeAuth = buildRuntimeAuth(activeSession);
         await runWithSessionAuth(runtimeAuth, async () => {
-          await session.transport.handleRequest(req, res, req.body);
+          await activeSession.transport.handleRequest(req, res, req.body);
         });
       });
     } catch (error) {
@@ -320,6 +326,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
           },
           id: null
         });
+      }
+    } finally {
+      if (createdSession && session) {
+        await discardPendingSessionIfUninitialized(session);
       }
     }
   });
@@ -522,6 +532,29 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
       await closeSseSession(sessionId, "idle-timeout");
     }
+  }
+
+  async function discardPendingSessionIfUninitialized(session: SessionState): Promise<void> {
+    if (session.closed || session.sessionId || !pendingSessions.has(session)) {
+      return;
+    }
+
+    session.closed = true;
+    pendingSessions.delete(session);
+
+    try {
+      await session.transport.close();
+    } catch (error) {
+      appLogger.warn({ err: error }, "Failed to close uninitialized transport cleanly");
+    }
+
+    try {
+      await session.server.close();
+    } catch (error) {
+      appLogger.warn({ err: error }, "Failed to close uninitialized MCP server cleanly");
+    }
+
+    appLogger.info("Discarded uninitialized pending session");
   }
 
   async function closeSession(
