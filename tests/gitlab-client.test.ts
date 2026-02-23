@@ -358,6 +358,58 @@ describe("GitLabClient", () => {
       expect(error).toBeInstanceOf(GitLabApiError);
       expect((error as GitLabApiError).status).toBe(404);
     });
+
+    it("rejects attachment when content-length exceeds configured limit", async () => {
+      fetchMock.mockResolvedValue(
+        new Response("ignored", {
+          status: 200,
+          headers: {
+            "content-type": "application/octet-stream",
+            "content-disposition": 'attachment; filename="too-large.bin"',
+            "content-length": "9"
+          }
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxAttachmentBytes: 8
+      });
+      const error = await client
+        .downloadAttachment("https://gitlab.example.com/uploads/abc/too-large.bin")
+        .catch((reason) => reason);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("exceeds limit");
+    });
+
+    it("rejects attachment when streamed body exceeds configured limit", async () => {
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode("12345"));
+          controller.enqueue(new TextEncoder().encode("67890"));
+          controller.close();
+        }
+      });
+      fetchMock.mockResolvedValue(
+        new Response(stream, {
+          status: 200,
+          headers: {
+            "content-type": "application/octet-stream",
+            "content-disposition": 'attachment; filename="stream.bin"'
+          }
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxAttachmentBytes: 9
+      });
+      const error = await client
+        .downloadAttachment("https://gitlab.example.com/uploads/abc/stream.bin")
+        .catch((reason) => reason);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("exceeds limit");
+    });
   });
 
   describe("beforeRequest hook", () => {

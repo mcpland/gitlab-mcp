@@ -6,6 +6,7 @@ import { getSessionAuth, type SessionAuth } from "./auth-context.js";
 export interface GitLabClientOptions {
   timeoutMs?: number;
   apiUrls?: string[];
+  maxAttachmentBytes?: number;
   beforeRequest?: (
     context: GitLabBeforeRequestContext
   ) => Promise<GitLabBeforeRequestResult | void>;
@@ -76,11 +77,14 @@ export class GitLabApiError extends Error {
 }
 
 export class GitLabClient {
+  private static readonly DEFAULT_MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
   private readonly baseApiUrl: string;
   private readonly apiUrls: string[];
   private nextApiUrlIndex = 0;
   private readonly defaultToken?: string;
   private readonly timeoutMs: number;
+  private readonly maxAttachmentBytes: number;
   private readonly beforeRequest?: GitLabClientOptions["beforeRequest"];
 
   constructor(baseApiUrl: string, defaultToken?: string, options: GitLabClientOptions = {}) {
@@ -91,6 +95,8 @@ export class GitLabClient {
     this.apiUrls = configuredApiUrls.length > 0 ? configuredApiUrls : [this.baseApiUrl];
     this.defaultToken = defaultToken;
     this.timeoutMs = options.timeoutMs ?? 20_000;
+    this.maxAttachmentBytes =
+      options.maxAttachmentBytes ?? GitLabClient.DEFAULT_MAX_ATTACHMENT_BYTES;
     this.beforeRequest = options.beforeRequest;
   }
 
@@ -1552,10 +1558,17 @@ export class GitLabClient {
       );
     }
 
+    const declaredContentLength = parseContentLength(response.headers.get("content-length"));
+    if (declaredContentLength !== undefined && declaredContentLength > this.maxAttachmentBytes) {
+      throw new Error(
+        `Attachment size ${declaredContentLength} bytes exceeds limit ${this.maxAttachmentBytes} bytes`
+      );
+    }
+
     const contentType = response.headers.get("content-type") ?? "application/octet-stream";
     const disposition = response.headers.get("content-disposition") ?? "";
     const fileName = extractFileName(disposition) ?? `attachment-${Date.now()}`;
-    const bytes = Buffer.from(await response.arrayBuffer());
+    const bytes = await readResponseBytesWithLimit(response, this.maxAttachmentBytes);
 
     return {
       fileName,
@@ -1807,4 +1820,56 @@ function extractFileName(contentDisposition: string): string | undefined {
   }
 
   return decodeURIComponent(quoted[1] ?? "");
+}
+
+function parseContentLength(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return undefined;
+  }
+
+  return parsed;
+}
+
+async function readResponseBytesWithLimit(response: Response, maxBytes: number): Promise<Buffer> {
+  if (!response.body) {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > maxBytes) {
+      throw new Error(`Attachment size ${bytes.length} bytes exceeds limit ${maxBytes} bytes`);
+    }
+    return bytes;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Buffer[] = [];
+  let total = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      if (!value) {
+        continue;
+      }
+
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        throw new Error(`Attachment size ${total} bytes exceeds limit ${maxBytes} bytes`);
+      }
+
+      chunks.push(Buffer.from(value));
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return Buffer.concat(chunks, total);
 }
