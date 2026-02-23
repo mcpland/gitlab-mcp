@@ -21,6 +21,11 @@ interface TokenState {
   expiresAt: number;
 }
 
+interface ResolvedFallbackAuth {
+  token?: string;
+  authHeader?: "authorization" | "private-token";
+}
+
 export class GitLabRequestRuntime {
   private readonly cookiePath?: string;
   private readonly warmupPath: string;
@@ -67,8 +72,13 @@ export class GitLabRequestRuntime {
     this.applyCompatibilityHeaders(headers);
 
     let token = context.token;
+    let authHeader = context.authHeader;
     if (!token) {
-      token = await this.resolveFallbackToken();
+      const resolvedFallback = await this.resolveFallbackAuth();
+      token = resolvedFallback.token;
+      if (!authHeader && resolvedFallback.authHeader) {
+        authHeader = resolvedFallback.authHeader;
+      }
     }
 
     if (this.cookieJar) {
@@ -78,20 +88,24 @@ export class GitLabRequestRuntime {
     return {
       headers,
       token,
+      authHeader,
       fetchImpl: this.fetchImpl
     };
   }
 
-  private async resolveFallbackToken(): Promise<string | undefined> {
+  private async resolveFallbackAuth(): Promise<ResolvedFallbackAuth> {
     const now = Date.now();
     if (this.cachedToken && this.cachedToken.expiresAt > now) {
-      return this.cachedToken.value;
+      return { token: this.cachedToken.value };
     }
 
     if (this.oauthManager) {
       const token = await this.oauthManager.getAccessToken();
       if (token) {
-        return token;
+        return {
+          token,
+          authHeader: "authorization"
+        };
       }
     }
 
@@ -104,7 +118,7 @@ export class GitLabRequestRuntime {
           expiresAt: now + ttlMs
         };
       }
-      return token;
+      return { token };
     }
 
     if (this.tokenFilePath) {
@@ -116,10 +130,10 @@ export class GitLabRequestRuntime {
           expiresAt: now + ttlMs
         };
       }
-      return token;
+      return { token };
     }
 
-    return undefined;
+    return {};
   }
 
   private async loadTokenFromScript(script: string): Promise<string | undefined> {

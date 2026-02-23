@@ -527,6 +527,21 @@ describe("GitLabClient", () => {
       expect(new Headers(init.headers).get("PRIVATE-TOKEN")).toBe("dynamic-token");
     });
 
+    it("allows overriding auth header mode", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com", undefined, {
+        beforeRequest: async () => ({ token: "oauth-token", authHeader: "authorization" })
+      });
+
+      await client.listProjects();
+
+      const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const headers = new Headers(init.headers);
+      expect(headers.get("Authorization")).toBe("Bearer oauth-token");
+      expect(headers.has("PRIVATE-TOKEN")).toBe(false);
+    });
+
     it("allows overriding fetch implementation", async () => {
       const customFetch = vi.fn().mockResolvedValue(jsonResponse([]));
 

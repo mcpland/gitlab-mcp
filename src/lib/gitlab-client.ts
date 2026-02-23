@@ -35,6 +35,7 @@ export interface GitLabBeforeRequestResult {
   headers?: Headers;
   body?: BodyInit;
   token?: string;
+  authHeader?: "authorization" | "private-token";
   fetchImpl?: typeof fetch;
 }
 
@@ -1528,6 +1529,7 @@ export class GitLabClient {
 
     let headers = new Headers(options.headers);
     let token = requestConfig.token;
+    let authHeader = requestConfig.authHeader;
     let fetchImpl: typeof fetch = fetch;
 
     if (this.beforeRequest) {
@@ -1545,12 +1547,15 @@ export class GitLabClient {
       if (override?.token !== undefined) {
         token = override.token;
       }
+      if (override?.authHeader !== undefined) {
+        authHeader = override.authHeader;
+      }
       if (override?.fetchImpl) {
         fetchImpl = override.fetchImpl;
       }
     }
 
-    this.attachAuth(headers, token, requestConfig.authHeader);
+    this.attachAuth(headers, token, authHeader);
 
     const response = await fetchImpl(url, {
       method: "GET",
@@ -1657,6 +1662,7 @@ export class GitLabClient {
     }
     let requestBody = options.body;
     let token = options.token;
+    let authHeader = options.authHeader;
     let fetchImpl: typeof fetch = fetch;
 
     if (this.beforeRequest) {
@@ -1678,12 +1684,15 @@ export class GitLabClient {
       if (override?.token !== undefined) {
         token = override.token;
       }
+      if (override?.authHeader !== undefined) {
+        authHeader = override.authHeader;
+      }
       if (override?.fetchImpl) {
         fetchImpl = override.fetchImpl;
       }
     }
 
-    this.attachAuth(headers, token, options.authHeader);
+    this.attachAuth(headers, token, authHeader);
 
     const response = await fetchImpl(url, {
       method: options.method,
