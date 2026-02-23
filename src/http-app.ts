@@ -81,7 +81,14 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
   app.get("/healthz", (_req, res) => {
     res.status(200).json({
-      status: sessions.size + sseSessions.size >= appEnv.MAX_SESSIONS ? "degraded" : "ok",
+      status: hasReachedSessionCapacity({
+        streamableSessions: sessions.size,
+        pendingSessions: pendingSessions.size,
+        sseSessions: sseSessions.size,
+        maxSessions: appEnv.MAX_SESSIONS
+      })
+        ? "degraded"
+        : "ok",
       server: appEnv.MCP_SERVER_NAME,
       activeSessions: sessions.size,
       activeSseSessions: sseSessions.size,

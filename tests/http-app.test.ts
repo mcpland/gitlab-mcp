@@ -196,4 +196,17 @@ describe("http app pending session handling", () => {
     expect(second.status).toBe(406);
     expect(running.pendingSessions.size).toBe(0);
   });
+
+  it("reports degraded health when pending sessions reach capacity", async () => {
+    running = await startServer(1);
+
+    running.pendingSessions.add({
+      closed: false
+    } as never);
+
+    const response = await fetch(`${running.baseUrl}/healthz`);
+    const body = (await response.json()) as { status: string };
+
+    expect(body.status).toBe("degraded");
+  });
 });
