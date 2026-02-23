@@ -645,7 +645,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     const pendingSseClose = [...sseSessions.keys()].map((sessionId) =>
       closeSseSession(sessionId, "shutdown")
     );
-    await Promise.allSettled([...pendingClose, ...pendingSseClose]);
+    const pendingInitClose = [...pendingSessions].map((session) =>
+      discardPendingSessionIfUninitialized(session)
+    );
+    await Promise.allSettled([...pendingClose, ...pendingSseClose, ...pendingInitClose]);
 
     await new Promise<void>((resolve, reject) => {
       httpServer.close((error) => {

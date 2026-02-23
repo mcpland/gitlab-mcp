@@ -209,4 +209,44 @@ describe("http app pending session handling", () => {
 
     expect(body.status).toBe("degraded");
   });
+
+  it("shutdown closes uninitialized pending sessions", async () => {
+    const context = buildContext();
+    const setup = setupMcpHttpApp({
+      context,
+      env: context.env,
+      logger: context.logger
+    });
+    const httpServer = createServer(setup.app);
+
+    await new Promise<void>((resolve, reject) => {
+      httpServer.listen(0, "127.0.0.1", (error?: Error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    const transportClose = vi.fn(async () => undefined);
+    const serverClose = vi.fn(async () => undefined);
+
+    setup.pendingSessions.add({
+      closed: false,
+      transport: {
+        close: transportClose
+      },
+      server: {
+        close: serverClose
+      }
+    } as never);
+
+    const gcInterval = setInterval(() => undefined, 1_000);
+    await setup.shutdown(httpServer, gcInterval);
+
+    expect(transportClose).toHaveBeenCalledTimes(1);
+    expect(serverClose).toHaveBeenCalledTimes(1);
+    expect(setup.pendingSessions.size).toBe(0);
+  });
 });
