@@ -203,11 +203,12 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
   app.all("/mcp", async (req, res) => {
     const incomingSessionId = req.header("mcp-session-id") ?? undefined;
-    const parsedAuth = parseRequestAuth(req);
     let session = incomingSessionId ? sessions.get(incomingSessionId) : undefined;
     let createdSession = false;
 
     try {
+      const parsedAuth = parseRequestAuth(req);
+
       if (appEnv.REMOTE_AUTHORIZATION && !parsedAuth?.token) {
         res.status(401).json({
           jsonrpc: "2.0",
@@ -316,6 +317,18 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         },
         "MCP HTTP request failed"
       );
+
+      if (!res.headersSent && isClientHeaderValidationError(error)) {
+        res.status(400).json({
+          jsonrpc: "2.0",
+          error: {
+            code: -32012,
+            message: error.message
+          },
+          id: null
+        });
+        return;
+      }
 
       if (!res.headersSent) {
         res.status(500).json({
@@ -649,4 +662,8 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     garbageCollectSessions,
     shutdown
   };
+}
+
+function isClientHeaderValidationError(error: unknown): error is Error {
+  return error instanceof Error && error.message.startsWith("Invalid x-gitlab-api-url header:");
 }

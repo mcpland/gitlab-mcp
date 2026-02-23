@@ -204,7 +204,7 @@ describe("Remote Authorization - Dynamic API URL", () => {
     expect(sessionId).toBeTruthy();
   });
 
-  it("invalid X-GitLab-API-URL returns 500", async () => {
+  it("invalid X-GitLab-API-URL returns structured 400 JSON-RPC error", async () => {
     const res = await fetch(`${baseUrl}/mcp`, {
       method: "POST",
       headers: {
@@ -215,7 +215,12 @@ describe("Remote Authorization - Dynamic API URL", () => {
       body: initializeBody()
     });
 
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
+    expect(res.headers.get("content-type")).toContain("application/json");
+
+    const body = (await res.json()) as { error?: { code?: number; message?: string } };
+    expect(body.error?.code).toBe(-32012);
+    expect(body.error?.message).toContain("Invalid x-gitlab-api-url header");
   });
 });
 
