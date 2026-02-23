@@ -19,6 +19,7 @@ export interface GitLabRequestOptions {
   headers?: HeadersInit;
   token?: string;
   apiUrl?: string;
+  authHeader?: "authorization" | "private-token";
 }
 
 export interface GitLabBeforeRequestContext {
@@ -27,6 +28,7 @@ export interface GitLabBeforeRequestContext {
   headers: Headers;
   body?: BodyInit;
   token?: string;
+  authHeader?: "authorization" | "private-token";
 }
 
 export interface GitLabBeforeRequestResult {
@@ -1533,7 +1535,8 @@ export class GitLabClient {
         url,
         method: "GET",
         headers,
-        token
+        token,
+        authHeader: requestConfig.authHeader
       });
 
       if (override?.headers) {
@@ -1547,7 +1550,7 @@ export class GitLabClient {
       }
     }
 
-    this.attachAuth(headers, token);
+    this.attachAuth(headers, token, requestConfig.authHeader);
 
     const response = await fetchImpl(url, {
       method: "GET",
@@ -1593,7 +1596,8 @@ export class GitLabClient {
         ...(options.headers ?? {})
       },
       body: JSON.stringify({ query, variables }),
-      token: requestConfig.token
+      token: requestConfig.token,
+      authHeader: requestConfig.authHeader
     });
   }
 
@@ -1632,7 +1636,8 @@ export class GitLabClient {
       method,
       body: options.body,
       headers: options.headers,
-      token: config.token
+      token: config.token,
+      authHeader: config.authHeader
     });
   }
 
@@ -1643,6 +1648,7 @@ export class GitLabClient {
       body?: BodyInit;
       headers?: HeadersInit;
       token?: string;
+      authHeader?: "authorization" | "private-token";
     }
   ): Promise<unknown> {
     let headers = new Headers(options.headers);
@@ -1659,7 +1665,8 @@ export class GitLabClient {
         method: options.method,
         headers,
         body: requestBody,
-        token
+        token,
+        authHeader: options.authHeader
       });
 
       if (override?.headers) {
@@ -1676,7 +1683,7 @@ export class GitLabClient {
       }
     }
 
-    this.attachAuth(headers, token);
+    this.attachAuth(headers, token, options.authHeader);
 
     const response = await fetchImpl(url, {
       method: options.method,
@@ -1718,14 +1725,20 @@ export class GitLabClient {
     return text;
   }
 
-  private resolveRequestConfig(options: GitLabRequestOptions): { apiUrl: string; token?: string } {
+  private resolveRequestConfig(options: GitLabRequestOptions): {
+    apiUrl: string;
+    token?: string;
+    authHeader?: "authorization" | "private-token";
+  } {
     const sessionAuth = getSessionAuth();
     const apiUrl = options.apiUrl ?? sessionAuth?.apiUrl ?? this.pickApiUrl();
     const token = options.token ?? sessionAuth?.token ?? this.defaultToken;
+    const authHeader = options.authHeader ?? sessionAuth?.header;
 
     return {
       apiUrl: normalizeApiUrl(apiUrl),
-      token
+      token,
+      authHeader
     };
   }
 
@@ -1767,8 +1780,17 @@ export class GitLabClient {
     return resolved;
   }
 
-  private attachAuth(headers: Headers, token?: string): void {
+  private attachAuth(
+    headers: Headers,
+    token?: string,
+    authHeader?: "authorization" | "private-token"
+  ): void {
     if (!token) {
+      return;
+    }
+
+    if (authHeader === "authorization") {
+      headers.set("Authorization", `Bearer ${token}`);
       return;
     }
 

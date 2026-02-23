@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { GitLabApiError, GitLabClient, getEffectiveSessionAuth } from "../src/lib/gitlab-client.js";
+import { runWithSessionAuth } from "../src/lib/auth-context.js";
 
 const fetchMock = vi.fn();
 
@@ -63,6 +64,28 @@ describe("GitLabClient", () => {
 
       const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
       expect(new Headers(init.headers).get("PRIVATE-TOKEN")).toBe("override-token");
+    });
+
+    it("uses authorization header when session auth indicates bearer mode", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await runWithSessionAuth(
+        {
+          token: "bearer-token",
+          apiUrl: "https://gitlab.example.com/api/v4",
+          header: "authorization",
+          updatedAt: Date.now()
+        },
+        async () => {
+          await client.listProjects();
+        }
+      );
+
+      const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const headers = new Headers(init.headers);
+      expect(headers.get("Authorization")).toBe("Bearer bearer-token");
+      expect(headers.has("PRIVATE-TOKEN")).toBe(false);
     });
   });
 
