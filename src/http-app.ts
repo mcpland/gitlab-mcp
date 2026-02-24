@@ -72,6 +72,23 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
   const app = createMcpExpressApp({ host: appEnv.HTTP_HOST });
   app.use(express.json({ limit: "2mb" }));
+  app.use(
+    (error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (req.path !== "/mcp" || !isJsonBodyParseError(error)) {
+        next(error);
+        return;
+      }
+
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32700,
+          message: "Invalid JSON payload"
+        },
+        id: null
+      });
+    }
+  );
 
   const sessions = new Map<string, SessionState>();
   const pendingSessions = new Set<SessionState>();
@@ -676,4 +693,16 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
 function isClientHeaderValidationError(error: unknown): error is Error {
   return error instanceof Error && error.message.startsWith("Invalid x-gitlab-api-url header:");
+}
+
+interface JsonBodyParseError extends Error {
+  type?: string;
+}
+
+function isJsonBodyParseError(error: unknown): error is JsonBodyParseError {
+  return (
+    error instanceof Error &&
+    "type" in error &&
+    (error as { type?: string }).type === "entity.parse.failed"
+  );
 }

@@ -152,6 +152,28 @@ afterEach(async () => {
 });
 
 describe("http app pending session handling", () => {
+  it("returns JSON-RPC parse error for malformed JSON payload", async () => {
+    running = await startServer();
+
+    const response = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"jsonrpc":"2.0"'
+    });
+
+    const body = (await response.json()) as {
+      jsonrpc: string;
+      error?: { code?: number; message?: string };
+      id: null;
+    };
+
+    expect(response.status).toBe(400);
+    expect(body.jsonrpc).toBe("2.0");
+    expect(body.error?.code).toBe(-32700);
+    expect(body.error?.message).toContain("Invalid JSON payload");
+    expect(running.pendingSessions.size).toBe(0);
+  });
+
   it("releases pending session for invalid initial POST requests", async () => {
     running = await startServer();
 
