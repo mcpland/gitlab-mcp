@@ -74,8 +74,20 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   app.use(express.json({ limit: "2mb" }));
   app.use(
     (error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (req.path !== "/mcp" || !isJsonBodyParseError(error)) {
+      if (req.path !== "/mcp" || !isJsonBodyParserError(error)) {
         next(error);
+        return;
+      }
+
+      if (error.type === "entity.too.large") {
+        res.status(413).json({
+          jsonrpc: "2.0",
+          error: {
+            code: -32013,
+            message: "JSON payload exceeds 2mb limit"
+          },
+          id: null
+        });
         return;
       }
 
@@ -699,10 +711,11 @@ interface JsonBodyParseError extends Error {
   type?: string;
 }
 
-function isJsonBodyParseError(error: unknown): error is JsonBodyParseError {
+function isJsonBodyParserError(error: unknown): error is JsonBodyParseError {
   return (
     error instanceof Error &&
     "type" in error &&
-    (error as { type?: string }).type === "entity.parse.failed"
+    ((error as { type?: string }).type === "entity.parse.failed" ||
+      (error as { type?: string }).type === "entity.too.large")
   );
 }

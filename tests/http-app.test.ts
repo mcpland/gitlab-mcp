@@ -174,6 +174,37 @@ describe("http app pending session handling", () => {
     expect(running.pendingSessions.size).toBe(0);
   });
 
+  it("returns JSON-RPC error for oversized JSON payload", async () => {
+    running = await startServer();
+
+    const largeBody = JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        blob: "x".repeat(2 * 1024 * 1024 + 128)
+      }
+    });
+
+    const response = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: largeBody
+    });
+
+    const body = (await response.json()) as {
+      jsonrpc: string;
+      error?: { code?: number; message?: string };
+      id: null;
+    };
+
+    expect(response.status).toBe(413);
+    expect(body.jsonrpc).toBe("2.0");
+    expect(body.error?.code).toBe(-32013);
+    expect(body.error?.message).toContain("2mb");
+    expect(running.pendingSessions.size).toBe(0);
+  });
+
   it("releases pending session for invalid initial POST requests", async () => {
     running = await startServer();
 
