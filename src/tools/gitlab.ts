@@ -108,6 +108,9 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
           const args = stripNullsDeep((rawArgs ?? {}) as ToolArgs);
           const result = await definition.handler(args, context);
           const formatted = context.formatter.format(result);
+          const structuredResult = formatted.truncated
+            ? { truncated: true }
+            : toStructuredContent(result);
 
           return {
             content: [
@@ -117,7 +120,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
               }
             ],
             structuredContent: {
-              result: toStructuredContent(result),
+              result: structuredResult,
               meta: {
                 truncated: formatted.truncated,
                 bytes: formatted.bytes

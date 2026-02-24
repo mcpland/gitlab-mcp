@@ -565,6 +565,7 @@ describe("Output truncation", () => {
       const meta = structured!.meta as { truncated: boolean; bytes: number };
       expect(meta.truncated).toBe(true);
       expect(meta.bytes).toBeGreaterThan(50);
+      expect(structured!.result).toEqual({ truncated: true });
 
       // The text should contain the truncation marker
       const text = (result.content as Array<{ type: string; text: string }>).find(
