@@ -2889,7 +2889,7 @@ function toToolError(error: unknown, context?: AppContext): CallToolResult {
       content: [
         {
           type: "text",
-          text: JSON.stringify(payload, null, 2)
+          text: formatPayloadText(payload, context)
         }
       ]
     };
@@ -2917,6 +2917,14 @@ function toToolError(error: unknown, context?: AppContext): CallToolResult {
       }
     ]
   };
+}
+
+function formatPayloadText(payload: unknown, context?: AppContext): string {
+  if (!context) {
+    return JSON.stringify(payload, null, 2);
+  }
+
+  return context.formatter.format(payload).text;
 }
 
 function toStructuredContent(value: unknown): Record<string, unknown> {

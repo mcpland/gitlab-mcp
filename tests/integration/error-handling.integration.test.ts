@@ -66,6 +66,34 @@ describe("Error handling: GitLabApiError", () => {
       await serverTransport.close();
     }
   });
+
+  it("applies output size cap to large GitLabApiError details", async () => {
+    const getProject = vi.fn().mockRejectedValue(
+      new GitLabApiError("Server Error", 500, {
+        payload: "x".repeat(4_000)
+      })
+    );
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ maxBytes: 200, gitlabStub: { getProject } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_project",
+        arguments: { project_id: "group/project" }
+      });
+
+      expect(result.isError).toBe(true);
+      const text = getErrorText(result as never);
+      expect(text).toContain("GitLab API error 500");
+      expect(text).toContain("truncated");
+      expect(text.length).toBeLessThan(320);
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
