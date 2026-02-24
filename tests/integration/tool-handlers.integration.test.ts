@@ -271,6 +271,34 @@ describe("Tool handler: gitlab_get_merge_request", () => {
       await serverTransport.close();
     }
   });
+
+  it("ignores merge requests whose source_branch is missing", async () => {
+    const listMergeRequests = vi.fn().mockResolvedValue([
+      { iid: 51, state: "opened" },
+      { iid: 52, source_branch: "feature/e", state: "opened" }
+    ]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listMergeRequests } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_merge_request",
+        arguments: { project_id: "group/project", source_branch: "feature/e" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      )!.text;
+      const parsed = JSON.parse(text) as { iid?: number };
+      expect(parsed.iid).toBe(52);
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */

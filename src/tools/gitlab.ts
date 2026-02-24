@@ -2990,7 +2990,7 @@ function pickMergeRequestForSourceBranch(
 ): Record<string, unknown> {
   const matches = extractMergeRequestRecords(value).filter((item) => {
     const candidateBranch = item.source_branch;
-    return typeof candidateBranch !== "string" || candidateBranch === sourceBranch;
+    return typeof candidateBranch === "string" && candidateBranch === sourceBranch;
   });
 
   const opened = matches.filter((item) => item.state === "opened");
