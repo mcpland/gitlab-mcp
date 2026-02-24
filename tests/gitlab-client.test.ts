@@ -129,6 +129,32 @@ describe("GitLabClient", () => {
       expect(error.status).toBe(400);
       expect(error.details).toEqual({ info: "details" });
     });
+
+    it("preserves GitLabApiError on oversized non-2xx response bodies", async () => {
+      fetchMock.mockResolvedValue(
+        new Response("123456789", {
+          status: 500,
+          statusText: "Internal Server Error",
+          headers: {
+            "content-type": "text/plain",
+            "content-length": "9"
+          }
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxResponseBodyBytes: 8
+      });
+      const error = await client.listProjects().catch((reason) => reason);
+
+      expect(error).toBeInstanceOf(GitLabApiError);
+      expect((error as GitLabApiError).status).toBe(500);
+      expect((error as GitLabApiError).details).toEqual(
+        expect.objectContaining({
+          message: expect.stringContaining("exceeds limit")
+        })
+      );
+    });
   });
 
   describe("response size limits", () => {

@@ -1564,10 +1564,19 @@ export class GitLabClient {
     });
 
     if (!response.ok) {
+      let details: unknown;
+      try {
+        details = await this.parseResponseBody(response);
+      } catch (error) {
+        details = {
+          message: error instanceof Error ? error.message : "Failed to read GitLab error response"
+        };
+      }
+
       throw new GitLabApiError(
         `GitLab attachment download failed: ${response.status} ${response.statusText}`,
         response.status,
-        await this.parseResponseBody(response)
+        details
       );
     }
 
@@ -1701,7 +1710,22 @@ export class GitLabClient {
       signal: AbortSignal.timeout(this.timeoutMs)
     });
 
-    const body = await this.parseResponseBody(response);
+    let body: unknown;
+    try {
+      body = await this.parseResponseBody(response);
+    } catch (error) {
+      if (response.ok) {
+        throw error;
+      }
+
+      throw new GitLabApiError(
+        `GitLab API request failed: ${response.status} ${response.statusText}`,
+        response.status,
+        {
+          message: error instanceof Error ? error.message : "Failed to read GitLab error response"
+        }
+      );
+    }
 
     if (!response.ok) {
       throw new GitLabApiError(
