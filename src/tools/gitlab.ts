@@ -2607,8 +2607,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: z.string().optional(),
         url_or_path: optionalString,
         secret: optionalString,
-        filename: optionalString,
-        local_path: optionalString
+        filename: optionalString
       },
       handler: async (args, context) => {
         const urlOrPath = getOptionalString(args, "url_or_path");
