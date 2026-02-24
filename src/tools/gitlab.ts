@@ -652,10 +652,9 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
             page: 1
           }
         });
-        const match = pickFirstMergeRequest(candidates);
-        if (!match) {
-          throw new Error(`No merge request found for source_branch='${sourceBranch}'`);
-        }
+        const match = pickMergeRequestForSourceBranch(candidates, sourceBranch, {
+          requireOpened: false
+        });
 
         return match;
       }
@@ -807,11 +806,10 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
               page: 1
             }
           });
-          const match = pickFirstMergeRequest(candidates);
-          const iid = match?.iid;
-          if (typeof iid !== "number" && typeof iid !== "string") {
-            throw new Error(`No merge request found for source_branch='${sourceBranch}'`);
-          }
+          const match = pickMergeRequestForSourceBranch(candidates, sourceBranch, {
+            requireOpened: true
+          });
+          const iid = getMergeRequestIid(match);
           mergeRequestIid = String(iid);
         }
 
@@ -2985,17 +2983,88 @@ function toCsvValue(value: unknown): string | undefined {
   return undefined;
 }
 
-function pickFirstMergeRequest(value: unknown): Record<string, unknown> | undefined {
+function pickMergeRequestForSourceBranch(
+  value: unknown,
+  sourceBranch: string,
+  options: { requireOpened: boolean }
+): Record<string, unknown> {
+  const matches = extractMergeRequestRecords(value).filter((item) => {
+    const candidateBranch = item.source_branch;
+    return typeof candidateBranch !== "string" || candidateBranch === sourceBranch;
+  });
+
+  const opened = matches.filter((item) => item.state === "opened");
+
+  if (options.requireOpened) {
+    if (opened.length === 1) {
+      return requireArrayValue(
+        opened,
+        0,
+        `No opened merge request found for source_branch='${sourceBranch}'`
+      );
+    }
+
+    if (opened.length > 1) {
+      throw new Error(
+        `Multiple opened merge requests found for source_branch='${sourceBranch}'. Please specify merge_request_iid.`
+      );
+    }
+
+    if (matches.length === 0) {
+      throw new Error(`No merge request found for source_branch='${sourceBranch}'`);
+    }
+
+    throw new Error(`No opened merge request found for source_branch='${sourceBranch}'`);
+  }
+
+  if (opened.length === 1) {
+    return requireArrayValue(
+      opened,
+      0,
+      `No merge request found for source_branch='${sourceBranch}'`
+    );
+  }
+
+  if (opened.length > 1) {
+    throw new Error(
+      `Multiple opened merge requests found for source_branch='${sourceBranch}'. Please specify merge_request_iid.`
+    );
+  }
+
+  if (matches.length === 1) {
+    return requireArrayValue(
+      matches,
+      0,
+      `No merge request found for source_branch='${sourceBranch}'`
+    );
+  }
+
+  if (matches.length === 0) {
+    throw new Error(`No merge request found for source_branch='${sourceBranch}'`);
+  }
+
+  throw new Error(
+    `Multiple merge requests found for source_branch='${sourceBranch}'. Please specify merge_request_iid.`
+  );
+}
+
+function extractMergeRequestRecords(value: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) {
-    return undefined;
+    return [];
   }
 
-  const first = value[0];
-  if (typeof first !== "object" || first === null) {
-    return undefined;
+  return value.filter(
+    (item): item is Record<string, unknown> => typeof item === "object" && item !== null
+  );
+}
+
+function getMergeRequestIid(mergeRequest: Record<string, unknown>): string {
+  const iid = mergeRequest.iid;
+  if (typeof iid === "number" || typeof iid === "string") {
+    return String(iid);
   }
 
-  return first as Record<string, unknown>;
+  throw new Error("Matched merge request is missing a valid iid");
 }
 
 function getString(args: ToolArgs, key: string): string {

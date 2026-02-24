@@ -216,6 +216,123 @@ describe("Tool handler: gitlab_get_merge_request", () => {
       await serverTransport.close();
     }
   });
+
+  it("prefers opened merge request when source_branch matches multiple states", async () => {
+    const listMergeRequests = vi.fn().mockResolvedValue([
+      { iid: 10, source_branch: "feature/a", state: "closed" },
+      { iid: 11, source_branch: "feature/a", state: "opened" }
+    ]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listMergeRequests } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_merge_request",
+        arguments: { project_id: "group/project", source_branch: "feature/a" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      )!.text;
+      const parsed = JSON.parse(text) as { iid?: number };
+      expect(parsed.iid).toBe(11);
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("returns error when multiple opened merge requests match source_branch", async () => {
+    const listMergeRequests = vi.fn().mockResolvedValue([
+      { iid: 21, source_branch: "feature/b", state: "opened" },
+      { iid: 22, source_branch: "feature/b", state: "opened" }
+    ]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listMergeRequests } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_merge_request",
+        arguments: { project_id: "group/project", source_branch: "feature/b" }
+      });
+
+      expect(result.isError).toBe(true);
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      )!.text;
+      expect(text).toContain("Multiple opened merge requests found");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  gitlab_merge_merge_request                                         */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handler: gitlab_merge_merge_request", () => {
+  it("selects opened merge request when only source_branch is provided", async () => {
+    const listMergeRequests = vi.fn().mockResolvedValue([
+      { iid: 31, source_branch: "feature/c", state: "closed" },
+      { iid: 32, source_branch: "feature/c", state: "opened" }
+    ]);
+    const mergeMergeRequest = vi.fn().mockResolvedValue({
+      iid: 32,
+      state: "merged"
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listMergeRequests, mergeMergeRequest } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_merge_merge_request",
+        arguments: { project_id: "group/project", source_branch: "feature/c" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(mergeMergeRequest).toHaveBeenCalledWith("group/project", "32", {});
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("returns error when no opened merge request matches source_branch", async () => {
+    const listMergeRequests = vi
+      .fn()
+      .mockResolvedValue([{ iid: 41, source_branch: "feature/d", state: "closed" }]);
+    const mergeMergeRequest = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listMergeRequests, mergeMergeRequest } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_merge_merge_request",
+        arguments: { project_id: "group/project", source_branch: "feature/d" }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(mergeMergeRequest).not.toHaveBeenCalled();
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      )!.text;
+      expect(text).toContain("No opened merge request found");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
