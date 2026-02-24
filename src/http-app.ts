@@ -515,7 +515,11 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       const dynamicApiUrl = req.header("x-gitlab-api-url")?.trim();
       if (dynamicApiUrl) {
         try {
-          apiUrl = new URL(dynamicApiUrl).toString();
+          const parsedApiUrl = new URL(dynamicApiUrl);
+          if (!isHttpUrl(parsedApiUrl)) {
+            throw new Error("unsupported protocol");
+          }
+          apiUrl = parsedApiUrl.toString();
         } catch {
           throw new Error(`Invalid x-gitlab-api-url header: '${dynamicApiUrl}'`);
         }
@@ -718,4 +722,8 @@ function isJsonBodyParserError(error: unknown): error is JsonBodyParseError {
     ((error as { type?: string }).type === "entity.parse.failed" ||
       (error as { type?: string }).type === "entity.too.large")
   );
+}
+
+function isHttpUrl(url: URL): boolean {
+  return url.protocol === "http:" || url.protocol === "https:";
 }

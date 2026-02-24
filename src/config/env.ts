@@ -158,6 +158,9 @@ export type AppEnv = typeof env;
 
 function normalizeApiUrl(rawUrl: string): string {
   const url = new URL(rawUrl);
+  if (!isHttpUrl(url)) {
+    throw new Error(`Invalid protocol in GITLAB_API_URL entry: '${rawUrl}'`);
+  }
   const pathname = url.pathname.replace(/\/+$/, "");
 
   if (pathname.endsWith("/api/v4")) {
@@ -168,4 +171,8 @@ function normalizeApiUrl(rawUrl: string): string {
   url.pathname = `${pathname}/api/v4`.replace(/\/\//g, "/");
 
   return url.toString();
+}
+
+function isHttpUrl(url: URL): boolean {
+  return url.protocol === "http:" || url.protocol === "https:";
 }

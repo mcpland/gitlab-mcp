@@ -222,6 +222,23 @@ describe("Remote Authorization - Dynamic API URL", () => {
     expect(body.error?.code).toBe(-32012);
     expect(body.error?.message).toContain("Invalid x-gitlab-api-url header");
   });
+
+  it("rejects non-http X-GitLab-API-URL protocols", async () => {
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        ...MCP_HEADERS,
+        Authorization: "Bearer test-token",
+        "X-GitLab-API-URL": "ftp://custom-gitlab.example.com/api/v4"
+      },
+      body: initializeBody()
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: number; message?: string } };
+    expect(body.error?.code).toBe(-32012);
+    expect(body.error?.message).toContain("Invalid x-gitlab-api-url header");
+  });
 });
 
 /* ------------------------------------------------------------------ */
