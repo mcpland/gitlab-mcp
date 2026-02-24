@@ -6,12 +6,12 @@ You can set variables in a `.env` file (loaded automatically via `dotenv`) or pa
 
 ## Core Settings
 
-| Variable             | Type                                                                     | Default       | Description                                              |
-| -------------------- | ------------------------------------------------------------------------ | ------------- | -------------------------------------------------------- |
-| `NODE_ENV`           | `development` \| `test` \| `production`                                  | `development` | Runtime environment. Affects error detail mode defaults. |
-| `LOG_LEVEL`          | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace` \| `silent` | `info`        | Pino log level.                                          |
-| `MCP_SERVER_NAME`    | string                                                                   | `gitlab-mcp`  | Server name reported in MCP handshake.                   |
-| `MCP_SERVER_VERSION` | string                                                                   | `0.1.0`       | Server version reported in MCP handshake.                |
+| Variable             | Type                                                                     | Default                | Description                                              |
+| -------------------- | ------------------------------------------------------------------------ | ---------------------- | -------------------------------------------------------- |
+| `NODE_ENV`           | `development` \| `test` \| `production`                                  | `development`          | Runtime environment. Affects error detail mode defaults. |
+| `LOG_LEVEL`          | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace` \| `silent` | `info`                 | Pino log level.                                          |
+| `MCP_SERVER_NAME`    | string                                                                   | `gitlab-mcp`           | Server name reported in MCP handshake.                   |
+| `MCP_SERVER_VERSION` | string                                                                   | `package.json` version | Server version reported in MCP handshake.                |
 
 ## GitLab API
 

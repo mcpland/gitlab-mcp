@@ -1,8 +1,10 @@
 import "dotenv/config";
+import { readFileSync } from "node:fs";
 
 import { z } from "zod";
 
 const logLevelSchema = z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
+const DEFAULT_SERVER_VERSION = resolveDefaultServerVersion();
 
 const responseModeSchema = z.enum(["json", "compact-json", "yaml"]);
 const errorDetailModeSchema = z.enum(["safe", "full"]);
@@ -30,7 +32,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: logLevelSchema.default("info"),
   MCP_SERVER_NAME: z.string().min(1).default("gitlab-mcp"),
-  MCP_SERVER_VERSION: z.string().min(1).default("0.1.0"),
+  MCP_SERVER_VERSION: z.string().min(1).default(DEFAULT_SERVER_VERSION),
   GITLAB_API_URL: z.string().min(1).default("https://gitlab.com/api/v4"),
   GITLAB_PERSONAL_ACCESS_TOKEN: z.string().min(1).optional(),
   GITLAB_USE_OAUTH: z.enum(["true", "false"]).default("false"),
@@ -175,4 +177,18 @@ function normalizeApiUrl(rawUrl: string): string {
 
 function isHttpUrl(url: URL): boolean {
   return url.protocol === "http:" || url.protocol === "https:";
+}
+
+function resolveDefaultServerVersion(): string {
+  try {
+    const packageJsonUrl = new URL("../../package.json", import.meta.url);
+    const packageJson = JSON.parse(readFileSync(packageJsonUrl, "utf8")) as { version?: unknown };
+    if (typeof packageJson.version === "string" && packageJson.version.trim().length > 0) {
+      return packageJson.version.trim();
+    }
+  } catch {
+    // Fallback to static version when package metadata is unavailable.
+  }
+
+  return "0.1.0";
 }
