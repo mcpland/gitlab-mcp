@@ -275,7 +275,7 @@ docker run -d \
 
 - `GITLAB_PROJECT_ID` is not a supported environment variable in this repository.
 - To set an effective default project, use `GITLAB_ALLOWED_PROJECT_IDS` with one project ID, or pass `project_id` in tool arguments.
-- CLI argument overrides such as `--token` or `--api-url` are not implemented.
+- CLI argument overrides such as `--token` or `--api-url` are not implemented (`--env-file` is supported).
 - JSON config files do not support comments (`//`).
 
 ## MCP Server Configuration
@@ -292,6 +292,10 @@ pnpm start
 
 # streamable HTTP server (http://127.0.0.1:3333/mcp)
 pnpm start:http
+
+# optional: load a specific env file
+pnpm start -- --env-file .env.local
+pnpm start:http -- --env-file .env.local
 ```
 
 ### Transport and entrypoint
@@ -360,6 +364,13 @@ USE_GITLAB_WIKI=false
 ## Configuration
 
 All configuration is done through environment variables. Key settings:
+
+For file-based loading, `.env` is loaded by default. You can override it with:
+
+```bash
+node dist/index.js --env-file .env.local
+node dist/http.js --env-file=.env.production
+```
 
 | Area            | Variable                                  | Default                     | Description                                                                         |
 | --------------- | ----------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------- |

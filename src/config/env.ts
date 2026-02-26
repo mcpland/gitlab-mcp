@@ -1,7 +1,10 @@
-import "dotenv/config";
 import { readFileSync } from "node:fs";
 
 import { z } from "zod";
+
+import { loadDotenvFromArgv } from "./dotenv.js";
+
+loadDotenvFromArgv();
 
 const logLevelSchema = z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]);
 const DEFAULT_SERVER_VERSION = resolveDefaultServerVersion();

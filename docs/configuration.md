@@ -2,7 +2,12 @@
 
 All configuration is done through environment variables. The server validates all values at startup using [Zod](https://zod.dev/) schemas and will fail fast with descriptive errors if any value is invalid.
 
-You can set variables in a `.env` file (loaded automatically via `dotenv`) or pass them directly as environment variables.
+You can set variables in a `.env` file (loaded automatically via `dotenv`) or pass them directly as environment variables. To load a different file, use `--env-file`:
+
+```bash
+node dist/index.js --env-file .env.local
+node dist/http.js --env-file=.env.production
+```
 
 ## Core Settings
 
