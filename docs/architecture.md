@@ -9,7 +9,7 @@ gitlab-mcp is structured as a layered MCP server with clear separation between t
 ```
 ┌──────────────────────────────────────────────────────┐
 │              Transport Layer                         │
-│  index.ts (stdio)  │  http.ts (HTTP/SSE)            │
+│  index.ts (stdio)  │  http.ts (HTTP/SSE)             │
 └─────────┬──────────┴──────────┬──────────────────────┘
           │                     │
           │    ┌────────────────▼────────────────────┐
@@ -21,20 +21,20 @@ gitlab-mcp is structured as a layered MCP server with clear separation between t
           │    └────────────────┬────────────────────┘
           │                     │
 ┌─────────▼─────────────────────▼──────────────────────┐
-│                  MCP Server Factory                   │
-│                  build-server.ts                      │
+│                  MCP Server Factory                  │
+│                  build-server.ts                     │
 │  ┌──────────────────────────────────────────────┐    │
-│  │  registerHealthTool()                         │    │
-│  │  registerGitLabTools() ──▶ Policy filtering   │    │
+│  │  registerHealthTool()                        │    │
+│  │  registerGitLabTools() ──▶ Policy filtering  │    │
 │  └──────────────────────────────────────────────┘    │
 └───────────────────────┬──────────────────────────────┘
                         │
 ┌───────────────────────▼──────────────────────────────┐
-│                   AppContext                          │
-│  ┌──────────┐ ┌───────────┐ ┌──────────────────┐    │
-│  │   env    │ │  logger   │ │  gitlab (Client)  │    │
-│  │ (AppEnv) │ │  (Pino)   │ │                   │    │
-│  └──────────┘ └───────────┘ └──────────────────┘    │
+│                   AppContext                         │
+│  ┌──────────┐ ┌───────────┐ ┌──────────────────┐     │
+│  │   env    │ │  logger   │ │  gitlab (Client) │     │
+│  │ (AppEnv) │ │  (Pino)   │ │                  │     │
+│  └──────────┘ └───────────┘ └──────────────────┘     │
 │  ┌──────────────────┐ ┌─────────────────────────┐    │
 │  │ policy (Engine)  │ │ formatter (Output)      │    │
 │  └──────────────────┘ └─────────────────────────┘    │
