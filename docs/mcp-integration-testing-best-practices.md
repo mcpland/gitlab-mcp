@@ -1,124 +1,138 @@
-# MCP Integration Testing Best Practices
+# MCP Server Integration Testing Best Practices (JavaScript / TypeScript)
 
-> This article is based on hands-on experience with 324 test cases from the gitlab-mcp project, combined with the official MCP SDK, Inspector CLI, and community-recommended practices, to systematically summarize the methodology and implementation patterns for MCP Server integration testing.
+> This guide is for teams building MCP servers in the Node.js / TypeScript ecosystem. It focuses on a **deterministic, automatable, layered** integration testing strategy.
 >
-> Scope note: This is a general methodology article. Code snippets, environment variable names, file paths, and npm scripts are illustrative examples and should be adapted to your repository layout and conventions.
+> Baseline: MCP specification **2025-11-25**. The guide explicitly distinguishes **Streamable HTTP (current)** from **HTTP+SSE (legacy compatibility)**.
+>
+> Version note: as of early 2026, the TypeScript SDK is still in a v1 → v2 transition period. Many production systems still run v1, while v2 is introducing package splits and API changes.
+>
+> Scope note: this document summarizes methodology and implementation patterns. Snippets, env vars, file paths, and commands are examples and should be adapted to your repository.
+
+---
 
 ## Table of Contents
 
-- [Why MCP Servers Need Integration Testing](#why-mcp-servers-need-integration-testing)
-- [The Testing Pyramid: MCP Edition](#the-testing-pyramid-mcp-edition)
-- [Layer 1: InMemoryTransport Protocol-Level Testing](#layer-1-inmemorytransport-protocol-level-testing)
-  - [Core Scaffolding: buildContext + createLinkedPair](#core-scaffolding-buildcontext--createlinkedpair)
-  - [Pattern 1: Tool Registration and Discovery](#pattern-1-tool-registration-and-discovery)
-  - [Pattern 2: Tool Handler End-to-End Verification](#pattern-2-tool-handler-end-to-end-verification)
+- [Why MCP Servers Need Integration Tests](#why-mcp-servers-need-integration-tests)
+- [Testing Pyramid for MCP](#testing-pyramid-for-mcp)
+- [Layer 0: Design for Testability (Server Factory + Dependency Injection)](#layer-0-design-for-testability-server-factory--dependency-injection)
+- [Layer 1: InMemoryTransport Protocol-Level Integration Tests (P0 Core)](#layer-1-inmemorytransport-protocol-level-integration-tests-p0-core)
+  - [Core Scaffold: buildContext + createLinkedPair](#core-scaffold-buildcontext--createlinkedpair)
+  - [Pattern 1: Capabilities and List Contracts (tools/resources/prompts/list)](#pattern-1-capabilities-and-list-contracts-toolsresourcespromptslist)
+  - [Pattern 2: Tool Handler End-to-End Validation (stub external dependencies)](#pattern-2-tool-handler-end-to-end-validation-stub-external-dependencies)
   - [Pattern 3: Schema Validation and Boundary Inputs](#pattern-3-schema-validation-and-boundary-inputs)
-- [Layer 2: HTTP Transport Layer Testing](#layer-2-http-transport-layer-testing)
-  - [Streamable HTTP Testing](#streamable-http-testing)
-  - [SSE Transport Testing](#sse-transport-testing)
-  - [Session Lifecycle Testing](#session-lifecycle-testing)
-- [Layer 3: Security and Policy Testing](#layer-3-security-and-policy-testing)
-  - [Remote Authentication Flow](#remote-authentication-flow)
-  - [Error Handling and Sensitive Information Redaction](#error-handling-and-sensitive-information-redaction)
-  - [Policy Engine: Read-Only, Feature Flags, Allowlists](#policy-engine-read-only-feature-flags-allowlists)
-- [Layer 4: Agent Loop Integration Testing](#layer-4-agent-loop-integration-testing)
-  - [ScriptedLLM Pattern](#scriptedllm-pattern)
-  - [Real LLM Smoke Testing](#real-llm-smoke-testing)
-- [Layer 5: Inspector CLI Black-Box Testing](#layer-5-inspector-cli-black-box-testing)
-- [CI/CD Integration Strategy](#cicd-integration-strategy)
-- [Common Pitfalls and Solutions](#common-pitfalls-and-solutions)
-- [Summary: Recommended Test Matrix](#summary-recommended-test-matrix)
+  - [Pattern 4: Minimal Coverage for Bidirectional Requests (Sampling/Elicitation)](#pattern-4-minimal-coverage-for-bidirectional-requests-samplingelicitation)
+- [Layer 2: Streamable HTTP Transport Integration Tests (P0/P1)](#layer-2-streamable-http-transport-integration-tests-p0p1)
+  - [Spec Checklist You Must Align With (2025-11-25)](#spec-checklist-you-must-align-with-2025-11-25)
+  - [HTTP Test Harness: Port 0 + Isolated Server Instances](#http-test-harness-port-0--isolated-server-instances)
+  - [Must-Test Cases: Session, 404 Reinitialize, DELETE, Protocol Version Header](#must-test-cases-session-404-reinitialize-delete-protocol-version-header)
+  - [SSE Stream Tests (GET/POST SSE on Streamable HTTP)](#sse-stream-tests-getpost-sse-on-streamable-http)
+- [Layer 2.5: Legacy HTTP+SSE Compatibility Tests (Only if Needed)](#layer-25-legacy-httpsse-compatibility-tests-only-if-needed)
+- [Layer 3: Security / Auth / Policy Tests (P0/P1)](#layer-3-security--auth--policy-tests-p0p1)
+  - [Origin/Host Protection (DNS Rebinding)](#originhost-protection-dns-rebinding)
+  - [OAuth/Authorization (Resource Metadata Discovery)](#oauthauthorization-resource-metadata-discovery)
+  - [Error Handling and Secret Redaction](#error-handling-and-secret-redaction)
+  - [Policy Combinatorics: Read-Only, Allowlists, Feature Flags](#policy-combinatorics-read-only-allowlists-feature-flags)
+- [Layer 4: Conformance Testing (Strongly Recommended)](#layer-4-conformance-testing-strongly-recommended)
+- [Layer 5: Agent Loop Integration Tests (ScriptedLLM + Small Real-LLM Smoke)](#layer-5-agent-loop-integration-tests-scriptedllm--small-real-llm-smoke)
+- [Layer 6: Inspector CLI Black-Box Contract Tests (Pre/Post Deployment)](#layer-6-inspector-cli-black-box-contract-tests-prepost-deployment)
+- [CI/CD Layered Execution Strategy](#cicd-layered-execution-strategy)
+- [Common Pitfalls and Fixes (Updated for 2025-11-25)](#common-pitfalls-and-fixes-updated-for-2025-11-25)
+- [Recommended Test Matrix (Copy/Paste)](#recommended-test-matrix-copypaste)
+- [References and Compatibility Notes](#references-and-compatibility-notes)
 
 ---
 
-## Why MCP Servers Need Integration Testing
+## Why MCP Servers Need Integration Tests
 
-An MCP Server is not an ordinary HTTP API. It has several characteristics that make testing more complex:
+An MCP server is not a standard HTTP API. Complexity comes from the combination of protocol mechanics, session behavior, bidirectional messaging, and security boundaries.
 
-1. **Stateful sessions**: The client must first `initialize` to obtain a session ID, and all subsequent requests must include it
-2. **Multiple transport protocols**: The same server may simultaneously support Streamable HTTP, SSE, and stdio
-3. **Bidirectional communication**: In SSE mode, the server can proactively push events to the client
-4. **Policy layer**: Read-only mode, tool allowlists, and feature flags can alter the available tool set
-5. **Authentication context**: In remote deployments, tokens are passed via HTTP headers and must propagate through AsyncLocalStorage
+1. **Stateful sessions over HTTP**: initialization can return `MCP-Session-Id`; subsequent requests must carry it. When a session expires, the server should return `404`, and the client should re-initialize.
+2. **Multiple transports**: the spec defines stdio and Streamable HTTP. Streamable HTTP uses a single endpoint that can support both `POST` and `GET` (optional SSE stream).
+3. **Bidirectional messaging**: servers can send notifications/requests over SSE. Disconnection is not cancellation; cancellation requires an explicit cancel notification.
+4. **Explicit security requirements**: Streamable HTTP should validate `Origin` to mitigate DNS rebinding. Local deployments should typically bind to `127.0.0.1`, and auth should be implemented where required.
+5. **Authorization is more than Bearer header plumbing**: the spec defines OAuth-based discovery and flow, including Protected Resource Metadata discovery.
 
-Pure unit tests cannot cover these interactions. You need a real MCP Client and Server communicating through a real (or in-memory simulated) transport layer to verify the complete request-response chain.
-
-A common anti-pattern in the community is so-called **"Vibe Testing"** — spinning up an LLM Agent, typing a few prompts, and considering it passed if the output "looks about right." This approach is non-deterministic, non-reproducible, and expensive. The correct approach is to build a **deterministic, automatable, layered** integration testing system.
+Because of this, unit tests alone cannot cover full interaction behavior. Integration tests should use **real MCP clients + real MCP servers + real/simulated transports** so results are reproducible, assertable, and CI-friendly.
 
 ---
 
-## The Testing Pyramid: MCP Edition
+## Testing Pyramid for MCP
 
+```text
+                    ┌───────────────────┐
+                    │  Real LLM Smoke   │  ← small, nightly
+                    └─────────┬─────────┘
+                              │
+                ┌─────────────┴─────────────┐
+                │  Agent Loop (ScriptedLLM) │  ← nightly / small PR subset
+                └─────────────┬─────────────┘
+                              │
+             ┌────────────────┴────────────────┐
+             │ Conformance (Spec Compliance)   │  ← nightly / pre-release
+             └────────────────┬────────────────┘
+                              │
+      ┌───────────────────────┴───────────────────────┐
+      │ Streamable HTTP + Session + SSE integration    │  ← every PR (P0/P1)
+      └───────────────────────┬───────────────────────┘
+                              │
+    ┌─────────────────────────┴─────────────────────────┐
+    │ InMemoryTransport protocol-level integration       │  ← every commit (P0)
+    └───────────────────────────────────────────────────┘
 ```
-                    ┌─────────────┐
-                    │  LLM E2E    │  ← Few, Nightly
-                    │  Smoke Test │
-                   ─┤             ├─
-                  / └─────────────┘ \
-                 /   Inspector CLI   \  ← Black-box contract test
-                / ┌─────────────────┐ \
-               /  │  Security /     │  \
-              /   │  Policy / Error │   \  ← Every PR
-             / ┌──┴─────────────────┴──┐ \
-            /  │  HTTP / SSE Transport  │  \
-           /   │  Session Lifecycle     │   \
-          / ┌──┴───────────────────────┴──┐ \
-         /  │  InMemoryTransport Protocol  │  \  ← Every commit
-        /   │  Registration / Schema /     │   \
-       /    │  Handler                     │    \
-      └────────────────────────────────────────┘
-```
 
-**Principle: The lower the layer, the more tests, the faster, and the more deterministic.**
+Principle: lower layers should be broader, faster, and more deterministic. Higher layers should be smaller and smoke-oriented.
 
 ---
 
-## Layer 1: InMemoryTransport Protocol-Level Testing
+## Layer 0: Design for Testability (Server Factory + Dependency Injection)
 
-This is the **cornerstone** of MCP integration testing. Using the official TypeScript SDK's `InMemoryTransport.createLinkedPair()`, you can connect Client and Server directly within the same process — no child processes or HTTP servers needed.
+Whether integration testing is practical is mostly determined by server architecture.
 
-**Advantages**:
+### Core requirements
 
-- Extremely fast (millisecond-level)
-- Fully deterministic, no network/port dependencies
-- Tests the real MCP protocol handshake and tool invocation chain
+- **Server constructor should be a pure factory**: `createMcpServer(context)` depends only on `context`. Avoid direct top-level reads of `process.env`, DB connections, or network calls.
+- **Context should be complete**: include env, logger, external API clients, policy engine, formatters, and optionally clock/random providers.
+- **Defaults must be usable**: `buildContext()` should provide complete defaults, and tests should override only deltas.
+- **Time/random should be controllable**: session IDs, expiry handling, and retries become stable when time/random sources are injectable.
 
-### Core Scaffolding: buildContext + createLinkedPair
+---
 
-Extracting the server creation logic into a factory function is the key to testability. In tests, you import the factory directly and use dependency injection to replace external services.
+## Layer 1: InMemoryTransport Protocol-Level Integration Tests (P0 Core)
 
-```typescript
+Goal: avoid opening ports or spawning processes. Use real MCP client ↔ server lifecycle (`initialize` / `list` / `call`) in one process.
+
+### Core Scaffold: buildContext + createLinkedPair
+
+```ts
 // tests/integration/_helpers.ts
-
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createMcpServer } from "../../src/server/build-server.js";
 
-// 1) Build test context — all external dependencies can be stubbed
-export function buildContext(overrides?: BuildContextOptions): AppContext {
+import { createMcpServer } from "../../src/server/createMcpServer.js";
+
+export function buildContext(overrides?: Partial<AppContext>): AppContext {
   return {
     env: {
-      ...defaultEnv,                           // Complete default configuration
-      GITLAB_READ_ONLY_MODE: overrides?.readOnlyMode ?? false,
-      GITLAB_ALLOWED_PROJECT_IDS: overrides?.allowedProjectIds ?? [],
-      // ... other overridable fields
+      READ_ONLY_MODE: false,
+      ...overrides?.env
     },
-    logger: {
-      info: vi.fn(), warn: vi.fn(), error: vi.fn(),
-      debug: vi.fn(), trace: vi.fn(), fatal: vi.fn(),
-      child: () => ({}) as never
+    logger: overrides?.logger ?? {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn()
     },
-    gitlab: { ...overrides?.gitlabStub },      // Key: inject stub
-    policy: new ToolPolicyEngine({ ... }),      // Real policy engine
-    formatter: new OutputFormatter({ ... })     // Real formatter
+    services: {
+      ...overrides?.services
+    },
+    policy: overrides?.policy ?? new ToolPolicyEngine(),
+    formatter: overrides?.formatter ?? new OutputFormatter()
   };
 }
 
-// 2) Create Client ↔ Server linked pair
 export async function createLinkedPair(context: AppContext) {
   const server = createMcpServer(context);
-  const [clientTransport, serverTransport] =
-    InMemoryTransport.createLinkedPair();
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
   await server.connect(serverTransport);
 
@@ -132,89 +146,83 @@ export async function createLinkedPair(context: AppContext) {
 }
 ```
 
-> **Best Practice**: `createMcpServer()` should be a **pure factory function** that accepts a complete context object and does not depend on global state or environment variables. This allows tests to construct server instances with any configuration.
+Always close transports using `try/finally`, even if one side may cascade-close in current implementation.
 
-### Pattern 1: Tool Registration and Discovery
+### Pattern 1: Capabilities and List Contracts (tools/resources/prompts/list)
 
-Verify that `tools/list` returns the expected tool set — this is the most basic contract test.
+Do not test tools only. A mature MCP server often exposes tools, resources, and prompts. The list contract is a first-order external API.
 
-```typescript
-describe("Tool Registration", () => {
-  it("registers all core tools under default configuration", async () => {
+```ts
+describe("Contract: listTools()", () => {
+  it("exposes expected core tools by default", async () => {
     const { client, clientTransport, serverTransport } = await createLinkedPair(buildContext());
+
     try {
       const { tools } = await client.listTools();
       const names = tools.map((t) => t.name);
 
-      expect(names).toContain("gitlab_get_project");
-      expect(names).toContain("gitlab_list_issues");
+      expect(names).toContain("health_check");
+      expect(names).toContain("my_readonly_tool");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("hides write tools in read-only mode", async () => {
+    const ctx = buildContext({ env: { READ_ONLY_MODE: true } as any });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(ctx);
+
+    try {
+      const { tools } = await client.listTools();
+      const names = tools.map((t) => t.name);
+
+      expect(names).not.toContain("create_issue");
       expect(names).toContain("health_check");
     } finally {
       await clientTransport.close();
       await serverTransport.close();
     }
   });
-
-  it("excludes all mutating tools in read-only mode", async () => {
-    const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ readOnlyMode: true })
-    );
-    try {
-      const { tools } = await client.listTools();
-      const names = tools.map((t) => t.name);
-
-      expect(names).not.toContain("gitlab_create_issue");
-      expect(names).not.toContain("gitlab_execute_graphql_mutation");
-      // Read-only tools are still present
-      expect(names).toContain("gitlab_get_project");
-    } finally {
-      await clientTransport.close();
-      await serverTransport.close();
-    }
-  });
 });
 ```
 
-> **Key Point**: Always close both transport endpoints in the `finally` block. InMemoryTransport does not clean up automatically — if you miss this, subsequent tests will hang.
+Recommended assertion style:
 
-### Pattern 2: Tool Handler End-to-End Verification
+- Assert presence/absence of tool names (stable).
+- Avoid asserting full text descriptions (high-churn).
 
-Use `client.callTool()` to make real JSON-RPC calls, stub external APIs (such as GitLab), and verify three things:
+### Pattern 2: Tool Handler End-to-End Validation (stub external dependencies)
 
-1. The correct API method is called with the right arguments
-2. The response structure conforms to the MCP specification (`content[].text` + `structuredContent`)
-3. Error scenarios return `isError: true`
+Validate at least three aspects:
 
-```typescript
-describe("Tool handler: gitlab_get_project", () => {
-  it("passes project_id to context.gitlab.getProject()", async () => {
-    const getProject = vi.fn().mockResolvedValue({
-      id: 42,
-      name: "my-project",
-      path_with_namespace: "group/my-project"
+1. Correct dependency call with correct parameters.
+2. Correct MCP tool result shape (`content[]` and optional `structuredContent`).
+3. Correct error-path behavior.
+
+```ts
+describe("Tool handler: get_project", () => {
+  it("forwards project_id to dependency", async () => {
+    const getProject = vi.fn().mockResolvedValue({ id: 42, name: "alpha" });
+
+    const ctx = buildContext({
+      services: { git: { getProject } } as any
     });
 
-    const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({
-        gitlabStub: { getProject }
-      })
-    );
+    const { client, clientTransport, serverTransport } = await createLinkedPair(ctx);
 
     try {
       const result = await client.callTool({
-        name: "gitlab_get_project",
-        arguments: { project_id: "group/my-project" }
+        name: "get_project",
+        arguments: { project_id: "group/alpha" }
       });
 
-      // Verification 1: stub was called correctly
-      expect(getProject).toHaveBeenCalledWith("group/my-project");
-
-      // Verification 2: response is not an error
+      expect(getProject).toHaveBeenCalledWith("group/alpha");
       expect(result.isError).toBeFalsy();
 
-      // Verification 3: text content contains expected data
-      const text = (result.content as Array<{ text: string }>).find((c) => c.type === "text")!.text;
-      expect(text).toContain("my-project");
+      const text = (result.content as any[]).find((c) => c.type === "text")?.text ?? "";
+      expect(text).toContain("alpha");
+      expect(result.structuredContent).toMatchObject({ id: 42, name: "alpha" });
     } finally {
       await clientTransport.close();
       await serverTransport.close();
@@ -223,51 +231,29 @@ describe("Tool handler: gitlab_get_project", () => {
 });
 ```
 
-> **Best Practice**: `gitlabStub` only needs to provide the methods used by the current test. Unstubbed method calls will produce runtime errors, which is **exactly** the behavior you want — it helps you discover unexpected API calls.
+Practical rule: stub only what the test should use. Unexpected dependency usage should fail loudly.
 
 ### Pattern 3: Schema Validation and Boundary Inputs
 
-The MCP SDK's Zod schemas automatically validate input parameters. You should test:
+Most MCP servers use schema validation (often Zod). Invalid input should be treated as a first-class test target:
 
-- `null` value preprocessing (`null → undefined`)
-- Missing required fields
-- Type mismatches
-- Invalid enum values
+- Missing/extra fields.
+- Type mismatches.
+- Invalid enum values.
+- `null` / `undefined` semantics.
 
-```typescript
-describe("Schema Validation", () => {
-  it("null values are preprocessed to undefined (optional fields do not error)", async () => {
-    const listProjects = vi.fn().mockResolvedValue([]);
-    const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({
-        gitlabStub: { listProjects }
-      })
-    );
+```ts
+describe("Schema validation", () => {
+  it("returns tool-level error for type mismatch", async () => {
+    const ctx = buildContext({ services: { git: { listProjects: vi.fn() } } as any });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(ctx);
 
     try {
       const result = await client.callTool({
-        name: "gitlab_list_projects",
-        arguments: { search: null, page: null } // null → undefined
+        name: "list_projects",
+        arguments: { page: "not-a-number" } as any
       });
-      expect(result.isError).toBeFalsy();
-    } finally {
-      await clientTransport.close();
-      await serverTransport.close();
-    }
-  });
 
-  it("type mismatch triggers Zod error", async () => {
-    const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({
-        gitlabStub: { listProjects: vi.fn() }
-      })
-    );
-
-    try {
-      const result = await client.callTool({
-        name: "gitlab_list_projects",
-        arguments: { page: "not-a-number" } // should be number
-      });
       expect(result.isError).toBe(true);
     } finally {
       await clientTransport.close();
@@ -277,705 +263,370 @@ describe("Schema Validation", () => {
 });
 ```
 
+If your implementation maps validation failures to protocol errors (`-32602 InvalidParams`) instead of tool-level errors, that can also be valid. The key is consistency with client expectations.
+
+### Pattern 4: Minimal Coverage for Bidirectional Requests (Sampling/Elicitation)
+
+If your server uses server-initiated requests (for example, sampling/elicitation), add a minimal closed-loop test:
+
+- Register client-side handlers with deterministic responses.
+- Verify server behavior continues correctly after handler responses.
+
 ---
 
-## Layer 2: HTTP Transport Layer Testing
+## Layer 2: Streamable HTTP Transport Integration Tests (P0/P1)
 
-InMemoryTransport skips serialization and the network layer. To test real HTTP endpoints, you need to start a real HTTP server.
+InMemory tests are fast but skip critical reality: wire serialization, HTTP headers, session headers, SSE behavior, and origin checks.
 
-### Streamable HTTP Testing
+### Spec Checklist You Must Align With (2025-11-25)
 
-**Key Pattern**: Use port 0 to let the OS assign a random port, avoiding port conflicts.
+- **Single MCP endpoint** supports both `POST` and `GET`.
+- **POST** requires client `Accept: application/json, text/event-stream`.
+- **POST body** must be a single JSON-RPC message (not batch array in strict mode if your stack enforces that).
+- **GET** opens SSE stream, or server may return `405` if SSE is not supported.
+- **Origin security** should reject invalid origins with `403`.
+- **Session behavior**: when session IDs are enabled, post-init requests must include `MCP-Session-Id`.
+- **Protocol version header** should be validated for post-init requests.
 
-```typescript
+### HTTP Test Harness: Port 0 + Isolated Server Instances
+
+Never share a stateful server instance across tests involving session/rate-limit/connection state.
+
+```ts
 import { createServer, type Server as HttpServer } from "node:http";
-import { setupMcpHttpApp } from "../../src/http-app.js";
 
 let httpServer: HttpServer;
 let baseUrl: string;
-let result: SetupMcpHttpAppResult;
 
-beforeAll(async () => {
-  const context = buildHttpContext();
-  result = setupMcpHttpApp({
-    context,
-    env: context.env,
-    logger: context.logger
-  });
+beforeEach(async () => {
+  const app = buildYourExpressOrHonoApp();
+  httpServer = createServer(app);
 
-  httpServer = createServer(result.app);
   await new Promise<void>((resolve) => {
     httpServer.listen(0, "127.0.0.1", () => resolve());
   });
 
   const addr = httpServer.address();
-  if (typeof addr === "object" && addr !== null) {
+  if (typeof addr === "object" && addr?.port) {
     baseUrl = `http://127.0.0.1:${addr.port}`;
+  } else {
+    throw new Error("Failed to bind test port");
   }
 });
 
-afterAll(async () => {
-  // Key: close all sessions first, then shut down the HTTP server
-  for (const sessionId of result.sessions.keys()) {
-    await result.closeSession(sessionId, "shutdown");
-  }
+afterEach(async () => {
   await new Promise<void>((resolve, reject) => {
     httpServer.close((err) => (err ? reject(err) : resolve()));
   });
 });
 ```
 
-**Typical Test Scenarios**:
+### Must-Test Cases: Session, 404 Reinitialize, DELETE, Protocol Version Header
 
-| Scenario                        | HTTP Method                  | Expected Status | Error Code |
-| ------------------------------- | ---------------------------- | --------------- | ---------- |
-| Initialize session              | `POST /mcp` (initialize)     | 200             | —          |
-| Subsequent request with session | `POST /mcp`                  | 200             | —          |
-| Invalid session ID              | `POST /mcp`                  | 404             | -32001     |
-| GET without initialization      | `GET /mcp`                   | 400             | -32000     |
-| Capacity exceeded               | `POST /mcp` (MAX_SESSIONS=1) | 503             | -32002     |
-| Rate limiting                   | `POST /mcp` (excessive)      | 429             | -32003     |
-| Delete session                  | `DELETE /mcp`                | 200             | —          |
-| Health check                    | `GET /healthz`               | 200             | —          |
+#### 1) Initialization returns `MCP-Session-Id` (stateful mode)
 
-> **Best Practice**: Each test scenario requiring independent configuration (e.g., `MAX_SESSIONS=1`) should create its own `setupMcpHttpApp` + `createServer` instance, cleaning up in a `finally` block. Do not share stateful server instances.
+```ts
+const MCP_HEADERS = {
+  "Content-Type": "application/json",
+  Accept: "application/json, text/event-stream"
+};
 
-### SSE Transport Testing
-
-SSE testing is more complex than HTTP because `GET /sse` returns a long-lived event stream:
-
-```typescript
-// SSE event parser
-async function* parseSseEvents(response: Response): AsyncGenerator<SseEvent> {
-  const reader = response.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop()!;
-
-      for (const part of parts) {
-        const event: SseEvent = {};
-        for (const line of part.split("\n")) {
-          if (line.startsWith("event: ")) event.event = line.slice(7).trim();
-          else if (line.startsWith("data: ")) event.data = line.slice(6).trim();
-        }
-        yield event;
-      }
+function initializeBody() {
+  return JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-11-25",
+      capabilities: {},
+      clientInfo: { name: "itest", version: "0.0.1" }
     }
-  } finally {
-    reader.releaseLock();
-  }
-}
-```
-
-**SSE Test Flow**:
-
-```typescript
-it("GET /sse returns an endpoint event", async () => {
-  const controller = new AbortController();
-  try {
-    const response = await fetch(`${baseUrl}/sse`, {
-      headers: { Accept: "text/event-stream" },
-      signal: controller.signal
-    });
-
-    expect(response.headers.get("content-type")).toContain("text/event-stream");
-
-    const gen = parseSseEvents(response);
-    const first = await gen.next();
-    const event = first.value as SseEvent;
-
-    expect(event.event).toBe("endpoint");
-    expect(event.data).toContain("/messages?sessionId=");
-  } finally {
-    controller.abort(); // Required: clean up the long-lived connection
-  }
-});
-```
-
-> **Note**: In SSE mode, when calling `handlePostMessage` via `POST /messages`, you must pass `req.body` as the third argument, because Express's `json()` middleware has already consumed the raw body stream. This is a common pitfall.
-
-> **Important**: `SSE=true` is incompatible with `REMOTE_AUTHORIZATION=true`. The environment validation layer enforces this constraint at startup. If you need remote per-request authentication, use Streamable HTTP transport instead.
-
-### Session Lifecycle Testing
-
-Session management is the most bug-prone area of an MCP Server. You must test the complete lifecycle:
-
-```typescript
-describe("Session DELETE", () => {
-  it("POST with the same session returns 404 after DELETE", async () => {
-    const sessionId = await initializeSession(baseUrl);
-
-    // Delete the session
-    await fetch(`${baseUrl}/mcp`, {
-      method: "DELETE",
-      headers: { ...MCP_HEADERS, "mcp-session-id": sessionId }
-    });
-
-    // Attempt to use the deleted session
-    const res = await fetch(`${baseUrl}/mcp`, {
-      method: "POST",
-      headers: { ...MCP_HEADERS, "mcp-session-id": sessionId },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 2,
-        method: "tools/list",
-        params: {}
-      })
-    });
-
-    expect(res.status).toBe(404);
-    const body = await res.json();
-    expect(body.error?.code).toBe(-32001);
   });
-});
-```
-
-**Garbage Collection Testing**: Trigger immediate expiration by setting `SESSION_TIMEOUT_SECONDS` to 0:
-
-```typescript
-it("GC cleans up expired sessions", async () => {
-  (ctx.env as any).SESSION_TIMEOUT_SECONDS = 0;
-  // ... create session ...
-  expect(result.sessions.size).toBe(1);
-
-  await result.garbageCollectSessions();
-  expect(result.sessions.size).toBe(0);
-});
-```
-
-**Client Disconnection Testing** requires polling, since TCP close is not synchronous:
-
-```typescript
-it("SSE session is cleaned up after client disconnects", async () => {
-  controller.abort();
-
-  const deadline = Date.now() + 2000;
-  while (result.sseSessions.size > 0 && Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  expect(result.sseSessions.size).toBe(0);
-});
-```
-
----
-
-## Layer 3: Security and Policy Testing
-
-### Remote Authentication Flow
-
-When `REMOTE_AUTHORIZATION=true`, the token comes from the HTTP header rather than an environment variable:
-
-```typescript
-function buildRemoteAuthContext() {
-  const ctx = buildContext({ token: null }); // No default token
-  (ctx.env as any).REMOTE_AUTHORIZATION = true;
-  (ctx.env as any).HTTP_JSON_ONLY = true;
-  return ctx;
 }
 
-describe("Remote Authentication", () => {
-  it("missing token returns 401 + error code -32010", async () => {
-    const res = await fetch(`${baseUrl}/mcp`, {
-      method: "POST",
-      headers: MCP_HEADERS, // No Authorization
-      body: initializeBody()
-    });
-    expect(res.status).toBe(401);
-    const body = await res.json();
-    expect(body.error?.code).toBe(-32010);
+it("returns MCP-Session-Id during initialize", async () => {
+  const res = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: MCP_HEADERS,
+    body: initializeBody()
   });
 
-  it("Bearer token is passed via Authorization header", async () => {
-    const res = await fetch(`${baseUrl}/mcp`, {
-      method: "POST",
-      headers: {
-        ...MCP_HEADERS,
-        Authorization: "Bearer test-remote-token"
-      },
-      body: initializeBody()
-    });
-    expect(res.status).toBe(200);
-    expect(res.headers.get("mcp-session-id")).toBeTruthy();
-  });
-
-  it("authentication context propagates to session state", async () => {
-    // Initialize session with token
-    const initRes = await fetch(`${baseUrl}/mcp`, {
-      method: "POST",
-      headers: {
-        ...MCP_HEADERS,
-        Authorization: "Bearer my-secret-token"
-      },
-      body: initializeBody()
-    });
-    const sessionId = initRes.headers.get("mcp-session-id")!;
-
-    // Verify internal auth state of the session
-    const session = result.sessions.get(sessionId);
-    expect(session!.auth?.token).toBe("my-secret-token");
-    expect(session!.auth?.header).toBe("authorization");
-  });
+  expect(res.status).toBe(200);
+  expect(res.headers.get("MCP-Session-Id")).toBeTruthy();
 });
 ```
 
-### Error Handling and Sensitive Information Redaction
+#### 2) Post-init requests require `MCP-Session-Id` and valid protocol version
 
-Error handling is a security-critical path. Two modes need to be tested:
-
-| Mode   | `GITLAB_ERROR_DETAIL_MODE` | Behavior                                                           |
-| ------ | -------------------------- | ------------------------------------------------------------------ |
-| `full` | Implementation-dependent   | Returns full error details (better debugging, higher leakage risk) |
-| `safe` | Recommended for production | Hides internal details, returns generic messages                   |
-
-```typescript
-describe("Error Handling", () => {
-  it("GitLabApiError 404 → isError + status code", async () => {
-    const getProject = vi.fn().mockRejectedValue(new GitLabApiError("Not Found", 404));
-    // ...
-    expect(result.isError).toBe(true);
-    expect(text).toContain("GitLab API error 404");
+```ts
+it("requires session and protocol headers post-init", async () => {
+  const initRes = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: MCP_HEADERS,
+    body: initializeBody()
   });
+  const sessionId = initRes.headers.get("MCP-Session-Id")!;
 
-  it("safe mode hides error details", async () => {
-    (ctx.env as any).GITLAB_ERROR_DETAIL_MODE = "safe";
-
-    const getProject = vi
-      .fn()
-      .mockRejectedValue(new Error("DB connection failed: password=hunter2"));
-    // ...
-    expect(text).toBe("Request failed"); // Generic message
-    expect(text).not.toContain("hunter2"); // No leakage
-  });
-
-  it("non-Error thrown values return Unknown error", async () => {
-    const getProject = vi.fn().mockRejectedValue("string error");
-    // ...
-    expect(text).toBe("Unknown error");
-  });
-});
-```
-
-**Token Redaction Testing** — ensure tokens are not leaked in error details. Using `it.each` reduces boilerplate when testing multiple token patterns:
-
-```typescript
-describe("Token Redaction", () => {
-  it.each([
-    ["GitLab PAT", "glpat-abcdef1234567890"],
-    ["GitHub PAT", "ghp_abcdef1234567890abcde"],
-    ["JWT", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload"]
-  ])("redacts %s token", async (label, token) => {
-    const getProject = vi.fn().mockRejectedValue(
-      new GitLabApiError("Unauthorized", 401, {
-        message: `Token ${token} is invalid`
-      })
-    );
-    // ...
-    expect(text).toContain("[REDACTED]");
-    expect(text).not.toContain(token);
-  });
-
-  it("redacts sensitive object keys (authorization, password, secret)", async () => {
-    const getProject = vi.fn().mockRejectedValue(
-      new GitLabApiError("Error", 400, {
-        authorization: "Bearer secret-val",
-        password: "hunter2",
-        message: "safe value" // Non-sensitive key is preserved
-      })
-    );
-    // ...
-    expect(text).not.toContain("secret-val");
-    expect(text).not.toContain("hunter2");
-    expect(text).toContain("safe value");
-  });
-});
-```
-
-### Policy Engine: Read-Only, Feature Flags, Allowlists
-
-The policy engine determines which tools are available. You must test various combinations:
-
-```typescript
-describe("GraphQL Tool Policy", () => {
-  it("disables GraphQL tools when ALLOWED_PROJECT_IDS is set", async () => {
-    const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ allowedProjectIds: ["123"] })
-    );
-    try {
-      const names = (await client.listTools()).tools.map((t) => t.name);
-      expect(names).not.toContain("gitlab_execute_graphql_query");
-      expect(names).not.toContain("gitlab_execute_graphql_mutation");
-    } finally {
-      await clientTransport.close();
-      await serverTransport.close();
-    }
-  });
-
-  it("GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE overrides the restriction", async () => {
-    const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({
-        allowedProjectIds: ["123"],
-        allowGraphqlWithProjectScope: true
-      })
-    );
-    try {
-      const names = (await client.listTools()).tools.map((t) => t.name);
-      expect(names).toContain("gitlab_execute_graphql_query");
-    } finally {
-      await clientTransport.close();
-      await serverTransport.close();
-    }
-  });
-
-  it("compat tool blocks mutation in read-only mode", async () => {
-    const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ readOnlyMode: true, gitlabStub: { executeGraphql: vi.fn() } })
-    );
-    try {
-      const result = await client.callTool({
-        name: "gitlab_execute_graphql",
-        arguments: { query: "mutation { createProject { id } }" }
-      });
-      expect(result.isError).toBe(true);
-    } finally {
-      await clientTransport.close();
-      await serverTransport.close();
-    }
-  });
-
-  it("string literal containing 'mutation' does not trigger false positive", async () => {
-    const executeGraphql = vi.fn().mockResolvedValue({ data: {} });
-    const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ gitlabStub: { executeGraphql } })
-    );
-    try {
-      const result = await client.callTool({
-        name: "gitlab_execute_graphql_query",
-        arguments: { query: '{ project(name: "mutation thing") { id } }' }
-      });
-      expect(result.isError).toBeFalsy(); // Should not error
-    } finally {
-      await clientTransport.close();
-      await serverTransport.close();
-    }
-  });
-});
-```
-
----
-
-## Layer 4: Agent Loop Integration Testing
-
-### ScriptedLLM Pattern
-
-The real MCP use case is an LLM Agent calling tools. However, testing directly with a real LLM is non-deterministic, slow, and expensive. The recommended approach is **ScriptedLLM** — a pre-programmed sequence of LLM responses.
-
-> **Note**: Layer 4 and Layer 5 patterns are high-value strategies. Some teams already implement them, while others can adopt them incrementally as a roadmap.
-
-```typescript
-class ScriptedLLM {
-  private cursor = 0;
-  constructor(private responses: LLMResponse[]) {}
-
-  async createMessage(messages: Message[], tools: Tool[]) {
-    if (this.cursor >= this.responses.length) {
-      // Default end response
-      return { content: [{ type: "text", text: "Done" }] };
-    }
-    return this.responses[this.cursor++];
-  }
-}
-
-// Test case
-it("Agent calls tool and processes result", async () => {
-  const listProjects = vi.fn().mockResolvedValue([{ id: 1, name: "alpha" }]);
-
-  const { client } = await createLinkedPair(buildContext({ gitlabStub: { listProjects } }));
-
-  const llm = new ScriptedLLM([
-    // Round 1: LLM decides to call a tool
-    {
-      content: [
-        {
-          type: "tool_use",
-          id: "call-1",
-          name: "gitlab_list_projects",
-          input: { search: "alpha" }
-        }
-      ]
+  const res = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      ...MCP_HEADERS,
+      "MCP-Session-Id": sessionId,
+      "MCP-Protocol-Version": "2025-11-25"
     },
-    // Round 2: LLM sees tool result and gives final answer
-    {
-      content: [{ type: "text", text: "Found project alpha" }]
-    }
-  ]);
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} })
+  });
 
-  const result = await runAgentLoop({ client, llm, query: "find alpha" });
-
-  expect(listProjects).toHaveBeenCalled();
-  expect(result).toContain("alpha");
+  expect(res.status).toBe(200);
 });
 ```
 
-**Key Assertion Strategies**:
+#### 3) Invalid protocol version returns `400`
 
-- Assert **whether a tool was called** and **with what arguments** — deterministic
-- Assert **the final output contains key information** — semi-deterministic
-- **Do not** assert the full text of natural language output — unstable
+```ts
+it("returns 400 for invalid MCP-Protocol-Version", async () => {
+  const initRes = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: MCP_HEADERS,
+    body: initializeBody()
+  });
+  const sessionId = initRes.headers.get("MCP-Session-Id")!;
 
-### Real LLM Smoke Testing
+  const res = await fetch(`${baseUrl}/mcp`, {
+    method: "POST",
+    headers: {
+      ...MCP_HEADERS,
+      "MCP-Session-Id": sessionId,
+      "MCP-Protocol-Version": "invalid-version"
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} })
+  });
 
-A small number of scenarios can use a real LLM (run in nightly CI):
-
-```typescript
-// Only run in CI with an API key
-describe.skipIf(!process.env.ANTHROPIC_API_KEY)("LLM E2E Smoke", () => {
-  it("can discover and call the health_check tool", async () => {
-    const result = await runAgentLoop({
-      client,
-      llm: new AnthropicLLM(process.env.ANTHROPIC_API_KEY!),
-      query: "Check the server health"
-    });
-
-    // Loose assertion — just needs to produce a result
-    expect(result.length).toBeGreaterThan(0);
-  }, 30_000); // Generous timeout
+  expect(res.status).toBe(400);
 });
 ```
 
----
+#### 4) Session termination and re-initialization (`404` behavior)
 
-## Layer 5: Inspector CLI Black-Box Testing
+If your server expires/terminates sessions, requests with stale session IDs should return `404`, and client should re-initialize without sending old session ID.
 
-[MCP Inspector](https://github.com/modelcontextprotocol/inspector)'s `--cli` mode is designed for scripting and CI, outputting JSON format. It's ideal for **black-box contract testing**.
+#### 5) DELETE semantics (`200` or `405`)
 
-### Local STDIO Testing
+The server may support explicit session termination via `DELETE`, or may return `405`.
 
-Use your project’s actual compiled stdio entrypoint (for example, `dist/index.js`).
+### SSE Stream Tests (GET/POST SSE on Streamable HTTP)
 
-```bash
-# List tools
-npx @modelcontextprotocol/inspector --cli \
-  node dist/index.js \
-  --method tools/list
+In Streamable HTTP, SSE happens on the **same endpoint**:
 
-# Call a tool
-npx @modelcontextprotocol/inspector --cli \
-  node dist/index.js \
-  --method tools/call \
-  --tool-name health_check
-```
+- POST response can be `text/event-stream`.
+- GET may open a standalone SSE channel for notifications.
 
-### Remote HTTP Testing
+#### 1) `GET /mcp` should be SSE (`200`) or unsupported (`405`)
 
-```bash
-# Streamable HTTP (with auth header)
-npx @modelcontextprotocol/inspector --cli \
-  https://my-mcp-server.example.com \
-  --transport http \
-  --method tools/list \
-  --header "Authorization: Bearer $TOKEN"
-```
+```ts
+it("GET /mcp returns SSE or 405", async () => {
+  const res = await fetch(`${baseUrl}/mcp`, {
+    method: "GET",
+    headers: { Accept: "text/event-stream" }
+  });
 
-### Embedding in Vitest
-
-```typescript
-import { execa } from "execa";
-
-test("Inspector CLI: tool list contains health_check", async () => {
-  const { stdout } = await execa("npx", [
-    "-y",
-    "@modelcontextprotocol/inspector",
-    "--cli",
-    "node",
-    "dist/index.js",
-    "--method",
-    "tools/list"
-  ]);
-
-  const res = JSON.parse(stdout);
-  const names = res.tools.map((t: { name: string }) => t.name);
-  expect(names).toContain("health_check");
-});
-```
-
-> **When to use Inspector CLI vs SDK tests**: If you want stable API-level tests (unaffected by CLI output format changes), prefer SDK + InMemoryTransport. Inspector CLI is better suited for post-deployment smoke verification.
-
----
-
-## CI/CD Integration Strategy
-
-### Recommended Layered Strategy
-
-| Trigger           | Test Type                        | Tools                | Duration |
-| ----------------- | -------------------------------- | -------------------- | -------- |
-| Every commit / PR | InMemoryTransport protocol tests | Vitest + SDK         | < 5s     |
-| Every commit / PR | HTTP/SSE transport layer tests   | Vitest + real server | < 10s    |
-| Every commit / PR | Security/policy/error handling   | Vitest + SDK         | < 5s     |
-| Every PR          | Inspector CLI contract test      | Inspector --cli      | < 15s    |
-| Nightly           | Agent Loop (ScriptedLLM)         | Vitest + SDK         | < 30s    |
-| Nightly           | LLM E2E smoke test               | Vitest + real LLM    | < 60s    |
-| Pre-release       | Containerized full-stack test    | Docker + Inspector   | < 5min   |
-
-### package.json Script Organization
-
-The following script layout is one practical example. Rename or regroup scripts based on your repository structure and CI strategy.
-
-```json
-{
-  "scripts": {
-    "test": "vitest run",
-    "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration",
-    "test:e2e": "vitest run tests/e2e",
-    "test:smoke": "vitest run tests/smoke --timeout=60000",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+  const ct = res.headers.get("content-type") ?? "";
+  expect([200, 405]).toContain(res.status);
+  if (res.status === 200) {
+    expect(ct).toContain("text/event-stream");
   }
-}
+});
 ```
 
-### CI Configuration Essentials
+#### 2) JSON-only mode should reject GET (`405`)
 
-```yaml
-# .github/workflows/test.yml or equivalent .gitlab-ci.yml
-test:
-  steps:
-    - run: pnpm typecheck # Type check first
-    - run: pnpm lint # Then lint
-    - run: pnpm test # Finally run all tests
-```
+If you explicitly enable JSON-only response mode, test that GET is rejected as expected.
 
-> **Note**: For SSE tests involving TCP connection closure (e.g., client disconnection), use **polling with a deadline** instead of a fixed `setTimeout` to avoid flaky tests caused by timing differences in CI environments.
+#### 3) SSE disconnect/reconnect behavior
+
+Avoid fixed sleeps. Prefer deadline + polling assertions when testing reconnect behavior.
 
 ---
 
-## Common Pitfalls and Solutions
+## Layer 2.5: Legacy HTTP+SSE Compatibility Tests (Only if Needed)
 
-### 1. Express Body Parser Conflicts with SSE handlePostMessage
+Streamable HTTP replaces legacy HTTP+SSE. If you still need old-client compatibility:
 
-**Problem**: The `express.json()` middleware consumes the raw body stream, causing `SSEServerTransport.handlePostMessage()` to fail internally when calling `getRawBody()` with a `stream is not readable` error.
+- Clearly label it as **legacy transport**.
+- Keep minimal black-box tests for old endpoints.
+- Implement new capabilities only on Streamable HTTP, not legacy.
 
-**Solution**: Always pass `req.body` as the third argument:
+---
 
-```typescript
-// ✗ Wrong
-await session.transport.handlePostMessage(req, res);
+## Layer 3: Security / Auth / Policy Tests (P0/P1)
 
-// ✓ Correct
-await session.transport.handlePostMessage(req, res, req.body);
+### Origin/Host Protection (DNS Rebinding)
+
+Recommended cases:
+
+- Missing `Origin` (allow/deny based on policy, but keep behavior consistent).
+- Invalid `Origin` outside allowlist → `403`.
+- Invalid `Host` when host validation is enabled.
+
+### OAuth/Authorization (Resource Metadata Discovery)
+
+If your HTTP transport supports OAuth-compliant authorization, minimally test:
+
+- Unauthorized request returns `401` with expected auth challenge information.
+- Optional scope challenge in auth response.
+- Resource metadata endpoint exists and includes expected authorization server metadata.
+
+If you use a private bearer token model instead of full OAuth discovery, document and test that explicitly as a custom mode.
+
+### Error Handling and Secret Redaction
+
+Differentiate:
+
+- **Tool-level error**: request reached tool; `result.isError === true`.
+- **Protocol-level error**: request itself failed; client gets protocol/transport exception.
+
+Must-test:
+
+- Stable error shape mapping.
+- No leakage of sensitive values (`Authorization`, `password`, `token`, cookies).
+- Security mode vs debug mode output differences.
+
+### Policy Combinatorics: Read-Only, Allowlists, Feature Flags
+
+Policy regressions are common.
+
+Recommended approach:
+
+- Layer 1: contract tests on `listTools()` for key policy combinations.
+- Layer 2: a small number of end-to-end HTTP tests combining session + policy.
+
+---
+
+## Layer 4: Conformance Testing (Strongly Recommended)
+
+Conformance tests catch protocol drift during spec and SDK upgrades.
+
+```bash
+# Run server conformance scenarios against a running server
+npx @modelcontextprotocol/conformance server --url http://localhost:3000/mcp
+
+# Run one scenario only
+npx @modelcontextprotocol/conformance server --url http://localhost:3000/mcp --scenario server-initialize
+
+# List all scenarios
+npx @modelcontextprotocol/conformance list
 ```
 
-### 2. Unclosed InMemoryTransport Causes Tests to Hang
+Recommended usage:
 
-**Problem**: Forgetting to close transports causes the test process to never exit.
+- Nightly: full conformance suite.
+- Pre-release: blocking gate.
 
-**Solution**: Always use the `try/finally` pattern:
+---
 
-```typescript
-const { client, clientTransport, serverTransport } = await createLinkedPair(context);
-try {
-  // Test logic
-} finally {
-  await clientTransport.close();
-  await serverTransport.close();
-}
-```
+## Layer 5: Agent Loop Integration Tests (ScriptedLLM + Small Real-LLM Smoke)
 
-### 3. Shared HTTP Server Causes State Leakage
+Core principle: assert deterministic signals (tool sequence/arguments), not natural-language exact text.
 
-**Problem**: Multiple tests share the same `setupMcpHttpApp` instance, and session state bleeds between them.
+### ScriptedLLM mode (recommended)
 
-**Solution**: Tests requiring independent configuration (e.g., `MAX_SESSIONS=1`) should create their own server instance and clean up in `finally`.
+- Drive agents with pre-scripted LLM responses.
+- Assert called tools, arguments, and key entities in final output.
 
-### 4. Timing Issues with SSE Client Disconnection
+### Real-LLM smoke (small)
 
-**Problem**: After `controller.abort()`, the server-side `res.on("close")` callback is not triggered synchronously.
+- Keep to 1–3 scenarios.
+- Use weak assertions (non-empty output, successful basic tool call).
+- Run nightly or on-demand only.
 
-**Solution**: Use polling with a deadline:
+---
 
-```typescript
-const deadline = Date.now() + 2000;
-while (sessions.size > 0 && Date.now() < deadline) {
-  await new Promise((r) => setTimeout(r, 50));
-}
-```
+## Layer 6: Inspector CLI Black-Box Contract Tests (Pre/Post Deployment)
 
-### 5. False Positives in GraphQL Mutation Detection
+Inspector can be used as user-perspective black-box validation.
 
-**Problem**: A query containing the string literal `"mutation"` is incorrectly identified as a mutation operation.
+- Local build artifact: `node dist/index.js` (stdio).
+- Remote deployment: `https://your-domain/mcp` (Streamable HTTP).
 
-**Solution**: Strip comments and string values before detection:
-
-```typescript
-const normalized = query
-  .replace(/#[^\n]*/g, " ") // Remove line comments
-  .replace(/"""[\s\S]*?"""/g, " ") // Remove block strings
-  .replace(/"(?:\\.|[^"\\])*"/g, " "); // Remove double-quoted strings
-```
-
-**You must write corresponding tests** to verify this behavior does not produce false positives.
-
-### 6. TypeScript Compatibility with Environment Variable Type Overrides
-
-**Problem**: Directly assigning `ctx.env.HTTP_JSON_ONLY = true` may cause a TypeScript error due to `readonly` types.
-
-**Solution**: Use type assertion:
-
-```typescript
-(ctx.env as { HTTP_JSON_ONLY: boolean }).HTTP_JSON_ONLY = true;
+```bash
+npx @modelcontextprotocol/inspector --cli node dist/index.js --method tools/list
 ```
 
 ---
 
-## Summary: Recommended Test Matrix
+## CI/CD Layered Execution Strategy
 
-The following table summarizes the test dimensions a mature MCP Server should cover:
-
-| Dimension                                          | Test Method              | Priority |
-| -------------------------------------------------- | ------------------------ | -------- |
-| Protocol handshake (initialize / list)             | InMemoryTransport        | P0       |
-| Tool Handler correctness                           | InMemoryTransport + stub | P0       |
-| Schema validation / boundary inputs                | InMemoryTransport        | P0       |
-| HTTP Session create/reuse/delete                   | Real HTTP server         | P0       |
-| SSE connect/message/disconnect                     | Real HTTP server         | P1       |
-| Session capacity limits                            | Real HTTP server         | P1       |
-| Session rate limiting                              | Real HTTP server         | P1       |
-| Session garbage collection                         | Real HTTP server         | P1       |
-| Remote authentication (Bearer / Private-Token)     | Real HTTP server         | P1       |
-| Dynamic API URL                                    | Real HTTP server         | P2       |
-| Error handling (GitLabApiError / Error / unknown)  | InMemoryTransport        | P0       |
-| Token redaction (glpat / ghp / JWT)                | InMemoryTransport        | P1       |
-| Sensitive key redaction (password / authorization) | InMemoryTransport        | P1       |
-| Safe mode vs full mode                             | InMemoryTransport        | P1       |
-| Read-only mode tool filtering                      | InMemoryTransport        | P0       |
-| Feature flags (wiki / pipeline / release)          | InMemoryTransport        | P1       |
-| Tool allowlist / blocklist                         | InMemoryTransport        | P1       |
-| GraphQL mutation detection and policy              | InMemoryTransport        | P1       |
-| Agent Loop (ScriptedLLM)                           | InMemoryTransport        | P2       |
-| Response truncation (maxBytes)                     | InMemoryTransport        | P2       |
-| Health check endpoint                              | Real HTTP server         | P2       |
-| Inspector CLI contract test                        | Inspector --cli          | P2       |
-| Real LLM E2E                                       | Real LLM API             | P3       |
+| Trigger           | Test Layers                                 | Goal                                                            |
+| ----------------- | ------------------------------------------- | --------------------------------------------------------------- |
+| Every commit / PR | Layer 1 (InMemory)                          | P0 contract: tools/handlers/schema/policy                       |
+| Every PR          | Layer 2 (HTTP)                              | P0/P1: session, 404 reinitialize, protocol headers, GET SSE/405 |
+| Nightly           | Layer 4 (Conformance)                       | Spec compliance and upgrade early warning                       |
+| Nightly           | Layer 5 (Agent loop + small real LLM smoke) | Real usage path smoke checks                                    |
+| Pre-release       | Layer 6 (Inspector + deployment black-box)  | Release acceptance gate                                         |
 
 ---
 
-## References
+## Common Pitfalls and Fixes (Updated for 2025-11-25)
 
-- [MCP Official Specification](https://modelcontextprotocol.io/specification) (referenced version: 2025-11-25)
-- [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-- [MCP Inspector (including CLI mode)](https://github.com/modelcontextprotocol/inspector)
-- [MCP Best Practices Guide](https://modelcontextprotocol.info/docs/best-practices/)
-- [MCP Server E2E Testing Example](https://github.com/mkusaka/mcp-server-e2e-testing-example)
-- [MCPcat Integration Testing Guide](https://mcpcat.io/guides/integration-tests-mcp-flows/)
-- [MCPcat Unit Testing Guide](https://mcpcat.io/guides/writing-unit-tests-mcp-servers/)
-- [Stop Vibe-Testing Your MCP Server](https://www.jlowin.dev/blog/stop-vibe-testing-mcp-servers)
-- [MCP Server Testing Tools Overview (Testomat.io)](https://testomat.io/blog/mcp-server-testing-tools/)
-- [MCP Server Best Practices (MarkTechPost)](https://www.marktechpost.com/2025/07/23/7-mcp-server-best-practices-for-scalable-ai-integrations-in-2025/)
-- [MCP Official Node.js Client Tutorial](https://modelcontextprotocol.io/tutorials/building-a-client)
+1. Treating legacy HTTP+SSE as the current protocol model.
+
+- Fix: use Streamable HTTP as primary; isolate legacy compatibility.
+
+2. Sending JSON-RPC batch arrays in POST bodies.
+
+- Fix: enforce single-message payloads where required by your server/profile.
+
+3. Forgetting `MCP-Protocol-Version` / `MCP-Session-Id` in post-init requests.
+
+- Fix: test valid, missing, and invalid header combinations.
+
+4. Missing Origin checks (DNS rebinding risk).
+
+- Fix: add origin/host allowlist tests and default-safe binding strategy.
+
+5. Incorrect body handling in HTTP middleware.
+
+- Fix: ensure transport receives request body in the expected form.
+
+6. Misclassifying SSE disconnect as request cancellation.
+
+- Fix: model cancellation explicitly and test cancellation semantics directly.
+
+7. Multi-replica session stickiness issues.
+
+- Fix: sticky sessions or external session store for stateful transport behavior.
+
+---
+
+## Recommended Test Matrix (Copy/Paste)
+
+| Dimension                                             | Method          | Priority |
+| ----------------------------------------------------- | --------------- | -------- |
+| initialize / lifecycle                                | InMemory + HTTP | P0       |
+| tools/resources/prompts list contracts                | InMemory        | P0       |
+| tool handler correctness with stubs                   | InMemory        | P0       |
+| schema validation (bad input)                         | InMemory        | P0       |
+| Streamable HTTP accept/headers/status                 | HTTP            | P0       |
+| `MCP-Session-Id`: create/reuse/terminate/reinitialize | HTTP            | P0       |
+| `MCP-Protocol-Version`: missing/invalid/valid         | HTTP            | P0       |
+| GET behavior: SSE or 405                              | HTTP            | P1       |
+| Origin/Host validation                                | HTTP            | P0/P1    |
+| OAuth challenge + resource metadata                   | HTTP            | P1       |
+| SSE reconnect (`retry` / `Last-Event-ID`)             | HTTP            | P2       |
+| conformance suite                                     | CLI             | P1       |
+| inspector black-box on artifacts                      | CLI             | P2       |
+| agent loop (ScriptedLLM)                              | InMemory        | P2       |
+| real LLM smoke                                        | external API    | P3       |
+
+---
+
+## References and Compatibility Notes
+
+- MCP Specification 2025-11-25: transports, sessions, protocol version behavior.
+- MCP Specification 2025-11-25: authorization and Protected Resource Metadata.
+- MCP Conformance tooling.
+- MCP Inspector documentation.
+- TypeScript SDK migration notes (v1 to v2).
+- TypeScript SDK server/client guides for Streamable HTTP behavior.
+
+---
