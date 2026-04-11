@@ -3,6 +3,7 @@
 ![Node CI](https://github.com/mcpland/gitlab-mcp/workflows/Node%20CI/badge.svg)
 [![npm](https://img.shields.io/npm/v/gitlab-mcp.svg)](https://www.npmjs.com/package/gitlab-mcp)
 ![license](https://img.shields.io/npm/l/gitlab-mcp)
+[![SafeSkill 78/100](https://img.shields.io/badge/SafeSkill-78%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/mcpland-gitlab-mcp)
 
 A production-ready [MCP](https://modelcontextprotocol.io/) server for GitLab. Provides **80+ tools** that let AI assistants read and manage GitLab projects, merge requests, issues, pipelines, wikis, releases, and more through a unified, policy-controlled interface.
 
