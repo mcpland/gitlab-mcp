@@ -66,7 +66,7 @@ const absoluteHttpUrlSchema = z
   .string()
   .url()
   .max(4096)
-  .regex(/^https?:\/\//u, "url_or_path must use http or https when an absolute URL is provided");
+  .regex(/^https?:\/\/.*$/u, "url_or_path must use http or https when an absolute URL is provided");
 
 const pathLikeSchema = z
   .string()
