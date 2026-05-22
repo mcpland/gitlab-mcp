@@ -540,6 +540,14 @@ describe("http app MCP OAuth", () => {
       `${running.baseUrl}/gitlab-mcp/authorize?client_id=client-1&redirect_uri=https%3A%2F%2Fclient.example.com%2Fcallback`
     );
     expect(authorize.status).toBe(400);
+
+    const prefixedMcpResponse = await fetch(`${running.baseUrl}/gitlab-mcp/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })
+    });
+    expect(prefixedMcpResponse.status).toBe(401);
+    expect(prefixedMcpResponse.headers.get("www-authenticate")).toContain("Bearer");
   });
 });
 

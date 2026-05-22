@@ -188,6 +188,10 @@ function getConfiguredServerPathPrefix(env: AppContext["env"]): string {
   return env.MCP_SERVER_URL ? getUrlPathPrefix(new URL(env.MCP_SERVER_URL)) : "";
 }
 
+function isMcpRequestPath(path: string, pathPrefix: string): boolean {
+  return path === "/mcp" || (pathPrefix.length > 0 && path === `${pathPrefix}/mcp`);
+}
+
 function getPrefixedOAuthMetadataRoutes(metadataRoute: string, pathPrefix: string): string[] {
   return Array.from(
     new Set([metadataRoute, `${metadataRoute}${pathPrefix}`, `${pathPrefix}${metadataRoute}`])
@@ -196,12 +200,13 @@ function getPrefixedOAuthMetadataRoutes(metadataRoute: string, pathPrefix: strin
 
 export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResult {
   const { context, env: appEnv, logger: appLogger } = deps;
+  const configuredPathPrefix = getConfiguredServerPathPrefix(appEnv);
 
   const app = createMcpExpressApp({ host: appEnv.HTTP_HOST });
   app.use(express.json({ limit: "2mb" }));
   app.use(
     (error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
-      if (req.path !== "/mcp" || !isJsonBodyParserError(error)) {
+      if (!isMcpRequestPath(req.path, configuredPathPrefix) || !isJsonBodyParserError(error)) {
         next(error);
         return;
       }
@@ -337,10 +342,9 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       }
     }
   };
-  const downloadPathPrefix = getConfiguredServerPathPrefix(appEnv);
   app.get("/downloads/:type", downloadProxyHandler);
-  if (downloadPathPrefix) {
-    app.get(`${downloadPathPrefix}/downloads/:type`, downloadProxyHandler);
+  if (configuredPathPrefix) {
+    app.get(`${configuredPathPrefix}/downloads/:type`, downloadProxyHandler);
   }
 
   /* ---- SSE endpoints ---- */
@@ -465,7 +469,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     oauthBearerAuth(req, res, next);
   };
 
-  app.all("/mcp", mcpOAuthAuthMiddleware, async (req, res) => {
+  const mcpRequestHandler: express.RequestHandler = async (req, res) => {
     const incomingSessionId = req.header("mcp-session-id") ?? undefined;
     let session = incomingSessionId ? sessions.get(incomingSessionId) : undefined;
     let createdSession = false;
@@ -615,7 +619,12 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         await discardPendingSessionIfUninitialized(session);
       }
     }
-  });
+  };
+
+  app.all("/mcp", mcpOAuthAuthMiddleware, mcpRequestHandler);
+  if (configuredPathPrefix) {
+    app.all(`${configuredPathPrefix}/mcp`, mcpOAuthAuthMiddleware, mcpRequestHandler);
+  }
 
   /* ---- Internal helpers (closures) ---- */
 
