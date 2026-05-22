@@ -1,6 +1,8 @@
+import type { OAuthRegisteredClientsStore } from "@modelcontextprotocol/sdk/server/auth/clients.js";
 import { InvalidTokenError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import { ProxyOAuthServerProvider } from "@modelcontextprotocol/sdk/server/auth/providers/proxyProvider.js";
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 
 import { deriveGitLabBaseUrl } from "./oauth.js";
 
@@ -11,10 +13,36 @@ interface GitLabTokenInfo {
   application?: { uid?: string } | null;
 }
 
+class CachedGitLabOAuthProvider extends ProxyOAuthServerProvider {
+  private readonly registeredClients = new Map<string, OAuthClientInformationFull>();
+
+  override get clientsStore(): OAuthRegisteredClientsStore {
+    const store = super.clientsStore;
+    const registerClient = store.registerClient;
+
+    return {
+      getClient: async (clientId: string) => {
+        return this.registeredClients.get(clientId) ?? store.getClient(clientId);
+      },
+      ...(registerClient
+        ? {
+            registerClient: async (
+              client: Parameters<NonNullable<OAuthRegisteredClientsStore["registerClient"]>>[0]
+            ) => {
+              const registeredClient = await registerClient(client);
+              this.registeredClients.set(registeredClient.client_id, registeredClient);
+              return registeredClient;
+            }
+          }
+        : {})
+    };
+  }
+}
+
 export function createGitLabMcpOAuthProvider(apiUrl: string): ProxyOAuthServerProvider {
   const gitlabBaseUrl = deriveGitLabBaseUrl(apiUrl);
 
-  return new ProxyOAuthServerProvider({
+  return new CachedGitLabOAuthProvider({
     endpoints: {
       authorizationUrl: `${gitlabBaseUrl}/oauth/authorize`,
       tokenUrl: `${gitlabBaseUrl}/oauth/token`,
