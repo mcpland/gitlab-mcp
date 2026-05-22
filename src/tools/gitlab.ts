@@ -79,6 +79,41 @@ const paginationShape = {
 } satisfies ToolSchemaShape;
 const emojiNameSchema = z.string().min(1);
 const awardEmojiIdSchema = z.string().min(1);
+const workItemTypes = [
+  "issue",
+  "task",
+  "incident",
+  "test_case",
+  "epic",
+  "key_result",
+  "objective",
+  "requirement",
+  "ticket"
+] as const;
+const workItemTypeSchema = z.preprocess(
+  (value) => (typeof value === "string" ? value.toLowerCase() : value),
+  z.enum(workItemTypes)
+);
+const optionalWorkItemType = nullableOptional(workItemTypeSchema);
+const workItemIidSchema = z.coerce.number().int().positive();
+const optionalCoercedNumber = nullableOptional(z.coerce.number());
+const optionalCoercedBoolean = nullableOptional(z.coerce.boolean());
+const workItemReferenceSchema = z.object({
+  project_id: projectIdSchema,
+  iid: workItemIidSchema
+});
+const linkedWorkItemReferenceSchema = z.object({
+  project_id: projectIdSchema,
+  iid: workItemIidSchema,
+  link_type: z.enum(["RELATED", "BLOCKED_BY", "BLOCKS"]).optional()
+});
+const customFieldValueSchema = z.object({
+  custom_field_id: z.string().min(1),
+  text_value: optionalString,
+  number_value: optionalCoercedNumber,
+  selected_option_ids: optionalStringArray,
+  date_value: optionalString
+});
 
 export function registerGitLabTools(server: McpServer, context: AppContext): void {
   const definitions = getGitLabToolDefinitions();
@@ -2092,7 +2127,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         confidential: optionalBoolean,
         assignee_ids: optionalNumberArray,
         discussion_locked: optionalBoolean,
-        weight: optionalNumber,
+        weight: optionalCoercedNumber,
         issue_type: z.enum(["issue", "incident", "test_case", "task"]).optional()
       },
       handler: async (args, context) => {
@@ -3917,6 +3952,312 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_get_work_item",
+      title: "Get Work Item",
+      description:
+        "Get a single work item with full widget details including status, hierarchy, labels, assignees, linked items, custom fields, and development data.",
+      capabilities: readGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema
+      },
+      handler: async (args, context) =>
+        getWorkItem(context, resolveProjectId(args, context, true), getNumber(args, "iid"))
+    },
+    {
+      name: "gitlab_list_work_items",
+      title: "List Work Items",
+      description:
+        "List work items in a project with filters for type, state, search, assignees, and labels.",
+      capabilities: readGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        types: nullableOptional(z.array(workItemTypeSchema)),
+        state: z.enum(["opened", "closed"]).optional(),
+        search: optionalString,
+        assignee_usernames: optionalStringArray,
+        label_names: optionalStringArray,
+        first: z.coerce.number().int().positive().max(100).optional(),
+        after: optionalString
+      },
+      handler: async (args, context) =>
+        listWorkItems(context, resolveProjectId(args, context, true), {
+          types: getOptionalStringArray(args, "types") as WorkItemType[] | undefined,
+          state: getOptionalString(args, "state") as "opened" | "closed" | undefined,
+          search: getOptionalString(args, "search"),
+          assigneeUsernames: getOptionalStringArray(args, "assignee_usernames"),
+          labelNames: getOptionalStringArray(args, "label_names"),
+          first: getOptionalNumber(args, "first"),
+          after: getOptionalString(args, "after")
+        })
+    },
+    {
+      name: "gitlab_create_work_item",
+      title: "Create Work Item",
+      description:
+        "Create a work item of type issue, task, incident, test_case, epic, key_result, objective, requirement, or ticket.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        title: z.string().min(1),
+        type: optionalWorkItemType,
+        description: optionalString,
+        labels: optionalStringArray,
+        assignee_usernames: optionalStringArray,
+        parent_iid: workItemIidSchema.optional(),
+        weight: optionalCoercedNumber,
+        health_status: z.enum(["onTrack", "needsAttention", "atRisk"]).optional(),
+        start_date: optionalString,
+        due_date: optionalString,
+        milestone_id: optionalString,
+        iteration_id: optionalString,
+        confidential: optionalCoercedBoolean
+      },
+      handler: async (args, context) =>
+        createWorkItem(context, resolveProjectId(args, context, true), {
+          title: getString(args, "title"),
+          type: getOptionalString(args, "type") as WorkItemType | undefined,
+          description: getOptionalString(args, "description"),
+          labels: getOptionalStringArray(args, "labels"),
+          assigneeUsernames: getOptionalStringArray(args, "assignee_usernames"),
+          parentIid: getOptionalNumber(args, "parent_iid"),
+          weight: getOptionalNumber(args, "weight"),
+          healthStatus: getOptionalString(args, "health_status"),
+          startDate: getOptionalString(args, "start_date"),
+          dueDate: getOptionalString(args, "due_date"),
+          milestoneId: getOptionalString(args, "milestone_id"),
+          iterationId: getOptionalString(args, "iteration_id"),
+          confidential: getOptionalBoolean(args, "confidential")
+        })
+    },
+    {
+      name: "gitlab_update_work_item",
+      title: "Update Work Item",
+      description:
+        "Update a work item title, description, labels, assignees, state, status, hierarchy, linked items, custom fields, dates, milestone, iteration, and incident metadata.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        title: optionalString,
+        description: optionalString,
+        add_labels: optionalStringArray,
+        remove_labels: optionalStringArray,
+        assignee_usernames: optionalStringArray,
+        state_event: z.enum(["close", "reopen"]).optional(),
+        weight: optionalNumber,
+        status: optionalString,
+        parent_iid: workItemIidSchema.optional(),
+        parent_project_id: optionalProjectIdSchema,
+        remove_parent: optionalCoercedBoolean,
+        children_to_add: nullableOptional(z.array(workItemReferenceSchema)),
+        children_to_remove: nullableOptional(z.array(workItemReferenceSchema)),
+        health_status: z.enum(["onTrack", "needsAttention", "atRisk"]).optional(),
+        start_date: optionalString,
+        due_date: optionalString,
+        milestone_id: optionalString,
+        iteration_id: optionalString,
+        confidential: optionalCoercedBoolean,
+        linked_items_to_add: nullableOptional(z.array(linkedWorkItemReferenceSchema)),
+        linked_items_to_remove: nullableOptional(z.array(workItemReferenceSchema)),
+        custom_fields: nullableOptional(z.array(customFieldValueSchema)),
+        severity: z.enum(["UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+        escalation_status: z.enum(["TRIGGERED", "ACKNOWLEDGED", "RESOLVED", "IGNORED"]).optional()
+      },
+      handler: async (args, context) =>
+        updateWorkItem(context, resolveProjectId(args, context, true), getNumber(args, "iid"), {
+          title: getOptionalString(args, "title"),
+          description: getOptionalString(args, "description"),
+          addLabels: getOptionalStringArray(args, "add_labels"),
+          removeLabels: getOptionalStringArray(args, "remove_labels"),
+          assigneeUsernames: getOptionalStringArray(args, "assignee_usernames"),
+          stateEvent: getOptionalString(args, "state_event") as "close" | "reopen" | undefined,
+          weight: getOptionalNumber(args, "weight"),
+          status: getOptionalString(args, "status"),
+          parentIid: getOptionalNumber(args, "parent_iid"),
+          parentProjectId: getOptionalString(args, "parent_project_id"),
+          removeParent: getOptionalBoolean(args, "remove_parent"),
+          childrenToAdd: getWorkItemReferences(args, "children_to_add", context),
+          childrenToRemove: getWorkItemReferences(args, "children_to_remove", context),
+          healthStatus: getOptionalString(args, "health_status"),
+          startDate: getOptionalString(args, "start_date"),
+          dueDate: getOptionalString(args, "due_date"),
+          milestoneId: getOptionalString(args, "milestone_id"),
+          iterationId: getOptionalString(args, "iteration_id"),
+          confidential: getOptionalBoolean(args, "confidential"),
+          linkedItemsToAdd: getLinkedWorkItemReferences(args, "linked_items_to_add", context),
+          linkedItemsToRemove: getWorkItemReferences(args, "linked_items_to_remove", context),
+          customFields: getOptionalArray(args, "custom_fields") as
+            | WorkItemCustomFieldInput[]
+            | undefined,
+          severity: getOptionalString(args, "severity"),
+          escalationStatus: getOptionalString(args, "escalation_status")
+        })
+    },
+    {
+      name: "gitlab_convert_work_item_type",
+      title: "Convert Work Item Type",
+      description: "Convert a work item to a different type.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        new_type: workItemTypeSchema
+      },
+      handler: async (args, context) =>
+        convertWorkItemType(
+          context,
+          resolveProjectId(args, context, true),
+          getNumber(args, "iid"),
+          getString(args, "new_type") as WorkItemType
+        )
+    },
+    {
+      name: "gitlab_list_work_item_statuses",
+      title: "List Work Item Statuses",
+      description:
+        "List available statuses and allowed hierarchy/conversion types for a work item type.",
+      capabilities: readGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        work_item_type: optionalWorkItemType
+      },
+      handler: async (args, context) =>
+        listWorkItemStatuses(
+          context,
+          resolveProjectId(args, context, true),
+          (getOptionalString(args, "work_item_type") as WorkItemType | undefined) ?? "issue"
+        )
+    },
+    {
+      name: "gitlab_list_custom_field_definitions",
+      title: "List Custom Field Definitions",
+      description:
+        "List custom field definitions for a work item type, including field IDs, types, options, and supported work item types.",
+      capabilities: readGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        work_item_type: optionalWorkItemType
+      },
+      handler: async (args, context) =>
+        listCustomFieldDefinitions(
+          context,
+          resolveProjectId(args, context, true),
+          (getOptionalString(args, "work_item_type") as WorkItemType | undefined) ?? "issue"
+        )
+    },
+    {
+      name: "gitlab_move_work_item",
+      title: "Move Work Item",
+      description: "Move a work item to a different project.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        target_project_id: projectIdSchema
+      },
+      handler: async (args, context) =>
+        moveWorkItem(
+          context,
+          resolveProjectId(args, context, true),
+          getNumber(args, "iid"),
+          resolveExplicitProjectId(context, getString(args, "target_project_id"))
+        )
+    },
+    {
+      name: "gitlab_list_work_item_notes",
+      title: "List Work Item Notes",
+      description: "List threaded discussions and notes on a work item.",
+      capabilities: readGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        page_size: z.coerce.number().int().positive().max(100).optional(),
+        after: optionalString,
+        sort: z.enum(["CREATED_ASC", "CREATED_DESC"]).optional()
+      },
+      handler: async (args, context) =>
+        listWorkItemNotes(context, resolveProjectId(args, context, true), getNumber(args, "iid"), {
+          pageSize: getOptionalNumber(args, "page_size"),
+          after: getOptionalString(args, "after"),
+          sort: getOptionalString(args, "sort")
+        })
+    },
+    {
+      name: "gitlab_create_work_item_note",
+      title: "Create Work Item Note",
+      description: "Add a note or threaded reply to a work item.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        body: bodySchema,
+        internal: optionalCoercedBoolean,
+        discussion_id: optionalString
+      },
+      handler: async (args, context) =>
+        createWorkItemNote(
+          context,
+          resolveProjectId(args, context, true),
+          getNumber(args, "iid"),
+          getString(args, "body"),
+          {
+            internal: getOptionalBoolean(args, "internal"),
+            discussionId: getOptionalString(args, "discussion_id")
+          }
+        )
+    },
+    {
+      name: "gitlab_get_timeline_events",
+      title: "Get Timeline Events",
+      description: "List timeline events for an incident work item.",
+      capabilities: readGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        incident_iid: workItemIidSchema
+      },
+      handler: async (args, context) =>
+        getTimelineEvents(
+          context,
+          resolveProjectId(args, context, true),
+          getNumber(args, "incident_iid")
+        )
+    },
+    {
+      name: "gitlab_create_timeline_event",
+      title: "Create Timeline Event",
+      description:
+        "Create an incident timeline event with optional known GitLab incident timeline tags.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        incident_iid: workItemIidSchema,
+        note: bodySchema,
+        occurred_at: z.string().min(1),
+        tag_names: nullableOptional(
+          z.array(
+            z.enum([
+              "Start time",
+              "End time",
+              "Impact detected",
+              "Response initiated",
+              "Impact mitigated",
+              "Cause identified"
+            ])
+          )
+        )
+      },
+      handler: async (args, context) =>
+        createTimelineEvent(
+          context,
+          resolveProjectId(args, context, true),
+          getNumber(args, "incident_iid"),
+          getString(args, "note"),
+          getString(args, "occurred_at"),
+          getOptionalStringArray(args, "tag_names")
+        )
+    },
+    {
       name: "gitlab_execute_graphql_query",
       title: "Execute GraphQL Query",
       description: "Execute read-only GraphQL query.",
@@ -4012,6 +4353,1391 @@ function assertAuthReady(context: AppContext): void {
   }
 }
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- GitLab Work Items GraphQL widgets are polymorphic and only partially typed by GitLab. */
+type WorkItemType = (typeof workItemTypes)[number];
+
+interface WorkItemReference {
+  project_id: string;
+  iid: number;
+}
+
+interface LinkedWorkItemReference extends WorkItemReference {
+  link_type?: "RELATED" | "BLOCKED_BY" | "BLOCKS";
+}
+
+interface WorkItemCustomFieldInput {
+  custom_field_id: string;
+  text_value?: string;
+  number_value?: number;
+  selected_option_ids?: string[];
+  date_value?: string;
+}
+
+interface WorkItemCreateOptions {
+  title: string;
+  type?: WorkItemType;
+  description?: string;
+  labels?: string[];
+  assigneeUsernames?: string[];
+  parentIid?: number;
+  weight?: number;
+  healthStatus?: string;
+  startDate?: string;
+  dueDate?: string;
+  milestoneId?: string;
+  iterationId?: string;
+  confidential?: boolean;
+}
+
+interface WorkItemUpdateOptions {
+  title?: string;
+  description?: string;
+  addLabels?: string[];
+  removeLabels?: string[];
+  assigneeUsernames?: string[];
+  stateEvent?: "close" | "reopen";
+  weight?: number;
+  status?: string;
+  parentIid?: number;
+  parentProjectId?: string;
+  removeParent?: boolean;
+  childrenToAdd?: WorkItemReference[];
+  childrenToRemove?: WorkItemReference[];
+  healthStatus?: string;
+  startDate?: string;
+  dueDate?: string;
+  milestoneId?: string;
+  iterationId?: string;
+  confidential?: boolean;
+  linkedItemsToAdd?: LinkedWorkItemReference[];
+  linkedItemsToRemove?: WorkItemReference[];
+  customFields?: WorkItemCustomFieldInput[];
+  severity?: string;
+  escalationStatus?: string;
+}
+
+const WORK_ITEM_TYPE_NAMES: Record<WorkItemType, string> = {
+  issue: "Issue",
+  task: "Task",
+  incident: "Incident",
+  test_case: "Test Case",
+  epic: "Epic",
+  key_result: "Key Result",
+  objective: "Objective",
+  requirement: "Requirement",
+  ticket: "Ticket"
+};
+
+const WORK_ITEM_GRAPHQL_TYPES: Record<WorkItemType, string> = {
+  issue: "ISSUE",
+  task: "TASK",
+  incident: "INCIDENT",
+  test_case: "TEST_CASE",
+  epic: "EPIC",
+  key_result: "KEY_RESULT",
+  objective: "OBJECTIVE",
+  requirement: "REQUIREMENT",
+  ticket: "TICKET"
+};
+
+async function executeGraphqlData<T>(
+  context: AppContext,
+  query: string,
+  variables: Record<string, unknown> = {}
+): Promise<T> {
+  const response = (await context.gitlab.executeGraphql(query, variables)) as
+    | { data?: T; errors?: Array<{ message?: string }> }
+    | T;
+
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "errors" in response &&
+    Array.isArray((response as { errors?: unknown }).errors)
+  ) {
+    const errors = (response as { errors: Array<{ message?: string }> }).errors;
+    throw new Error(
+      `GraphQL errors: ${errors.map((item) => item.message ?? String(item)).join(", ")}`
+    );
+  }
+
+  if (typeof response === "object" && response !== null && "data" in response) {
+    return (response as { data?: T }).data as T;
+  }
+
+  return response as T;
+}
+
+function resolveExplicitProjectId(context: AppContext, projectId: string): string {
+  const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
+  if (allowed.length > 0 && !allowed.includes(projectId)) {
+    throw new Error(
+      `Project '${projectId}' is not in GITLAB_ALLOWED_PROJECT_IDS: ${allowed.join(", ")}`
+    );
+  }
+  return projectId;
+}
+
+async function resolveProjectPathForWorkItem(
+  context: AppContext,
+  projectId: string
+): Promise<string> {
+  const project = (await context.gitlab.getProject(projectId)) as Record<string, unknown>;
+  const pathWithNamespace = project.path_with_namespace;
+
+  if (typeof pathWithNamespace === "string" && pathWithNamespace.length > 0) {
+    return pathWithNamespace;
+  }
+
+  if (projectId.includes("/")) {
+    return projectId;
+  }
+
+  throw new Error(`Project '${projectId}' did not include path_with_namespace`);
+}
+
+async function resolveWorkItemGid(
+  context: AppContext,
+  projectId: string,
+  iid: number
+): Promise<{ workItemGid: string; projectPath: string }> {
+  const projectPath = await resolveProjectPathForWorkItem(context, projectId);
+  const data = await executeGraphqlData<{
+    namespace?: { workItem?: { id?: string } | null } | null;
+  }>(
+    context,
+    `query($path: ID!, $iid: String!) {
+      namespace(fullPath: $path) {
+        workItem(iid: $iid) { id }
+      }
+    }`,
+    { path: projectPath, iid: String(iid) }
+  );
+  const workItemGid = data.namespace?.workItem?.id;
+
+  if (!workItemGid) {
+    throw new Error(`Work item #${iid} not found in project ${projectPath}`);
+  }
+
+  return { workItemGid, projectPath };
+}
+
+async function resolveWorkItemTypeGid(
+  context: AppContext,
+  projectPath: string,
+  type: WorkItemType
+): Promise<string> {
+  const targetName = WORK_ITEM_TYPE_NAMES[type];
+  const data = await executeGraphqlData<{
+    namespace?: { workItemTypes?: { nodes?: Array<{ id: string; name: string }> } } | null;
+  }>(
+    context,
+    `query($path: ID!) {
+      namespace(fullPath: $path) {
+        workItemTypes { nodes { id name } }
+      }
+    }`,
+    { path: projectPath }
+  );
+  const match = data.namespace?.workItemTypes?.nodes?.find((item) => item.name === targetName);
+
+  if (!match) {
+    throw new Error(`Work item type '${targetName}' not found in project ${projectPath}`);
+  }
+
+  return match.id;
+}
+
+async function resolveNamesToIds(
+  context: AppContext,
+  projectPath: string,
+  labelNames?: string[],
+  usernames?: string[]
+): Promise<{ labelIds: string[]; userIds: string[] }> {
+  if ((!labelNames || labelNames.length === 0) && (!usernames || usernames.length === 0)) {
+    return { labelIds: [], userIds: [] };
+  }
+
+  const data = await executeGraphqlData<{
+    project?: { labels?: { nodes?: Array<{ id: string; title: string }> } } | null;
+    users?: { nodes?: Array<{ id: string; username: string }> };
+  }>(
+    context,
+    `query($path: ID!, $usernames: [String!]!) {
+      project(fullPath: $path) {
+        labels(includeAncestorGroups: true, first: 250) { nodes { id title } }
+      }
+      users(usernames: $usernames) { nodes { id username } }
+    }`,
+    { path: projectPath, usernames: usernames ?? [] }
+  );
+
+  const labels = data.project?.labels?.nodes ?? [];
+  const users = data.users?.nodes ?? [];
+  const labelIds = (labelNames ?? []).map((name) => {
+    const label = labels.find((item) => item.title === name);
+    if (!label) {
+      throw new Error(`Label '${name}' not found in project ${projectPath}`);
+    }
+    return label.id;
+  });
+  const userIds = (usernames ?? []).map((username) => {
+    const user = users.find((item) => item.username === username);
+    if (!user) {
+      throw new Error(`User '${username}' not found`);
+    }
+    return user.id;
+  });
+
+  return { labelIds, userIds };
+}
+
+function normalizeGlobalId(value: string, typeName: string): string {
+  return value.startsWith("gid://") ? value : `gid://gitlab/${typeName}/${value}`;
+}
+
+function toWorkItemGraphqlType(type: WorkItemType): string {
+  return WORK_ITEM_GRAPHQL_TYPES[type] ?? type.replace(/ /g, "_").toUpperCase();
+}
+
+function workItemTypeName(type: WorkItemType): string {
+  return WORK_ITEM_TYPE_NAMES[type] ?? "Issue";
+}
+
+function findWidget(widgets: unknown, typename: string): Record<string, any> | undefined {
+  if (!Array.isArray(widgets)) {
+    return undefined;
+  }
+  return widgets.find(
+    (item): item is Record<string, any> =>
+      typeof item === "object" && item !== null && item.__typename === typename
+  );
+}
+
+async function getWorkItem(context: AppContext, projectId: string, iid: number): Promise<unknown> {
+  const projectPath = await resolveProjectPathForWorkItem(context, projectId);
+  const data = await executeGraphqlData<{
+    namespace?: { workItem?: Record<string, any> | null } | null;
+  }>(
+    context,
+    `query($path: ID!, $iid: String!) {
+      namespace(fullPath: $path) {
+        workItem(iid: $iid) {
+          id
+          iid
+          title
+          state
+          description
+          webUrl
+          confidential
+          author { username }
+          createdAt
+          closedAt
+          workItemType { name }
+          widgets {
+            __typename
+            ... on WorkItemWidgetHierarchy {
+              hasChildren
+              hasParent
+              parent { id iid title webUrl workItemType { name } namespace { fullPath } }
+              children { nodes { id iid title state webUrl workItemType { name } namespace { fullPath } } }
+            }
+            ... on WorkItemWidgetStatus { status { id name category color iconName position } }
+            ... on WorkItemWidgetCustomFields {
+              customFieldValues {
+                __typename
+                customField { id name fieldType }
+                ... on WorkItemNumberFieldValue { value }
+                ... on WorkItemTextFieldValue { value }
+                ... on WorkItemSelectFieldValue { selectedOptions { id value } }
+              }
+            }
+            ... on WorkItemWidgetLabels { labels { nodes { id title color } } }
+            ... on WorkItemWidgetAssignees { assignees { nodes { id username name } } }
+            ... on WorkItemWidgetWeight { weight rolledUpWeight rolledUpCompletedWeight }
+            ... on WorkItemWidgetHealthStatus { healthStatus }
+            ... on WorkItemWidgetStartAndDueDate { startDate dueDate }
+            ... on WorkItemWidgetMilestone { milestone { id title } }
+            ... on WorkItemWidgetLinkedItems {
+              blocked
+              blockedByCount
+              blockingCount
+              linkedItems { nodes { linkType workItem { id iid title state webUrl workItemType { name } namespace { fullPath } } } }
+            }
+            ... on WorkItemWidgetTimeTracking { timeEstimate totalTimeSpent }
+            ... on WorkItemWidgetDevelopment {
+              willAutoCloseByMergeRequest
+              relatedBranches { nodes { name } }
+              relatedMergeRequests { nodes { iid title webUrl state sourceBranch } }
+              closingMergeRequests { nodes { mergeRequest { iid title webUrl state sourceBranch } } }
+              featureFlags { nodes { name active } }
+            }
+            ... on WorkItemWidgetIteration {
+              iteration { id title startDate dueDate webUrl iterationCadence { id title } }
+            }
+            ... on WorkItemWidgetProgress { progress }
+            ... on WorkItemWidgetColor { color textColor }
+          }
+        }
+      }
+    }`,
+    { path: projectPath, iid: String(iid) }
+  );
+  const workItem = data.namespace?.workItem;
+
+  if (!workItem) {
+    throw new Error(`Work item #${iid} not found in project ${projectPath}`);
+  }
+
+  return flattenWorkItem(workItem);
+}
+
+function flattenWorkItem(workItem: Record<string, any>): Record<string, any> {
+  const widgets = workItem.widgets ?? [];
+  const hierarchy = findWidget(widgets, "WorkItemWidgetHierarchy");
+  const status = findWidget(widgets, "WorkItemWidgetStatus");
+  const labels = findWidget(widgets, "WorkItemWidgetLabels");
+  const assignees = findWidget(widgets, "WorkItemWidgetAssignees");
+  const weight = findWidget(widgets, "WorkItemWidgetWeight");
+  const health = findWidget(widgets, "WorkItemWidgetHealthStatus");
+  const dates = findWidget(widgets, "WorkItemWidgetStartAndDueDate");
+  const milestone = findWidget(widgets, "WorkItemWidgetMilestone");
+  const linked = findWidget(widgets, "WorkItemWidgetLinkedItems");
+  const timeTracking = findWidget(widgets, "WorkItemWidgetTimeTracking");
+  const development = findWidget(widgets, "WorkItemWidgetDevelopment");
+  const customFields = findWidget(widgets, "WorkItemWidgetCustomFields");
+  const iteration = findWidget(widgets, "WorkItemWidgetIteration");
+  const progress = findWidget(widgets, "WorkItemWidgetProgress");
+  const color = findWidget(widgets, "WorkItemWidgetColor");
+  const result: Record<string, any> = {
+    id: workItem.id,
+    iid: workItem.iid,
+    title: workItem.title,
+    state: workItem.state,
+    type: workItem.workItemType?.name,
+    webUrl: workItem.webUrl
+  };
+
+  if (workItem.description) result.description = workItem.description;
+  if (workItem.confidential) result.confidential = true;
+  if (workItem.author?.username) result.author = workItem.author.username;
+  if (workItem.createdAt) result.createdAt = workItem.createdAt;
+  if (workItem.closedAt) result.closedAt = workItem.closedAt;
+  if (status?.status) {
+    result.status = {
+      id: status.status.id,
+      name: status.status.name,
+      category: status.status.category
+    };
+  }
+
+  const labelNames = (labels?.labels?.nodes ?? []).map((item: any) => item.title);
+  if (labelNames.length > 0) result.labels = labelNames;
+
+  const assigneeNames = (assignees?.assignees?.nodes ?? []).map((item: any) => item.username);
+  if (assigneeNames.length > 0) result.assignees = assigneeNames;
+
+  if (weight?.weight != null) {
+    result.weight = weight.weight;
+    if (weight.rolledUpWeight != null) result.rolledUpWeight = weight.rolledUpWeight;
+    if (weight.rolledUpCompletedWeight != null) {
+      result.rolledUpCompletedWeight = weight.rolledUpCompletedWeight;
+    }
+  }
+  if (health?.healthStatus) result.healthStatus = health.healthStatus;
+  if (dates?.startDate) result.startDate = dates.startDate;
+  if (dates?.dueDate) result.dueDate = dates.dueDate;
+  if (milestone?.milestone) result.milestone = milestone.milestone;
+  if (iteration?.iteration) result.iteration = iteration.iteration;
+  if (progress?.progress != null) result.progress = progress.progress;
+  if (color?.color) result.color = color.color;
+
+  if (hierarchy?.parent) {
+    result.parent = {
+      iid: hierarchy.parent.iid,
+      title: hierarchy.parent.title,
+      type: hierarchy.parent.workItemType?.name,
+      project: hierarchy.parent.namespace?.fullPath,
+      webUrl: hierarchy.parent.webUrl
+    };
+  }
+  const children = hierarchy?.children?.nodes ?? [];
+  if (children.length > 0) {
+    result.children = children.map((item: any) => ({
+      iid: item.iid,
+      title: item.title,
+      state: item.state,
+      type: item.workItemType?.name,
+      project: item.namespace?.fullPath,
+      webUrl: item.webUrl
+    }));
+  }
+
+  if (linked?.blocked) result.blocked = true;
+  if ((linked?.blockedByCount ?? 0) > 0) result.blockedByCount = linked?.blockedByCount;
+  if ((linked?.blockingCount ?? 0) > 0) result.blockingCount = linked?.blockingCount;
+  const linkedItems = linked?.linkedItems?.nodes ?? [];
+  if (linkedItems.length > 0) {
+    result.linkedItems = linkedItems.map((item: any) => ({
+      linkType: item.linkType,
+      iid: item.workItem?.iid,
+      title: item.workItem?.title,
+      state: item.workItem?.state,
+      type: item.workItem?.workItemType?.name,
+      project: item.workItem?.namespace?.fullPath,
+      webUrl: item.workItem?.webUrl
+    }));
+  }
+
+  if ((timeTracking?.timeEstimate ?? 0) > 0) result.timeEstimate = timeTracking?.timeEstimate;
+  if ((timeTracking?.totalTimeSpent ?? 0) > 0) {
+    result.totalTimeSpent = timeTracking?.totalTimeSpent;
+  }
+
+  const relatedMergeRequests = development?.relatedMergeRequests?.nodes ?? [];
+  const closingMergeRequests = (development?.closingMergeRequests?.nodes ?? []).map(
+    (item: any) => item.mergeRequest
+  );
+  const branches = development?.relatedBranches?.nodes ?? [];
+  const flags = development?.featureFlags?.nodes ?? [];
+  if (
+    relatedMergeRequests.length > 0 ||
+    closingMergeRequests.length > 0 ||
+    branches.length > 0 ||
+    flags.length > 0
+  ) {
+    result.development = {};
+    if (relatedMergeRequests.length > 0) {
+      result.development.relatedMergeRequests = relatedMergeRequests;
+    }
+    if (closingMergeRequests.length > 0) {
+      result.development.closingMergeRequests = closingMergeRequests;
+    }
+    if (branches.length > 0) {
+      result.development.relatedBranches = branches.map((item: any) => item.name);
+    }
+    if (flags.length > 0) result.development.featureFlags = flags;
+  }
+
+  const fieldValues = (customFields?.customFieldValues ?? []).filter(
+    (item: any) => item.value != null || item.selectedOptions != null
+  );
+  if (fieldValues.length > 0) {
+    result.customFields = fieldValues.map((item: any) => ({
+      name: item.customField?.name,
+      type: item.customField?.fieldType,
+      value: item.value ?? item.selectedOptions ?? null
+    }));
+  }
+
+  return result;
+}
+
+async function listWorkItems(
+  context: AppContext,
+  projectId: string,
+  options: {
+    types?: WorkItemType[];
+    state?: "opened" | "closed";
+    search?: string;
+    assigneeUsernames?: string[];
+    labelNames?: string[];
+    first?: number;
+    after?: string;
+  }
+): Promise<unknown> {
+  const projectPath = await resolveProjectPathForWorkItem(context, projectId);
+  const variables: Record<string, unknown> = {
+    path: projectPath,
+    first: options.first ?? 20,
+    types: options.types?.map(toWorkItemGraphqlType),
+    state: options.state,
+    search: options.search,
+    assigneeUsernames: options.assigneeUsernames,
+    labelName: options.labelNames,
+    after: options.after
+  };
+  const data = await executeGraphqlData<{ project?: { workItems?: Record<string, any> } }>(
+    context,
+    `query($path: ID!, $types: [IssueType!], $state: IssuableState, $search: String, $assigneeUsernames: [String!], $labelName: [String!], $first: Int, $after: String) {
+      project(fullPath: $path) {
+        workItems(types: $types, state: $state, search: $search, assigneeUsernames: $assigneeUsernames, labelName: $labelName, first: $first, after: $after) {
+          nodes {
+            id iid title state webUrl workItemType { name }
+            widgets {
+              __typename
+              ... on WorkItemWidgetStatus { status { id name category color } }
+              ... on WorkItemWidgetLabels { labels { nodes { title } } }
+              ... on WorkItemWidgetAssignees { assignees { nodes { username } } }
+              ... on WorkItemWidgetWeight { weight }
+              ... on WorkItemWidgetHealthStatus { healthStatus }
+              ... on WorkItemWidgetStartAndDueDate { startDate dueDate }
+              ... on WorkItemWidgetMilestone { milestone { id title } }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }`,
+    variables
+  );
+  const nodes = data.project?.workItems?.nodes ?? [];
+
+  return {
+    items: nodes.map(flattenWorkItemSummary),
+    pageInfo: data.project?.workItems?.pageInfo ?? {}
+  };
+}
+
+function flattenWorkItemSummary(workItem: Record<string, any>): Record<string, any> {
+  const widgets = workItem.widgets ?? [];
+  const status = findWidget(widgets, "WorkItemWidgetStatus");
+  const labels = findWidget(widgets, "WorkItemWidgetLabels");
+  const assignees = findWidget(widgets, "WorkItemWidgetAssignees");
+  const weight = findWidget(widgets, "WorkItemWidgetWeight");
+  const health = findWidget(widgets, "WorkItemWidgetHealthStatus");
+  const dates = findWidget(widgets, "WorkItemWidgetStartAndDueDate");
+  const milestone = findWidget(widgets, "WorkItemWidgetMilestone");
+  const item: Record<string, any> = {
+    iid: workItem.iid,
+    title: workItem.title,
+    state: workItem.state,
+    type: workItem.workItemType?.name,
+    webUrl: workItem.webUrl
+  };
+
+  if (status?.status) item.status = status.status.name;
+  const labelNames = (labels?.labels?.nodes ?? []).map((label: any) => label.title);
+  if (labelNames.length > 0) item.labels = labelNames;
+  const assigneeNames = (assignees?.assignees?.nodes ?? []).map(
+    (assignee: any) => assignee.username
+  );
+  if (assigneeNames.length > 0) item.assignees = assigneeNames;
+  if (weight?.weight != null) item.weight = weight.weight;
+  if (health?.healthStatus) item.healthStatus = health.healthStatus;
+  if (dates?.startDate) item.startDate = dates.startDate;
+  if (dates?.dueDate) item.dueDate = dates.dueDate;
+  if (milestone?.milestone) item.milestone = milestone.milestone.title;
+
+  return item;
+}
+
+async function createWorkItem(
+  context: AppContext,
+  projectId: string,
+  options: WorkItemCreateOptions
+): Promise<unknown> {
+  const projectPath = await resolveProjectPathForWorkItem(context, projectId);
+  const typeId = await resolveWorkItemTypeGid(context, projectPath, options.type ?? "issue");
+  const variableDefinitions = ["$projectPath: ID!", "$title: String!", "$typeId: WorkItemsTypeID!"];
+  const inputParts = ["namespacePath: $projectPath", "title: $title", "workItemTypeId: $typeId"];
+  const variables: Record<string, unknown> = {
+    projectPath,
+    title: options.title,
+    typeId
+  };
+
+  if (options.description !== undefined) {
+    variableDefinitions.push("$description: String!");
+    inputParts.push("descriptionWidget: { description: $description }");
+    variables.description = options.description;
+  }
+
+  const { labelIds, userIds } = await resolveNamesToIds(
+    context,
+    projectPath,
+    options.labels,
+    options.assigneeUsernames
+  );
+  if (labelIds.length > 0) {
+    variableDefinitions.push("$labelIds: [LabelID!]!");
+    inputParts.push("labelsWidget: { labelIds: $labelIds }");
+    variables.labelIds = labelIds;
+  }
+  if (userIds.length > 0) {
+    variableDefinitions.push("$assigneeIds: [UserID!]!");
+    inputParts.push("assigneesWidget: { assigneeIds: $assigneeIds }");
+    variables.assigneeIds = userIds;
+  }
+  if (options.weight !== undefined) {
+    variableDefinitions.push("$weight: Int");
+    inputParts.push("weightWidget: { weight: $weight }");
+    variables.weight = options.weight;
+  }
+  if (options.parentIid !== undefined) {
+    const { workItemGid: parentId } = await resolveWorkItemGid(
+      context,
+      projectId,
+      options.parentIid
+    );
+    variableDefinitions.push("$parentId: WorkItemID");
+    inputParts.push("hierarchyWidget: { parentId: $parentId }");
+    variables.parentId = parentId;
+  }
+  if (options.healthStatus !== undefined) {
+    variableDefinitions.push("$healthStatus: HealthStatus");
+    inputParts.push("healthStatusWidget: { healthStatus: $healthStatus }");
+    variables.healthStatus = options.healthStatus;
+  }
+  appendDateWidget(variableDefinitions, inputParts, variables, options.startDate, options.dueDate);
+  if (options.milestoneId !== undefined) {
+    variableDefinitions.push("$milestoneId: MilestoneID");
+    inputParts.push("milestoneWidget: { milestoneId: $milestoneId }");
+    variables.milestoneId = normalizeGlobalId(options.milestoneId, "Milestone");
+  }
+  if (options.iterationId !== undefined) {
+    variableDefinitions.push("$iterationId: IterationID");
+    inputParts.push("iterationWidget: { iterationId: $iterationId }");
+    variables.iterationId = normalizeGlobalId(options.iterationId, "Iteration");
+  }
+  if (options.confidential !== undefined) {
+    variableDefinitions.push("$confidential: Boolean");
+    inputParts.push("confidential: $confidential");
+    variables.confidential = options.confidential;
+  }
+
+  const data = await executeGraphqlData<{
+    workItemCreate: { workItem?: Record<string, any> | null; errors?: string[] };
+  }>(
+    context,
+    `mutation(${variableDefinitions.join(", ")}) {
+      workItemCreate(input: { ${inputParts.join(", ")} }) {
+        workItem { id iid title webUrl workItemType { name } }
+        errors
+      }
+    }`,
+    variables
+  );
+  assertNoGraphqlMutationErrors(data.workItemCreate?.errors, "Failed to create work item");
+  const workItem = data.workItemCreate.workItem;
+
+  return {
+    id: workItem?.id,
+    iid: workItem?.iid,
+    title: workItem?.title,
+    type: workItem?.workItemType?.name,
+    webUrl: workItem?.webUrl
+  };
+}
+
+function appendDateWidget(
+  variableDefinitions: string[],
+  inputParts: string[],
+  variables: Record<string, unknown>,
+  startDate?: string,
+  dueDate?: string
+): void {
+  if (startDate === undefined && dueDate === undefined) {
+    return;
+  }
+  const dateParts: string[] = [];
+  if (startDate !== undefined) {
+    variableDefinitions.push("$startDate: Date");
+    dateParts.push("startDate: $startDate");
+    variables.startDate = startDate;
+  }
+  if (dueDate !== undefined) {
+    variableDefinitions.push("$dueDate: Date");
+    dateParts.push("dueDate: $dueDate");
+    variables.dueDate = dueDate;
+  }
+  inputParts.push(`startAndDueDateWidget: { ${dateParts.join(", ")} }`);
+}
+
+async function updateWorkItem(
+  context: AppContext,
+  projectId: string,
+  iid: number,
+  options: WorkItemUpdateOptions
+): Promise<unknown> {
+  const { workItemGid, projectPath } = await resolveWorkItemGid(context, projectId, iid);
+  const variableDefinitions = ["$id: WorkItemID!"];
+  const inputParts = ["id: $id"];
+  const variables: Record<string, unknown> = { id: workItemGid };
+
+  if (options.title !== undefined) {
+    variableDefinitions.push("$title: String");
+    inputParts.push("title: $title");
+    variables.title = options.title;
+  }
+  if (options.description !== undefined) {
+    variableDefinitions.push("$description: String!");
+    inputParts.push("descriptionWidget: { description: $description }");
+    variables.description = options.description;
+  }
+
+  const allLabelNames = [...(options.addLabels ?? []), ...(options.removeLabels ?? [])];
+  const needsNameResolution = allLabelNames.length > 0 || !!options.assigneeUsernames?.length;
+  const { labelIds, userIds } = needsNameResolution
+    ? await resolveNamesToIds(
+        context,
+        projectPath,
+        allLabelNames.length > 0 ? allLabelNames : undefined,
+        options.assigneeUsernames
+      )
+    : { labelIds: [], userIds: [] };
+
+  if (options.addLabels || options.removeLabels) {
+    const labelParts: string[] = [];
+    if (options.addLabels && options.addLabels.length > 0) {
+      variableDefinitions.push("$addLabelIds: [LabelID!]");
+      labelParts.push("addLabelIds: $addLabelIds");
+      variables.addLabelIds = labelIds.slice(0, options.addLabels.length);
+    }
+    if (options.removeLabels && options.removeLabels.length > 0) {
+      variableDefinitions.push("$removeLabelIds: [LabelID!]");
+      labelParts.push("removeLabelIds: $removeLabelIds");
+      variables.removeLabelIds = labelIds.slice(options.addLabels?.length ?? 0);
+    }
+    if (labelParts.length > 0) inputParts.push(`labelsWidget: { ${labelParts.join(", ")} }`);
+  }
+
+  if (userIds.length > 0) {
+    variableDefinitions.push("$assigneeIds: [UserID!]!");
+    inputParts.push("assigneesWidget: { assigneeIds: $assigneeIds }");
+    variables.assigneeIds = userIds;
+  }
+  if (options.stateEvent !== undefined) {
+    variableDefinitions.push("$stateEvent: WorkItemStateEvent");
+    inputParts.push("stateEvent: $stateEvent");
+    variables.stateEvent = options.stateEvent === "close" ? "CLOSE" : "REOPEN";
+  }
+  if (options.weight !== undefined) {
+    variableDefinitions.push("$weight: Int");
+    inputParts.push("weightWidget: { weight: $weight }");
+    variables.weight = options.weight;
+  }
+  if (options.status !== undefined) {
+    variableDefinitions.push("$status: WorkItemsStatusesStatusID");
+    inputParts.push("statusWidget: { status: $status }");
+    variables.status = options.status;
+  }
+  if (options.healthStatus !== undefined) {
+    variableDefinitions.push("$healthStatus: HealthStatus");
+    inputParts.push("healthStatusWidget: { healthStatus: $healthStatus }");
+    variables.healthStatus = options.healthStatus;
+  }
+  appendDateWidget(variableDefinitions, inputParts, variables, options.startDate, options.dueDate);
+  if (options.milestoneId !== undefined) {
+    variableDefinitions.push("$milestoneId: MilestoneID");
+    inputParts.push("milestoneWidget: { milestoneId: $milestoneId }");
+    variables.milestoneId = normalizeGlobalId(options.milestoneId, "Milestone");
+  }
+  if (options.iterationId !== undefined) {
+    variableDefinitions.push("$iterationId: IterationID");
+    inputParts.push("iterationWidget: { iterationId: $iterationId }");
+    variables.iterationId = normalizeGlobalId(options.iterationId, "Iteration");
+  }
+  if (options.confidential !== undefined) {
+    variableDefinitions.push("$confidential: Boolean");
+    inputParts.push("confidential: $confidential");
+    variables.confidential = options.confidential;
+  }
+  if (options.customFields && options.customFields.length > 0) {
+    variableDefinitions.push("$customFieldsWidget: [WorkItemWidgetCustomFieldValueInputType!]");
+    inputParts.push("customFieldsWidget: $customFieldsWidget");
+    variables.customFieldsWidget = options.customFields.map((field) => ({
+      customFieldId: normalizeGlobalId(field.custom_field_id, "IssuablesCustomField"),
+      textValue: field.text_value,
+      numberValue: field.number_value,
+      selectedOptionIds: field.selected_option_ids,
+      dateValue: field.date_value
+    }));
+  }
+  if (options.removeParent) {
+    inputParts.push("hierarchyWidget: { parentId: null }");
+  } else if (options.parentIid !== undefined) {
+    const parentProjectId = options.parentProjectId ?? projectId;
+    const { workItemGid: parentId } = await resolveWorkItemGid(
+      context,
+      parentProjectId,
+      options.parentIid
+    );
+    variableDefinitions.push("$parentId: WorkItemID");
+    inputParts.push("hierarchyWidget: { parentId: $parentId }");
+    variables.parentId = parentId;
+  }
+
+  const data = await executeGraphqlData<{
+    workItemUpdate: { workItem?: Record<string, any> | null; errors?: string[] };
+  }>(
+    context,
+    `mutation(${variableDefinitions.join(", ")}) {
+      workItemUpdate(input: { ${inputParts.join(", ")} }) {
+        workItem {
+          id iid title state webUrl workItemType { name }
+          widgets {
+            __typename
+            ... on WorkItemWidgetStatus { status { id name category color } }
+            ... on WorkItemWidgetLabels { labels { nodes { title } } }
+            ... on WorkItemWidgetAssignees { assignees { nodes { username } } }
+            ... on WorkItemWidgetWeight { weight }
+            ... on WorkItemWidgetHierarchy { parent { id title workItemType { name } } }
+            ... on WorkItemWidgetHealthStatus { healthStatus }
+            ... on WorkItemWidgetStartAndDueDate { startDate dueDate }
+            ... on WorkItemWidgetMilestone { milestone { id title } }
+          }
+        }
+        errors
+      }
+    }`,
+    variables
+  );
+  assertNoGraphqlMutationErrors(data.workItemUpdate?.errors, "Failed to update work item");
+
+  await updateWorkItemRelationships(context, workItemGid, options);
+  if (options.severity !== undefined) {
+    await updateIncidentSeverity(context, projectPath, iid, options.severity);
+  }
+  if (options.escalationStatus !== undefined) {
+    await updateIncidentEscalationStatus(context, projectPath, iid, options.escalationStatus);
+  }
+
+  const workItem = data.workItemUpdate.workItem ?? {};
+  return {
+    ...flattenWorkItemSummary(workItem),
+    id: workItem.id,
+    children_added: options.childrenToAdd?.length ?? 0,
+    children_removed: options.childrenToRemove?.length ?? 0,
+    linked_items_added: options.linkedItemsToAdd?.length ?? 0,
+    linked_items_removed: options.linkedItemsToRemove?.length ?? 0,
+    ...(options.severity !== undefined ? { severity: options.severity } : {}),
+    ...(options.escalationStatus !== undefined
+      ? { escalation_status: options.escalationStatus }
+      : {})
+  };
+}
+
+async function updateWorkItemRelationships(
+  context: AppContext,
+  workItemGid: string,
+  options: WorkItemUpdateOptions
+): Promise<void> {
+  if (options.childrenToAdd && options.childrenToAdd.length > 0) {
+    const childIds = [];
+    for (const child of options.childrenToAdd) {
+      const { workItemGid: childId } = await resolveWorkItemGid(
+        context,
+        child.project_id,
+        child.iid
+      );
+      childIds.push(childId);
+    }
+    const data = await executeGraphqlData<{ workItemUpdate: { errors?: string[] } }>(
+      context,
+      `mutation($id: WorkItemID!, $childrenIds: [WorkItemID!]!) {
+        workItemUpdate(input: { id: $id, hierarchyWidget: { childrenIds: $childrenIds } }) {
+          errors
+        }
+      }`,
+      { id: workItemGid, childrenIds: childIds }
+    );
+    assertNoGraphqlMutationErrors(data.workItemUpdate?.errors, "Failed to add children");
+  }
+
+  if (options.childrenToRemove) {
+    for (const child of options.childrenToRemove) {
+      await removeWorkItemParent(context, child.project_id, child.iid);
+    }
+  }
+
+  if (options.linkedItemsToAdd && options.linkedItemsToAdd.length > 0) {
+    const grouped: Record<string, string[]> = {};
+    for (const item of options.linkedItemsToAdd) {
+      const linkType = item.link_type ?? "RELATED";
+      const { workItemGid: targetId } = await resolveWorkItemGid(
+        context,
+        item.project_id,
+        item.iid
+      );
+      grouped[linkType] = [...(grouped[linkType] ?? []), targetId];
+    }
+    for (const [linkType, targetIds] of Object.entries(grouped)) {
+      const data = await executeGraphqlData<{ workItemAddLinkedItems: { errors?: string[] } }>(
+        context,
+        `mutation($id: WorkItemID!, $workItemsIds: [WorkItemID!]!, $linkType: WorkItemRelatedLinkType!) {
+          workItemAddLinkedItems(input: { id: $id, workItemsIds: $workItemsIds, linkType: $linkType }) {
+            errors
+          }
+        }`,
+        { id: workItemGid, workItemsIds: targetIds, linkType }
+      );
+      assertNoGraphqlMutationErrors(
+        data.workItemAddLinkedItems?.errors,
+        "Failed to add linked items"
+      );
+    }
+  }
+
+  if (options.linkedItemsToRemove && options.linkedItemsToRemove.length > 0) {
+    const targetIds = [];
+    for (const item of options.linkedItemsToRemove) {
+      const { workItemGid: targetId } = await resolveWorkItemGid(
+        context,
+        item.project_id,
+        item.iid
+      );
+      targetIds.push(targetId);
+    }
+    const data = await executeGraphqlData<{ workItemRemoveLinkedItems: { errors?: string[] } }>(
+      context,
+      `mutation($id: WorkItemID!, $workItemsIds: [WorkItemID!]!) {
+        workItemRemoveLinkedItems(input: { id: $id, workItemsIds: $workItemsIds }) { errors }
+      }`,
+      { id: workItemGid, workItemsIds: targetIds }
+    );
+    assertNoGraphqlMutationErrors(
+      data.workItemRemoveLinkedItems?.errors,
+      "Failed to remove linked items"
+    );
+  }
+}
+
+async function removeWorkItemParent(
+  context: AppContext,
+  projectId: string,
+  iid: number
+): Promise<void> {
+  const { workItemGid } = await resolveWorkItemGid(context, projectId, iid);
+  const data = await executeGraphqlData<{ workItemUpdate: { errors?: string[] } }>(
+    context,
+    `mutation($id: WorkItemID!) {
+      workItemUpdate(input: { id: $id, hierarchyWidget: { parentId: null } }) { errors }
+    }`,
+    { id: workItemGid }
+  );
+  assertNoGraphqlMutationErrors(data.workItemUpdate?.errors, "Failed to remove parent");
+}
+
+async function convertWorkItemType(
+  context: AppContext,
+  projectId: string,
+  iid: number,
+  newType: WorkItemType
+): Promise<unknown> {
+  const { workItemGid, projectPath } = await resolveWorkItemGid(context, projectId, iid);
+  const typeId = await resolveWorkItemTypeGid(context, projectPath, newType);
+  const data = await executeGraphqlData<{
+    workItemConvert: {
+      workItem?: { id: string; workItemType?: { name?: string } } | null;
+      errors?: string[];
+    };
+  }>(
+    context,
+    `mutation($id: WorkItemID!, $typeId: WorkItemsTypeID!) {
+      workItemConvert(input: { id: $id, workItemTypeId: $typeId }) {
+        workItem { id workItemType { name } }
+        errors
+      }
+    }`,
+    { id: workItemGid, typeId }
+  );
+  assertNoGraphqlMutationErrors(data.workItemConvert?.errors, "Conversion failed");
+  return {
+    id: data.workItemConvert.workItem?.id,
+    type: data.workItemConvert.workItem?.workItemType?.name
+  };
+}
+
+async function listWorkItemStatuses(
+  context: AppContext,
+  projectId: string,
+  type: WorkItemType
+): Promise<unknown> {
+  const projectPath = await resolveProjectPathForWorkItem(context, projectId);
+  const typeName = workItemTypeName(type);
+  const data = await executeGraphqlData<{
+    namespace?: {
+      workItemTypes?: {
+        nodes?: Array<{
+          name: string;
+          supportedConversionTypes?: Array<{ id: string; name: string }>;
+          widgetDefinitions?: Array<Record<string, any>>;
+        }>;
+      };
+    };
+  }>(
+    context,
+    `query($path: ID!, $typeName: IssueType) {
+      namespace(fullPath: $path) {
+        workItemTypes(name: $typeName) {
+          nodes {
+            id
+            name
+            supportedConversionTypes { id name }
+            widgetDefinitions {
+              __typename
+              ... on WorkItemWidgetDefinitionStatus {
+                allowedStatuses { id name iconName color position }
+              }
+              ... on WorkItemWidgetDefinitionHierarchy {
+                allowedChildTypes { nodes { id name } }
+                allowedParentTypes { nodes { id name } }
+              }
+            }
+          }
+        }
+      }
+    }`,
+    { path: projectPath, typeName: typeName.replace(/ /g, "_").toUpperCase() }
+  );
+  const typeNode = data.namespace?.workItemTypes?.nodes?.[0];
+  if (!typeNode) {
+    throw new Error(`Work item type '${typeName}' not found in project ${projectPath}`);
+  }
+
+  const statusWidget = typeNode.widgetDefinitions?.find(
+    (widget) => widget.__typename === "WorkItemWidgetDefinitionStatus"
+  );
+  const hierarchyWidget = typeNode.widgetDefinitions?.find(
+    (widget) => widget.__typename === "WorkItemWidgetDefinitionHierarchy"
+  );
+
+  return {
+    work_item_type: typeNode.name,
+    statuses_available: (statusWidget?.allowedStatuses ?? []).length > 0,
+    statuses: statusWidget?.allowedStatuses ?? [],
+    supported_conversion_types: (typeNode.supportedConversionTypes ?? []).map((item) => item.name),
+    allowed_child_types: (hierarchyWidget?.allowedChildTypes?.nodes ?? []).map(
+      (item: any) => item.name
+    ),
+    allowed_parent_types: (hierarchyWidget?.allowedParentTypes?.nodes ?? []).map(
+      (item: any) => item.name
+    )
+  };
+}
+
+async function listCustomFieldDefinitions(
+  context: AppContext,
+  projectId: string,
+  type: WorkItemType
+): Promise<unknown> {
+  const projectPath = await resolveProjectPathForWorkItem(context, projectId);
+  const typeName = workItemTypeName(type);
+  const data = await executeGraphqlData<{
+    namespace?: { workItemTypes?: { nodes?: Array<{ name: string; widgetDefinitions?: any[] }> } };
+  }>(
+    context,
+    `query($path: ID!, $typeName: IssueType) {
+      namespace(fullPath: $path) {
+        workItemTypes(name: $typeName) {
+          nodes {
+            id
+            name
+            widgetDefinitions {
+              __typename
+              ... on WorkItemWidgetDefinitionCustomFields {
+                customFieldValues {
+                  customField {
+                    id
+                    name
+                    fieldType
+                    selectOptions { id value }
+                    workItemTypes { id name }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }`,
+    { path: projectPath, typeName: typeName.replace(/ /g, "_").toUpperCase() }
+  );
+  const typeNode = data.namespace?.workItemTypes?.nodes?.[0];
+  if (!typeNode) {
+    throw new Error(`Work item type '${typeName}' not found in project ${projectPath}`);
+  }
+  const widget = typeNode.widgetDefinitions?.find(
+    (item) => item.__typename === "WorkItemWidgetDefinitionCustomFields"
+  );
+
+  return {
+    work_item_type: typeNode.name,
+    custom_fields: (widget?.customFieldValues ?? []).map((item: any) => {
+      const field = item.customField ?? {};
+      return {
+        id: field.id,
+        name: field.name,
+        type: field.fieldType,
+        ...(field.selectOptions?.length ? { selectOptions: field.selectOptions } : {}),
+        ...(field.workItemTypes?.length
+          ? { workItemTypes: field.workItemTypes.map((workItemType: any) => workItemType.name) }
+          : {})
+      };
+    })
+  };
+}
+
+async function moveWorkItem(
+  context: AppContext,
+  projectId: string,
+  iid: number,
+  targetProjectId: string
+): Promise<unknown> {
+  const projectPath = await resolveProjectPathForWorkItem(context, projectId);
+  const targetProjectPath = await resolveProjectPathForWorkItem(context, targetProjectId);
+  const data = await executeGraphqlData<{
+    issueMove: { issue?: Record<string, unknown> | null; errors?: string[] };
+  }>(
+    context,
+    `mutation($projectPath: ID!, $iid: String!, $targetProjectPath: ID!) {
+      issueMove(input: { projectPath: $projectPath, iid: $iid, targetProjectPath: $targetProjectPath }) {
+        issue { id iid webUrl }
+        errors
+      }
+    }`,
+    { projectPath, iid: String(iid), targetProjectPath }
+  );
+  assertNoGraphqlMutationErrors(data.issueMove?.errors, "Failed to move work item");
+  return data.issueMove.issue;
+}
+
+async function listWorkItemNotes(
+  context: AppContext,
+  projectId: string,
+  iid: number,
+  options: { pageSize?: number; after?: string; sort?: string }
+): Promise<unknown> {
+  const projectPath = await resolveProjectPathForWorkItem(context, projectId);
+  const data = await executeGraphqlData<{ namespace?: { workItem?: Record<string, any> | null } }>(
+    context,
+    `query($path: ID!, $iid: String!, $pageSize: Int, $after: String, $sort: WorkItemDiscussionsSort) {
+      namespace(fullPath: $path) {
+        workItem(iid: $iid) {
+          id
+          widgets(onlyTypes: [NOTES]) {
+            ... on WorkItemWidgetNotes {
+              discussionLocked
+              discussions(first: $pageSize, after: $after, filter: ALL_NOTES, sort: $sort) {
+                pageInfo { hasNextPage endCursor }
+                nodes {
+                  id
+                  resolved
+                  resolvable
+                  notes {
+                    nodes {
+                      id
+                      body
+                      system
+                      internal
+                      createdAt
+                      lastEditedAt
+                      author { username }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }`,
+    {
+      path: projectPath,
+      iid: String(iid),
+      pageSize: options.pageSize ?? 20,
+      after: options.after ?? null,
+      sort: options.sort ?? "CREATED_ASC"
+    }
+  );
+  const workItem = data.namespace?.workItem;
+  if (!workItem) {
+    throw new Error(`Work item #${iid} not found in project ${projectPath}`);
+  }
+  const notesWidget = (workItem.widgets ?? []).find((widget: any) => widget.discussions);
+  const discussions = notesWidget?.discussions;
+
+  return {
+    discussions: (discussions?.nodes ?? []).map((discussion: any) => ({
+      id: discussion.id,
+      resolved: discussion.resolved,
+      resolvable: discussion.resolvable,
+      notes: (discussion.notes?.nodes ?? []).map((note: any) => ({
+        id: note.id,
+        author: note.author?.username,
+        body: note.body,
+        createdAt: note.createdAt,
+        ...(note.system ? { system: true } : {}),
+        ...(note.internal ? { internal: true } : {}),
+        ...(note.lastEditedAt ? { lastEditedAt: note.lastEditedAt } : {})
+      }))
+    })),
+    pageInfo: discussions?.pageInfo ?? {}
+  };
+}
+
+async function createWorkItemNote(
+  context: AppContext,
+  projectId: string,
+  iid: number,
+  body: string,
+  options: { internal?: boolean; discussionId?: string }
+): Promise<unknown> {
+  const { workItemGid } = await resolveWorkItemGid(context, projectId, iid);
+  const variableDefinitions = ["$noteableId: NoteableID!", "$body: String!"];
+  const inputParts = ["noteableId: $noteableId", "body: $body"];
+  const variables: Record<string, unknown> = { noteableId: workItemGid, body };
+
+  if (options.internal) {
+    variableDefinitions.push("$internal: Boolean");
+    inputParts.push("internal: $internal");
+    variables.internal = true;
+  }
+  if (options.discussionId) {
+    variableDefinitions.push("$discussionId: DiscussionID");
+    inputParts.push("discussionId: $discussionId");
+    variables.discussionId = options.discussionId;
+  }
+
+  const data = await executeGraphqlData<{
+    createNote: {
+      note?: { id: string; body: string; discussion?: { id: string } } | null;
+      errors?: string[];
+    };
+  }>(
+    context,
+    `mutation(${variableDefinitions.join(", ")}) {
+      createNote(input: { ${inputParts.join(", ")} }) {
+        note { id body discussion { id } }
+        errors
+      }
+    }`,
+    variables
+  );
+  assertNoGraphqlMutationErrors(data.createNote?.errors, "Failed to create note");
+  return data.createNote.note;
+}
+
+async function getTimelineEvents(
+  context: AppContext,
+  projectId: string,
+  incidentIid: number
+): Promise<unknown> {
+  const { workItemGid, projectPath } = await resolveWorkItemGid(context, projectId, incidentIid);
+  const incidentId = workItemGid.replace("/WorkItem/", "/Issue/");
+  const data = await executeGraphqlData<{
+    project?: { incidentManagementTimelineEvents?: { nodes?: Array<Record<string, any>> } };
+  }>(
+    context,
+    `query($fullPath: ID!, $incidentId: IssueID!) {
+      project(fullPath: $fullPath) {
+        incidentManagementTimelineEvents(incidentId: $incidentId) {
+          nodes {
+            id
+            note
+            noteHtml
+            action
+            occurredAt
+            createdAt
+            timelineEventTags { nodes { id name } }
+          }
+        }
+      }
+    }`,
+    { fullPath: projectPath, incidentId }
+  );
+
+  return (data.project?.incidentManagementTimelineEvents?.nodes ?? []).map((event) => ({
+    id: event.id,
+    note: event.note,
+    action: event.action,
+    occurredAt: event.occurredAt,
+    createdAt: event.createdAt,
+    ...(event.noteHtml ? { noteHtml: event.noteHtml } : {}),
+    ...(event.timelineEventTags?.nodes?.length
+      ? { tags: event.timelineEventTags.nodes.map((tag: any) => tag.name) }
+      : {})
+  }));
+}
+
+async function createTimelineEvent(
+  context: AppContext,
+  projectId: string,
+  incidentIid: number,
+  note: string,
+  occurredAt: string,
+  tagNames?: string[]
+): Promise<unknown> {
+  const { workItemGid } = await resolveWorkItemGid(context, projectId, incidentIid);
+  const incidentId = workItemGid.replace("/WorkItem/", "/Issue/");
+  const input: Record<string, unknown> = { incidentId, note, occurredAt };
+  if (tagNames && tagNames.length > 0) {
+    input.timelineEventTagNames = tagNames;
+  }
+  const data = await executeGraphqlData<{
+    timelineEventCreate: { timelineEvent?: Record<string, unknown> | null; errors?: string[] };
+  }>(
+    context,
+    `mutation CreateTimelineEvent($input: TimelineEventCreateInput!) {
+      timelineEventCreate(input: $input) {
+        timelineEvent {
+          id
+          note
+          noteHtml
+          action
+          occurredAt
+          createdAt
+          timelineEventTags { nodes { id name } }
+        }
+        errors
+      }
+    }`,
+    { input }
+  );
+  assertNoGraphqlMutationErrors(
+    data.timelineEventCreate?.errors,
+    "Failed to create timeline event"
+  );
+  return data.timelineEventCreate.timelineEvent;
+}
+
+async function updateIncidentSeverity(
+  context: AppContext,
+  projectPath: string,
+  incidentIid: number,
+  severity: string
+): Promise<void> {
+  const data = await executeGraphqlData<{ issueSetSeverity: { errors?: string[] } }>(
+    context,
+    `mutation($projectPath: ID!, $severity: IssuableSeverity!, $iid: String!) {
+      issueSetSeverity(input: { iid: $iid, severity: $severity, projectPath: $projectPath }) {
+        errors
+      }
+    }`,
+    { projectPath, severity, iid: String(incidentIid) }
+  );
+  assertNoGraphqlMutationErrors(data.issueSetSeverity?.errors, "Failed to set severity");
+}
+
+async function updateIncidentEscalationStatus(
+  context: AppContext,
+  projectPath: string,
+  incidentIid: number,
+  status: string
+): Promise<void> {
+  const data = await executeGraphqlData<{ issueSetEscalationStatus: { errors?: string[] } }>(
+    context,
+    `mutation($projectPath: ID!, $status: IssueEscalationStatus!, $iid: String!) {
+      issueSetEscalationStatus(input: { projectPath: $projectPath, status: $status, iid: $iid }) {
+        errors
+      }
+    }`,
+    { projectPath, status, iid: String(incidentIid) }
+  );
+  assertNoGraphqlMutationErrors(
+    data.issueSetEscalationStatus?.errors,
+    "Failed to set escalation status"
+  );
+}
+
+function assertNoGraphqlMutationErrors(errors: string[] | undefined, prefix: string): void {
+  if (errors && errors.length > 0) {
+    throw new Error(`${prefix}: ${errors.join(", ")}`);
+  }
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export function containsGraphqlMutation(query: string): boolean {
   if (!query.trim()) {
     return false;
@@ -4098,7 +5824,19 @@ function isGraphqlToolName(name: string): boolean {
   return (
     name === "gitlab_execute_graphql_query" ||
     name === "gitlab_execute_graphql_mutation" ||
-    name === "gitlab_execute_graphql"
+    name === "gitlab_execute_graphql" ||
+    name === "gitlab_get_work_item" ||
+    name === "gitlab_list_work_items" ||
+    name === "gitlab_create_work_item" ||
+    name === "gitlab_update_work_item" ||
+    name === "gitlab_convert_work_item_type" ||
+    name === "gitlab_list_work_item_statuses" ||
+    name === "gitlab_list_custom_field_definitions" ||
+    name === "gitlab_move_work_item" ||
+    name === "gitlab_list_work_item_notes" ||
+    name === "gitlab_create_work_item_note" ||
+    name === "gitlab_get_timeline_events" ||
+    name === "gitlab_create_timeline_event"
   );
 }
 
@@ -4514,6 +6252,16 @@ function getBoolean(args: ToolArgs, key: string): boolean {
   return value;
 }
 
+function getNumber(args: ToolArgs, key: string): number {
+  const value = args[key];
+  const numericValue = typeof value === "string" ? Number(value) : value;
+  if (typeof numericValue !== "number" || Number.isNaN(numericValue)) {
+    throw new Error(`'${key}' must be number`);
+  }
+
+  return numericValue;
+}
+
 function getRequiredStringArray(args: ToolArgs, key: string): string[] {
   const value = getOptionalStringArray(args, key);
   if (!value || value.length === 0) {
@@ -4559,6 +6307,61 @@ function getOptionalArray(args: ToolArgs, key: string): unknown[] | undefined {
   }
 
   return value;
+}
+
+function getWorkItemReferences(
+  args: ToolArgs,
+  key: string,
+  context: AppContext
+): WorkItemReference[] | undefined {
+  const values = getOptionalArray(args, key);
+  if (!values) {
+    return undefined;
+  }
+
+  return values.map((value) => {
+    if (typeof value !== "object" || value === null) {
+      throw new Error(`'${key}' must contain objects`);
+    }
+    const record = value as Record<string, unknown>;
+    if (typeof record.project_id !== "string") {
+      throw new Error(`'${key}.project_id' must be string`);
+    }
+    const iid = typeof record.iid === "string" ? Number(record.iid) : record.iid;
+    if (typeof iid !== "number" || Number.isNaN(iid)) {
+      throw new Error(`'${key}.iid' must be number`);
+    }
+    return {
+      project_id: resolveExplicitProjectId(context, record.project_id),
+      iid
+    };
+  });
+}
+
+function getLinkedWorkItemReferences(
+  args: ToolArgs,
+  key: string,
+  context: AppContext
+): LinkedWorkItemReference[] | undefined {
+  const references = getWorkItemReferences(args, key, context) as
+    | LinkedWorkItemReference[]
+    | undefined;
+  const rawValues = getOptionalArray(args, key);
+  if (!references || !rawValues) {
+    return references;
+  }
+
+  return references.map((reference, index) => {
+    const raw = rawValues[index] as Record<string, unknown>;
+    const linkType = raw.link_type;
+    if (linkType !== undefined && typeof linkType !== "string") {
+      throw new Error(`'${key}.link_type' must be string`);
+    }
+    return {
+      ...reference,
+      link_type: linkType as LinkedWorkItemReference["link_type"] | undefined
+    };
+  });
 }
 
 function getOptionalNumberArray(args: ToolArgs, key: string): number[] | undefined {

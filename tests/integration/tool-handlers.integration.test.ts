@@ -1459,6 +1459,216 @@ describe("Tool handlers: emoji reaction tools", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Work item GraphQL tools                                            */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: work item GraphQL tools", () => {
+  it("gets and flattens a work item", async () => {
+    const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
+    const executeGraphql = vi.fn().mockResolvedValue({
+      data: {
+        namespace: {
+          workItem: {
+            id: "gid://gitlab/WorkItem/1",
+            iid: "5",
+            title: "Investigate outage",
+            state: "opened",
+            webUrl: "https://gitlab.example.com/group/project/-/work_items/5",
+            workItemType: { name: "Incident" },
+            widgets: [
+              {
+                __typename: "WorkItemWidgetStatus",
+                status: { id: "gid://gitlab/Status/1", name: "In progress", category: "ACTIVE" }
+              },
+              {
+                __typename: "WorkItemWidgetLabels",
+                labels: { nodes: [{ title: "sev2" }] }
+              }
+            ]
+          }
+        }
+      }
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getProject, executeGraphql } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_work_item",
+        arguments: { project_id: "group/project", iid: 5 }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getProject).toHaveBeenCalledWith("group/project");
+      expect(executeGraphql).toHaveBeenCalledWith(
+        expect.stringContaining("workItem(iid: $iid)"),
+        expect.objectContaining({ path: "group/project", iid: "5" })
+      );
+
+      const structured = (result as { structuredContent?: { result?: Record<string, unknown> } })
+        .structuredContent;
+      expect(structured?.result).toEqual(
+        expect.objectContaining({
+          iid: "5",
+          title: "Investigate outage",
+          type: "Incident",
+          status: expect.objectContaining({ name: "In progress" }),
+          labels: ["sev2"]
+        })
+      );
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("creates work items after resolving type, labels, and assignees", async () => {
+    const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
+    const executeGraphql = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          namespace: {
+            workItemTypes: {
+              nodes: [{ id: "gid://gitlab/WorkItems::Type/1", name: "Task" }]
+            }
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          project: { labels: { nodes: [{ id: "gid://gitlab/ProjectLabel/9", title: "backend" }] } },
+          users: { nodes: [{ id: "gid://gitlab/User/7", username: "alice" }] }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          workItemCreate: {
+            workItem: {
+              id: "gid://gitlab/WorkItem/10",
+              iid: "10",
+              title: "Implement cache",
+              webUrl: "https://gitlab.example.com/group/project/-/work_items/10",
+              workItemType: { name: "Task" }
+            },
+            errors: []
+          }
+        }
+      });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getProject, executeGraphql } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_create_work_item",
+        arguments: {
+          project_id: "group/project",
+          title: "Implement cache",
+          type: "task",
+          labels: ["backend"],
+          assignee_usernames: ["alice"],
+          milestone_id: "12"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const [, createVariables] = executeGraphql.mock.calls[2] as [string, Record<string, unknown>];
+      expect(createVariables).toEqual(
+        expect.objectContaining({
+          projectPath: "group/project",
+          title: "Implement cache",
+          typeId: "gid://gitlab/WorkItems::Type/1",
+          labelIds: ["gid://gitlab/ProjectLabel/9"],
+          assigneeIds: ["gid://gitlab/User/7"],
+          milestoneId: "gid://gitlab/Milestone/12"
+        })
+      );
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("creates incident timeline events with Issue GIDs", async () => {
+    const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
+    const executeGraphql = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          namespace: {
+            workItem: { id: "gid://gitlab/WorkItem/99" }
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          timelineEventCreate: {
+            timelineEvent: { id: "gid://gitlab/TimelineEvent/1", note: "Impact detected" },
+            errors: []
+          }
+        }
+      });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getProject, executeGraphql } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_create_timeline_event",
+        arguments: {
+          project_id: "group/project",
+          incident_iid: 42,
+          note: "Impact detected",
+          occurred_at: "2026-05-22T12:00:00.000Z",
+          tag_names: ["Impact detected"]
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const [, variables] = executeGraphql.mock.calls[1] as [
+        string,
+        { input: Record<string, unknown> }
+      ];
+      expect(variables.input).toEqual(
+        expect.objectContaining({
+          incidentId: "gid://gitlab/Issue/99",
+          note: "Impact detected",
+          timelineEventTagNames: ["Impact detected"]
+        })
+      );
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("hides work item mutations in read-only mode", async () => {
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ readOnlyMode: true })
+    );
+
+    try {
+      const result = await client.listTools();
+      const names = result.tools.map((tool) => tool.name);
+
+      expect(names).toContain("gitlab_get_work_item");
+      expect(names).toContain("gitlab_list_custom_field_definitions");
+      expect(names).not.toContain("gitlab_create_work_item");
+      expect(names).not.toContain("gitlab_update_work_item");
+      expect(names).not.toContain("gitlab_create_timeline_event");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  Webhook tools                                                      */
 /* ------------------------------------------------------------------ */
 

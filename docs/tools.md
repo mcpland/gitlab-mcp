@@ -366,6 +366,27 @@ Requires `USE_RELEASE=true` (default).
 
 ---
 
+## Work Items
+
+These tools use GitLab GraphQL and are hidden when `GITLAB_ALLOWED_PROJECT_IDS` is configured unless `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE=true`.
+
+| Tool                                   | Mutating | Description                                                                                                                                                |
+| -------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_get_work_item`                 | No       | Get a work item with status, hierarchy, labels, assignees, linked items, custom fields, timeline-related widgets, and development data.                    |
+| `gitlab_list_work_items`               | No       | List work items in a project. Supports `types`, `state`, `search`, `assignee_usernames`, `label_names`, `first`, and cursor `after`.                       |
+| `gitlab_create_work_item`              | **Yes**  | Create a work item. Supports all GitLab work item types plus description, labels, assignees, parent, weight, dates, milestone, iteration, confidentiality. |
+| `gitlab_update_work_item`              | **Yes**  | Update fields, labels, assignees, state, status, hierarchy, linked items, custom fields, dates, milestone, iteration, and incident severity/escalation.    |
+| `gitlab_convert_work_item_type`        | **Yes**  | Convert a work item to another type. Params: `iid`, `new_type` (required).                                                                                 |
+| `gitlab_list_work_item_statuses`       | No       | List statuses, conversion types, and allowed hierarchy types for a work item type.                                                                         |
+| `gitlab_list_custom_field_definitions` | No       | List custom field IDs, types, select options, and supported work item types.                                                                               |
+| `gitlab_move_work_item`                | **Yes**  | Move a work item to another project. Params: `iid`, `target_project_id` (required).                                                                        |
+| `gitlab_list_work_item_notes`          | No       | List threaded work item discussions and notes with pagination.                                                                                             |
+| `gitlab_create_work_item_note`         | **Yes**  | Add a work item note or threaded reply. Supports `internal` and `discussion_id`.                                                                           |
+| `gitlab_get_timeline_events`           | No       | List incident timeline events. Params: `incident_iid` (required).                                                                                          |
+| `gitlab_create_timeline_event`         | **Yes**  | Create an incident timeline event. Params: `incident_iid`, `note`, `occurred_at` (required), optional `tag_names`.                                         |
+
+---
+
 ## GraphQL
 
 | Tool                              | Mutating | Description                                                                                  |

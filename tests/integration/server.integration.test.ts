@@ -463,6 +463,8 @@ describe("MCP Server Integration - GraphQL tool filtering", () => {
       const names = result.tools.map((t) => t.name);
 
       expect(names).not.toContain("gitlab_execute_graphql");
+      expect(names).not.toContain("gitlab_get_work_item");
+      expect(names).not.toContain("gitlab_create_timeline_event");
     } finally {
       await clientTransport.close();
       await serverTransport.close();
@@ -481,6 +483,8 @@ describe("MCP Server Integration - GraphQL tool filtering", () => {
       const names = result.tools.map((t) => t.name);
 
       expect(names).toContain("gitlab_execute_graphql");
+      expect(names).toContain("gitlab_get_work_item");
+      expect(names).toContain("gitlab_create_timeline_event");
     } finally {
       await clientTransport.close();
       await serverTransport.close();
