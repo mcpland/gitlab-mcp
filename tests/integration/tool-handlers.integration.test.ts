@@ -558,6 +558,60 @@ describe("Tool handler: gitlab_list_issues", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  User tools                                                         */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: user tools", () => {
+  it("passes user_id to gitlab_get_user", async () => {
+    const getUser = vi.fn().mockResolvedValue({
+      id: 42,
+      username: "alice"
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getUser } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_user",
+        arguments: { user_id: "42" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getUser).toHaveBeenCalledWith("42");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("calls gitlab_whoami without arguments", async () => {
+    const whoami = vi.fn().mockResolvedValue({
+      id: 42,
+      username: "alice"
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { whoami } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_whoami",
+        arguments: {}
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(whoami).toHaveBeenCalledWith();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  CI lint tools                                                      */
 /* ------------------------------------------------------------------ */
 

@@ -2909,6 +2909,24 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: async (args, context) => context.gitlab.getUsers({ query: toQuery(args) })
     },
     {
+      name: "gitlab_get_user",
+      title: "Get User",
+      description: "Get one user by ID.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        user_id: z.string().min(1)
+      },
+      handler: async (args, context) => context.gitlab.getUser(getString(args, "user_id"))
+    },
+    {
+      name: "gitlab_whoami",
+      title: "Who Am I",
+      description: "Get the current authenticated user.",
+      capabilities: readCapabilities,
+      inputSchema: {},
+      handler: async (_args, context) => context.gitlab.whoami()
+    },
+    {
       name: "gitlab_list_events",
       title: "List Events",
       description: "List current user events.",

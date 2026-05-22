@@ -1742,6 +1742,14 @@ export class GitLabClient {
     return this.get("/users", options);
   }
 
+  getUser(userId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/users/${encode(userId)}`, options);
+  }
+
+  whoami(options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get("/user", options);
+  }
+
   listEvents(options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get("/events", options);
   }

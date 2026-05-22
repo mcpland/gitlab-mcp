@@ -1309,6 +1309,26 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("scope")).toBe("assigned_to_me");
     });
 
+    it("gets one user by ID", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ id: 42, username: "alice" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.getUser("42");
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      expect(String(requestUrl)).toContain("/api/v4/users/42");
+    });
+
+    it("gets the current authenticated user", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ id: 42, username: "alice" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.whoami();
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      expect(new URL(String(requestUrl)).pathname).toBe("/api/v4/user");
+    });
+
     it("releases use encoded tag names", async () => {
       fetchMock.mockResolvedValue(jsonResponse({}));
 
