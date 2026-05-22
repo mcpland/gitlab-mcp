@@ -26,6 +26,7 @@ interface TokenState {
 interface ResolvedFallbackAuth {
   token?: string;
   authHeader?: GitLabAuthHeader;
+  source?: "oauth" | "script" | "file";
 }
 
 export class GitLabRequestRuntime {
@@ -75,9 +76,11 @@ export class GitLabRequestRuntime {
 
     let token = context.token;
     let authHeader = context.authHeader;
+    let authSource: ResolvedFallbackAuth["source"];
     if (!token) {
       const resolvedFallback = await this.resolveFallbackAuth();
       token = resolvedFallback.token;
+      authSource = resolvedFallback.source;
       if (!authHeader && resolvedFallback.authHeader) {
         authHeader = resolvedFallback.authHeader;
       }
@@ -91,7 +94,10 @@ export class GitLabRequestRuntime {
       headers,
       token,
       authHeader,
-      fetchImpl: this.fetchImpl
+      fetchImpl:
+        authSource === "oauth" && token
+          ? this.withOAuthRetry(this.fetchImpl, token)
+          : this.fetchImpl
     };
   }
 
@@ -106,7 +112,8 @@ export class GitLabRequestRuntime {
       if (token) {
         return {
           token,
-          authHeader: "authorization"
+          authHeader: "authorization",
+          source: "oauth"
         };
       }
     }
@@ -120,7 +127,7 @@ export class GitLabRequestRuntime {
           expiresAt: now + ttlMs
         };
       }
-      return { token };
+      return { token, source: token ? "script" : undefined };
     }
 
     if (this.tokenFilePath) {
@@ -132,10 +139,35 @@ export class GitLabRequestRuntime {
           expiresAt: now + ttlMs
         };
       }
-      return { token };
+      return { token, source: token ? "file" : undefined };
     }
 
     return {};
+  }
+
+  private withOAuthRetry(baseFetch: typeof fetch, initialToken: string): typeof fetch {
+    return (async (input, init) => {
+      const response = await baseFetch(input, init);
+      if (response.status !== 401 || !this.oauthManager || isNonReplayableBody(init?.body)) {
+        return response;
+      }
+
+      try {
+        const refreshedToken = await this.oauthManager.getAccessToken({ forceRefresh: true });
+        if (!refreshedToken || refreshedToken === initialToken) {
+          return response;
+        }
+
+        const retryInit: RequestInit = {
+          ...init,
+          headers: setAuthorizationHeader(init?.headers, refreshedToken)
+        };
+        return baseFetch(input, retryInit);
+      } catch (error) {
+        this.logger.warn({ err: error }, "OAuth token refresh after 401 failed");
+        return response;
+      }
+    }) as typeof fetch;
   }
 
   private async loadTokenFromScript(script: string): Promise<string | undefined> {
@@ -409,4 +441,16 @@ function attachAuthHeader(headers: Headers, token?: string, authHeader?: GitLabA
   if (!headers.has("PRIVATE-TOKEN")) {
     headers.set("PRIVATE-TOKEN", token);
   }
+}
+
+function setAuthorizationHeader(headers: HeadersInit | undefined, token: string): Headers {
+  const nextHeaders = new Headers(headers);
+  nextHeaders.set("Authorization", `Bearer ${token}`);
+  nextHeaders.delete("PRIVATE-TOKEN");
+  nextHeaders.delete("JOB-TOKEN");
+  return nextHeaders;
+}
+
+function isNonReplayableBody(body: BodyInit | null | undefined): boolean {
+  return body instanceof FormData || body instanceof ReadableStream;
 }

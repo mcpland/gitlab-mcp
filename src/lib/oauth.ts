@@ -46,21 +46,23 @@ export class GitLabOAuthManager {
       config.tokenStoragePath || path.join(os.homedir(), ".gitlab-mcp-oauth-token.json");
   }
 
-  async getAccessToken(): Promise<string | undefined> {
+  async getAccessToken(options: { forceRefresh?: boolean } = {}): Promise<string | undefined> {
     if (this.inFlightTokenRequest) {
       return this.inFlightTokenRequest;
     }
 
-    this.inFlightTokenRequest = this.resolveAccessToken().finally(() => {
-      this.inFlightTokenRequest = null;
-    });
+    this.inFlightTokenRequest = this.resolveAccessToken(options.forceRefresh ?? false).finally(
+      () => {
+        this.inFlightTokenRequest = null;
+      }
+    );
 
     return this.inFlightTokenRequest;
   }
 
-  private async resolveAccessToken(): Promise<string | undefined> {
+  private async resolveAccessToken(forceRefresh: boolean): Promise<string | undefined> {
     const stored = await this.readStoredToken();
-    if (stored && !isExpired(stored)) {
+    if (stored && !forceRefresh && !isExpired(stored)) {
       return stored.access_token;
     }
 
@@ -70,7 +72,10 @@ export class GitLabOAuthManager {
         await this.persistToken(refreshed);
         return refreshed.access_token;
       } catch (error) {
-        this.logger.warn({ err: error }, "OAuth token refresh failed; running interactive auth");
+        this.logger.warn(
+          { err: error, forceRefresh },
+          "OAuth token refresh failed; running interactive auth"
+        );
       }
     }
 

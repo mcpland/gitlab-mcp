@@ -13,6 +13,7 @@ import type { Logger } from "pino";
 import { afterAll, afterEach, beforeEach, vi } from "vitest";
 
 import type { AppEnv } from "../src/config/env.js";
+import { GitLabClient } from "../src/lib/gitlab-client.js";
 import { parseOauthScopes, resolveOauthScopes } from "../src/lib/oauth-scopes.js";
 import { GitLabRequestRuntime } from "../src/lib/request-runtime.js";
 
@@ -62,6 +63,14 @@ function parseTokenOutput(rawOutput: string): string | undefined {
 function getStringField(record: Record<string, unknown>, key: string): string | undefined {
   const value = record[key];
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function jsonResponse(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    statusText: status === 200 ? "OK" : "Error",
+    headers: { "content-type": "application/json" }
+  });
 }
 
 /**
@@ -370,6 +379,86 @@ describe("GitLabRequestRuntime cookie warmup", () => {
   });
 });
 
+describe("GitLabRequestRuntime OAuth retry", () => {
+  it("force-refreshes an OAuth token and retries once after a 401", async () => {
+    const oauthTokenPath = await writeOAuthTokenFile({
+      access_token: "old-oauth-token",
+      token_type: "Bearer",
+      refresh_token: "refresh-token",
+      expires_in: 3600,
+      created_at: Date.now()
+    });
+    const seenAuthorizations: string[] = [];
+
+    fetchMock.mockImplementation(async (input: URL | string, init?: RequestInit) => {
+      const url = new URL(String(input));
+
+      if (url.pathname === "/oauth/token") {
+        return jsonResponse({
+          access_token: "new-oauth-token",
+          token_type: "Bearer",
+          refresh_token: "new-refresh-token",
+          expires_in: 3600
+        });
+      }
+
+      seenAuthorizations.push(new Headers(init?.headers).get("Authorization") ?? "");
+      if (seenAuthorizations.length === 1) {
+        return jsonResponse({ message: "expired" }, 401);
+      }
+
+      return jsonResponse([{ id: 1, name: "project" }]);
+    });
+
+    const runtime = new GitLabRequestRuntime(
+      buildEnv({
+        GITLAB_USE_OAUTH: true,
+        GITLAB_OAUTH_CLIENT_ID: "oauth-client-id",
+        GITLAB_OAUTH_GITLAB_URL: "https://gitlab.example.com",
+        GITLAB_OAUTH_TOKEN_PATH: oauthTokenPath
+      }),
+      buildLogger()
+    );
+    const client = new GitLabClient("https://gitlab.example.com/api/v4", undefined, {
+      beforeRequest: (context) => runtime.beforeRequest(context)
+    });
+
+    await expect(client.listProjects()).resolves.toEqual([{ id: 1, name: "project" }]);
+    expect(seenAuthorizations).toEqual(["Bearer old-oauth-token", "Bearer new-oauth-token"]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not retry OAuth 401 responses for FormData request bodies", async () => {
+    const oauthTokenPath = await writeOAuthTokenFile({
+      access_token: "old-oauth-token",
+      token_type: "Bearer",
+      refresh_token: "refresh-token",
+      expires_in: 3600,
+      created_at: Date.now()
+    });
+
+    fetchMock.mockResolvedValue(jsonResponse({ message: "expired" }, 401));
+
+    const runtime = new GitLabRequestRuntime(
+      buildEnv({
+        GITLAB_USE_OAUTH: true,
+        GITLAB_OAUTH_CLIENT_ID: "oauth-client-id",
+        GITLAB_OAUTH_GITLAB_URL: "https://gitlab.example.com",
+        GITLAB_OAUTH_TOKEN_PATH: oauthTokenPath
+      }),
+      buildLogger()
+    );
+    const client = new GitLabClient("https://gitlab.example.com/api/v4", undefined, {
+      beforeRequest: (context) => runtime.beforeRequest(context)
+    });
+
+    await expect(client.uploadMarkdown("project", "# Title", "readme.md")).rejects.toMatchObject({
+      status: 401
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 function buildEnv(overrides: Partial<AppEnv> = {}): AppEnv {
   return {
     GITLAB_API_URL: "https://gitlab.example.com/api/v4",
@@ -415,4 +504,12 @@ async function writeCookieFile(): Promise<string> {
     "utf8"
   );
   return cookiePath;
+}
+
+async function writeOAuthTokenFile(token: Record<string, unknown>): Promise<string> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gitlab-mcp-oauth-"));
+  tempDirs.push(dir);
+  const tokenPath = path.join(dir, "token.json");
+  await fs.writeFile(tokenPath, JSON.stringify(token), "utf8");
+  return tokenPath;
 }
