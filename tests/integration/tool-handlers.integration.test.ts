@@ -1931,6 +1931,121 @@ describe("Tool handlers: work item GraphQL tools", () => {
     }
   });
 
+  it("validates work item note ownership before adding note emoji reactions", async () => {
+    const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
+    const executeGraphql = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          namespace: {
+            workItem: {
+              widgets: [
+                {
+                  discussions: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [
+                      {
+                        id: "gid://gitlab/Discussion/1",
+                        notes: {
+                          nodes: [
+                            {
+                              id: "gid://gitlab/Note/77",
+                              body: "note",
+                              author: { username: "alice" }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          awardEmojiAdd: {
+            awardEmoji: { name: "eyes", user: { username: "alice" } },
+            errors: []
+          }
+        }
+      });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getProject, executeGraphql } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_create_work_item_note_emoji_reaction",
+        arguments: {
+          project_id: "group/project",
+          iid: 10,
+          note_id: "gid://gitlab/Note/77",
+          name: "eyes"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const [, variables] = executeGraphql.mock.calls[1] as [string, Record<string, unknown>];
+      expect(variables).toEqual({
+        awardableId: "gid://gitlab/Note/77",
+        name: "eyes"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects work item note emoji reactions for notes outside the target work item", async () => {
+    const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
+    const executeGraphql = vi.fn().mockResolvedValueOnce({
+      data: {
+        namespace: {
+          workItem: {
+            widgets: [
+              {
+                discussions: {
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  nodes: []
+                }
+              }
+            ]
+          }
+        }
+      }
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getProject, executeGraphql } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_create_work_item_note_emoji_reaction",
+        arguments: {
+          project_id: "group/project",
+          iid: 10,
+          note_id: "gid://gitlab/Note/99",
+          name: "eyes"
+        }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(executeGraphql).toHaveBeenCalledTimes(1);
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (item) => item.type === "text"
+      )!.text;
+      expect(text).toContain("was not found on work item #10");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
   it("hides work item mutations in read-only mode", async () => {
     const { client, clientTransport, serverTransport } = await createLinkedPair(
       buildContext({ readOnlyMode: true })

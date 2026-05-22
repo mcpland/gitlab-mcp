@@ -4321,8 +4321,14 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         note_id: z.string().min(1)
       },
       handler: async (args, context) => {
-        resolveProjectId(args, context, true);
-        return listGraphqlAwardEmoji(context, getString(args, "note_id"));
+        const projectId = resolveProjectId(args, context, true);
+        const noteId = await resolveWorkItemNoteAwardableId(
+          context,
+          projectId,
+          getNumber(args, "iid"),
+          getString(args, "note_id")
+        );
+        return listGraphqlAwardEmoji(context, noteId);
       }
     },
     {
@@ -4384,8 +4390,14 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         name: emojiNameSchema
       },
       handler: async (args, context) => {
-        resolveProjectId(args, context, true);
-        return addGraphqlAwardEmoji(context, getString(args, "note_id"), getString(args, "name"));
+        const projectId = resolveProjectId(args, context, true);
+        const noteId = await resolveWorkItemNoteAwardableId(
+          context,
+          projectId,
+          getNumber(args, "iid"),
+          getString(args, "note_id")
+        );
+        return addGraphqlAwardEmoji(context, noteId, getString(args, "name"));
       }
     },
     {
@@ -4401,12 +4413,14 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         name: emojiNameSchema
       },
       handler: async (args, context) => {
-        resolveProjectId(args, context, true);
-        return removeGraphqlAwardEmoji(
+        const projectId = resolveProjectId(args, context, true);
+        const noteId = await resolveWorkItemNoteAwardableId(
           context,
-          getString(args, "note_id"),
-          getString(args, "name")
+          projectId,
+          getNumber(args, "iid"),
+          getString(args, "note_id")
         );
+        return removeGraphqlAwardEmoji(context, noteId, getString(args, "name"));
       }
     },
     {
@@ -5848,6 +5862,40 @@ async function listWorkItemNotes(
     })),
     pageInfo: discussions?.pageInfo ?? {}
   };
+}
+
+async function resolveWorkItemNoteAwardableId(
+  context: AppContext,
+  projectId: string,
+  iid: number,
+  noteId: string
+): Promise<string> {
+  let after: string | undefined;
+
+  for (let page = 0; page < 100; page += 1) {
+    const result = (await listWorkItemNotes(context, projectId, iid, {
+      pageSize: 100,
+      after,
+      sort: "CREATED_ASC"
+    })) as {
+      discussions?: Array<{ notes?: Array<{ id?: unknown }> }>;
+      pageInfo?: { hasNextPage?: unknown; endCursor?: unknown };
+    };
+
+    const found = (result.discussions ?? []).some((discussion) =>
+      (discussion.notes ?? []).some((note) => note.id === noteId)
+    );
+    if (found) {
+      return noteId;
+    }
+
+    if (result.pageInfo?.hasNextPage !== true || typeof result.pageInfo.endCursor !== "string") {
+      break;
+    }
+    after = result.pageInfo.endCursor;
+  }
+
+  throw new Error(`Note '${noteId}' was not found on work item #${iid} in project ${projectId}`);
 }
 
 async function createWorkItemNote(
