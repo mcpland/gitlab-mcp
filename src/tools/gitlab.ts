@@ -4525,7 +4525,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
 }
 
 function shouldReturnDownloadProxy(context: AppContext): boolean {
-  return !context.allowLocalFileTools;
+  return !context.allowLocalFileTools && resolveDownloadTokenAuth(context) !== undefined;
 }
 
 function buildDownloadProxyResult(

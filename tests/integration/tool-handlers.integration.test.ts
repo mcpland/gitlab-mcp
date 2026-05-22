@@ -394,6 +394,44 @@ describe("Tool handlers: HTTP remote file transfers", () => {
     }
   });
 
+  it("uses inline downloads when HTTP proxy URLs cannot carry fallback OAuth auth", async () => {
+    const downloadJobArtifacts = vi.fn().mockResolvedValue({
+      fileName: "artifacts.zip",
+      contentType: "application/zip",
+      base64: "UEsDBA=="
+    });
+    const context = buildContext({
+      allowLocalFileTools: false,
+      token: null,
+      gitlabStub: { downloadJobArtifacts }
+    });
+    context.env.GITLAB_USE_OAUTH = true;
+    context.env.GITLAB_OAUTH_CLIENT_ID = "oauth-client-id";
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(context);
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_download_job_artifacts",
+        arguments: { project_id: "group/project", job_id: "42" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(downloadJobArtifacts).toHaveBeenCalledWith("group/project", "42");
+      const structured = (result as { structuredContent?: { result?: Record<string, unknown> } })
+        .structuredContent?.result;
+      expect(structured?.download_url).toBeUndefined();
+      expect(structured).toMatchObject({
+        fileName: "artifacts.zip",
+        contentType: "application/zip",
+        base64: "UEsDBA=="
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
   it("rejects local file markdown uploads when local file tools are disabled", async () => {
     const uploadMarkdownFile = vi.fn();
 
