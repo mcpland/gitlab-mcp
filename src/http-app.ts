@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Server as HttpServer } from "node:http";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -9,8 +12,14 @@ import type { Express } from "express";
 import express from "express";
 
 import { runWithSessionAuth, type SessionAuth } from "./lib/auth-context.js";
+import {
+  decryptDownloadToken,
+  downloadTokenResourceMatches,
+  type DownloadTokenResource
+} from "./lib/download-token.js";
 import { hasReachedSessionCapacity } from "./lib/session-capacity.js";
 import { createMcpServer } from "./server/build-server.js";
+import type { GitLabAuthHeader } from "./types/auth.js";
 import type { AppContext } from "./types/context.js";
 
 /* ------------------------------------------------------------------ */
@@ -127,6 +136,61 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       readOnlyMode: appEnv.GITLAB_READ_ONLY_MODE,
       sseEnabled: appEnv.SSE
     });
+  });
+
+  /* ---- Download proxy endpoints ---- */
+
+  const downloadRateLimits = new Map<string, { count: number; resetAt: number }>();
+
+  app.get("/downloads/:type", async (req, res) => {
+    try {
+      const resource = getDownloadResourceFromRequest(req);
+      const auth = parseDownloadAuth(req, resource);
+      if (!auth) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+
+      if (!checkDownloadRateLimit(`${auth.header}:${auth.token}`)) {
+        res.status(429).json({ error: "Rate limit exceeded" });
+        return;
+      }
+
+      const gitLabPath = buildDownloadGitLabPath(resource, appEnv);
+      const apiUrl = auth.apiUrl ?? getDownloadApiUrl(req);
+      const url = new URL(gitLabPath.replace(/^\//, ""), `${apiUrl.replace(/\/+$/, "")}/`);
+      const gitLabResponse = await fetch(url, {
+        method: "GET",
+        headers: toGitLabDownloadHeaders(auth),
+        signal: AbortSignal.timeout(appEnv.GITLAB_HTTP_TIMEOUT_MS)
+      });
+
+      if (!gitLabResponse.ok) {
+        res.status(gitLabResponse.status).json({
+          error: `GitLab API error: ${gitLabResponse.status} ${gitLabResponse.statusText}`
+        });
+        return;
+      }
+
+      copyDownloadResponseHeaders(gitLabResponse, res);
+
+      if (!gitLabResponse.body) {
+        res.status(502).json({ error: "No response body from GitLab" });
+        return;
+      }
+
+      await pipeline(
+        Readable.fromWeb(gitLabResponse.body as unknown as NodeReadableStream<Uint8Array>),
+        res
+      );
+    } catch (error) {
+      appLogger.error({ err: error }, "Download proxy request failed");
+      if (!res.headersSent) {
+        const message = error instanceof Error ? error.message : "Failed to proxy download";
+        const status = isDownloadClientError(error) ? 400 : 502;
+        res.status(status).json({ error: message });
+      }
+    }
   });
 
   /* ---- SSE endpoints ---- */
@@ -495,6 +559,104 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     };
   }
 
+  function checkDownloadRateLimit(key: string): boolean {
+    const now = Date.now();
+    const entry = downloadRateLimits.get(key);
+    if (!entry || now >= entry.resetAt) {
+      downloadRateLimits.set(key, { count: 1, resetAt: now + 60_000 });
+      evictExpiredDownloadRateLimits(now);
+      return true;
+    }
+
+    if (entry.count >= appEnv.MAX_REQUESTS_PER_MINUTE) {
+      return false;
+    }
+
+    entry.count += 1;
+    return true;
+  }
+
+  function evictExpiredDownloadRateLimits(now: number): void {
+    for (const [key, entry] of downloadRateLimits) {
+      if (now >= entry.resetAt) {
+        downloadRateLimits.delete(key);
+      }
+    }
+  }
+
+  function parseDownloadAuth(
+    req: express.Request,
+    resource: DownloadTokenResource
+  ): (SessionAuth & { token: string; header: GitLabAuthHeader }) | undefined {
+    const encryptedToken = getSingleQueryValue(req.query._token);
+    if (encryptedToken) {
+      const payload = decryptDownloadToken(encryptedToken, {
+        secret: appEnv.GITLAB_DOWNLOAD_TOKEN_SECRET
+      });
+      if (!payload || !downloadTokenResourceMatches(payload, resource)) {
+        throw new DownloadClientError("Invalid or expired download token");
+      }
+
+      return {
+        token: payload.token,
+        header: payload.header,
+        apiUrl: payload.apiUrl,
+        updatedAt: Date.now()
+      };
+    }
+
+    const parsedAuth = parseRequestAuth(req);
+    if (parsedAuth?.token && parsedAuth.header) {
+      return {
+        token: parsedAuth.token,
+        header: parsedAuth.header,
+        apiUrl: parsedAuth.apiUrl,
+        updatedAt: parsedAuth.updatedAt
+      };
+    }
+
+    if (!appEnv.REMOTE_AUTHORIZATION) {
+      if (appEnv.GITLAB_PERSONAL_ACCESS_TOKEN) {
+        return {
+          token: appEnv.GITLAB_PERSONAL_ACCESS_TOKEN,
+          header: "private-token",
+          updatedAt: Date.now()
+        };
+      }
+
+      if (appEnv.GITLAB_JOB_TOKEN) {
+        return {
+          token: appEnv.GITLAB_JOB_TOKEN,
+          header: "job-token",
+          updatedAt: Date.now()
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  function getDownloadApiUrl(req: express.Request): string {
+    if (!appEnv.ENABLE_DYNAMIC_API_URL) {
+      return appEnv.GITLAB_API_URL;
+    }
+
+    const dynamicApiUrl = req.header("x-gitlab-api-url")?.trim();
+    if (!dynamicApiUrl) {
+      return appEnv.GITLAB_API_URL;
+    }
+
+    try {
+      const parsedApiUrl = new URL(dynamicApiUrl);
+      if (!isHttpUrl(parsedApiUrl)) {
+        throw new Error("unsupported protocol");
+      }
+      return parsedApiUrl.toString();
+    } catch {
+      throw new DownloadClientError(`Invalid x-gitlab-api-url header: '${dynamicApiUrl}'`);
+    }
+  }
+
   function parseRequestAuth(req: express.Request): SessionAuth | undefined {
     if (!appEnv.REMOTE_AUTHORIZATION) {
       return undefined;
@@ -712,6 +874,128 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     garbageCollectSessions,
     shutdown
   };
+}
+
+function getDownloadResourceFromRequest(req: express.Request): DownloadTokenResource {
+  const type = Array.isArray(req.params.type) ? req.params.type[0] : req.params.type;
+  if (!type) {
+    throw new DownloadClientError("Missing download type");
+  }
+
+  const params: Record<string, string> = {};
+  for (const [key, value] of Object.entries(req.query)) {
+    if (key === "_token") {
+      continue;
+    }
+    const stringValue = getSingleQueryValue(value);
+    if (stringValue !== undefined) {
+      params[key] = stringValue;
+    }
+  }
+
+  return { type, params };
+}
+
+function buildDownloadGitLabPath(resource: DownloadTokenResource, env: AppContext["env"]): string {
+  const projectId = resource.params.project_id;
+  if (!projectId) {
+    throw new DownloadClientError("project_id is required");
+  }
+  assertDownloadProjectAllowed(projectId, env);
+
+  switch (resource.type) {
+    case "job-artifacts": {
+      const jobId = resource.params.job_id;
+      if (!jobId) {
+        throw new DownloadClientError("job_id is required");
+      }
+      return `/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/artifacts`;
+    }
+
+    case "release-asset": {
+      const tagName = resource.params.tag_name;
+      const directAssetPath = resource.params.direct_asset_path;
+      if (!tagName || !directAssetPath) {
+        throw new DownloadClientError("tag_name and direct_asset_path are required");
+      }
+      return `/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(
+        tagName
+      )}/downloads/${encodeSlashPath(directAssetPath)}`;
+    }
+
+    case "attachment": {
+      const secret = resource.params.secret;
+      const filename = resource.params.filename;
+      if (!secret || !filename) {
+        throw new DownloadClientError("secret and filename are required");
+      }
+      return `/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(
+        secret
+      )}/${encodeURIComponent(filename)}`;
+    }
+
+    default:
+      throw new DownloadClientError(`Unknown download type: ${resource.type}`);
+  }
+}
+
+function assertDownloadProjectAllowed(projectId: string, env: AppContext["env"]): void {
+  if (env.GITLAB_ALLOWED_PROJECT_IDS.length === 0) {
+    return;
+  }
+
+  if (!env.GITLAB_ALLOWED_PROJECT_IDS.includes(projectId)) {
+    throw new DownloadClientError(`Project '${projectId}' is not allowed`);
+  }
+}
+
+function toGitLabDownloadHeaders(auth: { token: string; header: GitLabAuthHeader }): HeadersInit {
+  const headers = new Headers({ Accept: "application/octet-stream" });
+  if (auth.header === "authorization") {
+    headers.set("Authorization", `Bearer ${auth.token}`);
+  } else if (auth.header === "job-token") {
+    headers.set("JOB-TOKEN", auth.token);
+  } else {
+    headers.set("PRIVATE-TOKEN", auth.token);
+  }
+
+  return headers;
+}
+
+function copyDownloadResponseHeaders(source: Response, target: express.Response): void {
+  for (const header of ["content-type", "content-disposition", "content-length"]) {
+    const value = source.headers.get(header);
+    if (value) {
+      target.setHeader(header, value);
+    }
+  }
+}
+
+function getSingleQueryValue(value: unknown): string | undefined {
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+
+  if (Array.isArray(value) && typeof value[0] === "string" && value[0].length > 0) {
+    return value[0];
+  }
+
+  return undefined;
+}
+
+function encodeSlashPath(value: string): string {
+  return value
+    .replace(/^\/+/, "")
+    .split("/")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
+class DownloadClientError extends Error {}
+
+function isDownloadClientError(error: unknown): error is DownloadClientError {
+  return error instanceof DownloadClientError;
 }
 
 function isClientHeaderValidationError(error: unknown): error is Error {

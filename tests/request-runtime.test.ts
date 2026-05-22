@@ -482,6 +482,8 @@ function buildEnv(overrides: Partial<AppEnv> = {}): AppEnv {
     GITLAB_ACCEPT_LANGUAGE: undefined,
     GITLAB_HTTP_TIMEOUT_MS: 20_000,
     GITLAB_MAX_LOCAL_FILE_BYTES: 250_000_000,
+    GITLAB_DOWNLOAD_TOKEN_SECRET: undefined,
+    GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS: 300,
     ...overrides
   } as AppEnv;
 }

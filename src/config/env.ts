@@ -45,6 +45,7 @@ const envSchema = z.object({
   LOG_LEVEL: logLevelSchema.default("info"),
   MCP_SERVER_NAME: z.string().min(1).default("gitlab-mcp"),
   MCP_SERVER_VERSION: z.string().min(1).default(DEFAULT_SERVER_VERSION),
+  MCP_SERVER_URL: z.string().url().optional(),
   GITLAB_API_URL: z.string().min(1).default("https://gitlab.com/api/v4"),
   GITLAB_PERSONAL_ACCESS_TOKEN: z.string().min(1).optional(),
   GITLAB_JOB_TOKEN: z.string().min(1).optional(),
@@ -73,6 +74,8 @@ const envSchema = z.object({
     .min(1024)
     .max(2_000_000_000)
     .default(250_000_000),
+  GITLAB_DOWNLOAD_TOKEN_SECRET: optionalNonEmptyString,
+  GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
   GITLAB_HTTP_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
   GITLAB_ERROR_DETAIL_MODE: errorDetailModeSchema.optional(),
   GITLAB_AUTH_COOKIE_PATH: z.string().optional(),

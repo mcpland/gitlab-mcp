@@ -30,6 +30,7 @@ import {
 } from "../lib/tool-schema.js";
 import type { ToolCapability } from "../lib/tool-capabilities.js";
 import { getSessionAuth } from "../lib/auth-context.js";
+import { createDownloadToken, type DownloadTokenResource } from "../lib/download-token.js";
 import { stripNullsDeep } from "../lib/sanitize.js";
 import type { AppContext } from "../types/context.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
@@ -3018,11 +3019,22 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: optionalProjectIdSchema,
         job_id: z.string().min(1)
       },
-      handler: async (args, context) =>
-        context.gitlab.downloadJobArtifacts(
-          resolveProjectId(args, context, true),
-          getString(args, "job_id")
-        )
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const jobId = getString(args, "job_id");
+        if (shouldReturnDownloadProxy(context)) {
+          return buildDownloadProxyResult(
+            context,
+            {
+              type: "job-artifacts",
+              params: { project_id: projectId, job_id: jobId }
+            },
+            `artifacts_job_${jobId}.zip`
+          );
+        }
+
+        return context.gitlab.downloadJobArtifacts(projectId, jobId);
+      }
     },
     {
       name: "gitlab_download_job_artifacts_local",
@@ -3509,12 +3521,27 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         tag_name: refLikeSchema,
         direct_asset_path: z.string().min(1)
       },
-      handler: async (args, context) =>
-        context.gitlab.downloadReleaseAsset(
-          resolveProjectId(args, context, true),
-          getString(args, "tag_name"),
-          getString(args, "direct_asset_path")
-        )
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const tagName = getString(args, "tag_name");
+        const directAssetPath = getString(args, "direct_asset_path");
+        if (shouldReturnDownloadProxy(context)) {
+          return buildDownloadProxyResult(
+            context,
+            {
+              type: "release-asset",
+              params: {
+                project_id: projectId,
+                tag_name: tagName,
+                direct_asset_path: directAssetPath
+              }
+            },
+            directAssetPath.split("/").pop() || directAssetPath
+          );
+        }
+
+        return context.gitlab.downloadReleaseAsset(projectId, tagName, directAssetPath);
+      }
     },
     {
       name: "gitlab_list_tags",
@@ -3896,6 +3923,9 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         const projectId = resolveProjectId(args, context, true);
         const filePath = getOptionalString(args, "file_path");
         if (filePath) {
+          if (!context.allowLocalFileTools) {
+            throw new Error("file_path cannot be used over HTTP. Provide content and filename.");
+          }
           return context.gitlab.uploadMarkdownFile(projectId, filePath);
         }
 
@@ -3937,11 +3967,41 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
               );
             }
 
+            if (shouldReturnDownloadProxy(context)) {
+              return buildDownloadProxyResult(
+                context,
+                {
+                  type: "attachment",
+                  params: {
+                    project_id: projectId,
+                    secret: upload.secret,
+                    filename: upload.filename
+                  }
+                },
+                upload.filename
+              );
+            }
+
             const apiRelativePath = `api/v4/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
             return context.gitlab.downloadAttachment(apiRelativePath);
           }
 
           if (projectId && upload) {
+            if (shouldReturnDownloadProxy(context)) {
+              return buildDownloadProxyResult(
+                context,
+                {
+                  type: "attachment",
+                  params: {
+                    project_id: projectId,
+                    secret: upload.secret,
+                    filename: upload.filename
+                  }
+                },
+                upload.filename
+              );
+            }
+
             const apiRelativePath = `api/v4/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
             return context.gitlab.downloadAttachment(apiRelativePath);
           }
@@ -3959,6 +4019,16 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
 
         const projectId = resolveProjectId(args, context, true);
         const apiRelativePath = `api/v4/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(secret)}/${encodeURIComponent(filename)}`;
+        if (shouldReturnDownloadProxy(context)) {
+          return buildDownloadProxyResult(
+            context,
+            {
+              type: "attachment",
+              params: { project_id: projectId, secret, filename }
+            },
+            filename
+          );
+        }
 
         return context.gitlab.downloadAttachment(apiRelativePath);
       }
@@ -4452,6 +4522,83 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     }
   ];
+}
+
+function shouldReturnDownloadProxy(context: AppContext): boolean {
+  return !context.allowLocalFileTools;
+}
+
+function buildDownloadProxyResult(
+  context: AppContext,
+  resource: DownloadTokenResource,
+  filename: string
+): Record<string, unknown> {
+  return {
+    download_url: buildDownloadProxyUrl(context, resource),
+    filename,
+    expires_in_seconds: context.env.GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS
+  };
+}
+
+function buildDownloadProxyUrl(context: AppContext, resource: DownloadTokenResource): string {
+  const baseUrl = new URL(
+    context.env.MCP_SERVER_URL ?? `http://${context.env.HTTP_HOST}:${String(context.env.HTTP_PORT)}`
+  );
+  const basePath = baseUrl.pathname.replace(/\/+$/, "");
+  const url = new URL(`${basePath}/downloads/${encodeURIComponent(resource.type)}`, baseUrl.origin);
+
+  for (const [key, value] of Object.entries(resource.params)) {
+    url.searchParams.set(key, value);
+  }
+
+  const tokenAuth = resolveDownloadTokenAuth(context);
+  if (tokenAuth) {
+    url.searchParams.set(
+      "_token",
+      createDownloadToken(tokenAuth, resource, {
+        secret: context.env.GITLAB_DOWNLOAD_TOKEN_SECRET,
+        ttlSeconds: context.env.GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS
+      })
+    );
+  }
+
+  return url.toString();
+}
+
+function resolveDownloadTokenAuth(context: AppContext):
+  | {
+      header: "authorization" | "private-token" | "job-token";
+      token: string;
+      apiUrl?: string;
+    }
+  | undefined {
+  const sessionAuth = getSessionAuth();
+  if (sessionAuth?.token) {
+    return {
+      header: sessionAuth.header ?? "private-token",
+      token: sessionAuth.token,
+      apiUrl:
+        context.env.ENABLE_DYNAMIC_API_URL && sessionAuth.apiUrl !== context.env.GITLAB_API_URL
+          ? sessionAuth.apiUrl
+          : undefined
+    };
+  }
+
+  if (context.env.GITLAB_PERSONAL_ACCESS_TOKEN) {
+    return {
+      header: "private-token",
+      token: context.env.GITLAB_PERSONAL_ACCESS_TOKEN
+    };
+  }
+
+  if (context.env.GITLAB_JOB_TOKEN) {
+    return {
+      header: "job-token",
+      token: context.env.GITLAB_JOB_TOKEN
+    };
+  }
+
+  return undefined;
 }
 
 function assertAuthReady(context: AppContext): void {

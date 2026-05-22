@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { setupMcpHttpApp } from "../src/http-app.js";
+import { createDownloadToken } from "../src/lib/download-token.js";
 import { OutputFormatter } from "../src/lib/output.js";
 import { ToolPolicyEngine } from "../src/lib/policy.js";
 import type { AppContext } from "../src/types/context.js";
@@ -21,6 +22,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       LOG_LEVEL: "silent",
       MCP_SERVER_NAME: "http-app-test",
       MCP_SERVER_VERSION: "0.0.1",
+      MCP_SERVER_URL: undefined,
       GITLAB_API_URL: "https://gitlab.example.com/api/v4",
       GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
       GITLAB_PERSONAL_ACCESS_TOKEN: "test-token",
@@ -35,6 +37,8 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_RESPONSE_MODE: "json",
       GITLAB_MAX_RESPONSE_BYTES: 200_000,
       GITLAB_MAX_LOCAL_FILE_BYTES: 250_000_000,
+      GITLAB_DOWNLOAD_TOKEN_SECRET: "test-download-secret",
+      GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS: 300,
       GITLAB_HTTP_TIMEOUT_MS: 20_000,
       GITLAB_ERROR_DETAIL_MODE: "full",
       GITLAB_CLOUDFLARE_BYPASS: false,
@@ -105,6 +109,10 @@ interface RunningServer {
 
 async function startServer(maxSessions?: number): Promise<RunningServer> {
   const context = buildContext({ maxSessions });
+  return startServerForContext(context);
+}
+
+async function startServerForContext(context: AppContext): Promise<RunningServer> {
   const setup = setupMcpHttpApp({
     context,
     env: context.env,
@@ -306,5 +314,73 @@ describe("http app pending session handling", () => {
     expect(transportClose).toHaveBeenCalledTimes(1);
     expect(serverClose).toHaveBeenCalledTimes(1);
     expect(setup.pendingSessions.size).toBe(0);
+  });
+});
+
+describe("http app download proxy", () => {
+  it("streams a token-bound job artifact download", async () => {
+    const gitLabServer = createServer((req, res) => {
+      expect(req.url).toBe("/api/v4/projects/group%2Fproject/jobs/42/artifacts");
+      expect(req.headers["private-token"]).toBe("proxy-token");
+      res.statusCode = 200;
+      res.setHeader("content-type", "application/zip");
+      res.end("zip-bytes");
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      gitLabServer.listen(0, "127.0.0.1", (error?: Error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = "proxy-token";
+      running = await startServerForContext(context);
+
+      const resource = {
+        type: "job-artifacts",
+        params: { project_id: "group/project", job_id: "42" }
+      };
+      const token = createDownloadToken(
+        { header: "private-token", token: "proxy-token" },
+        resource,
+        {
+          secret: context.env.GITLAB_DOWNLOAD_TOKEN_SECRET,
+          ttlSeconds: context.env.GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS
+        }
+      );
+      const url = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+      url.searchParams.set("project_id", "group/project");
+      url.searchParams.set("job_id", "42");
+      url.searchParams.set("_token", token);
+
+      const response = await fetch(url);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("application/zip");
+      expect(await response.text()).toBe("zip-bytes");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
   });
 });

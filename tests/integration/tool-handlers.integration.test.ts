@@ -360,6 +360,69 @@ describe("Tool handler: gitlab_get_file_contents", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  HTTP remote file transfer behavior                                 */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: HTTP remote file transfers", () => {
+  it("returns a proxy URL for job artifacts when local file tools are disabled", async () => {
+    const downloadJobArtifacts = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowLocalFileTools: false,
+        gitlabStub: { downloadJobArtifacts }
+      })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_download_job_artifacts",
+        arguments: { project_id: "group/project", job_id: "42" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(downloadJobArtifacts).not.toHaveBeenCalled();
+      const structured = (result as { structuredContent?: { result?: Record<string, unknown> } })
+        .structuredContent?.result;
+      expect(String(structured?.download_url)).toContain("/downloads/job-artifacts");
+      expect(String(structured?.download_url)).toContain("project_id=group%2Fproject");
+      expect(structured?.filename).toBe("artifacts_job_42.zip");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects local file markdown uploads when local file tools are disabled", async () => {
+    const uploadMarkdownFile = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowLocalFileTools: false,
+        gitlabStub: { uploadMarkdownFile }
+      })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_upload_markdown",
+        arguments: { project_id: "group/project", file_path: "/tmp/file.md" }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(uploadMarkdownFile).not.toHaveBeenCalled();
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (item) => item.type === "text"
+      )?.text;
+      expect(text).toContain("file_path cannot be used over HTTP");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_get_file_blame                                              */
 /* ------------------------------------------------------------------ */
 
