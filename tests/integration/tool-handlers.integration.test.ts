@@ -64,15 +64,56 @@ describe("Tool handler: gitlab_list_projects", () => {
     try {
       const result = await client.callTool({
         name: "gitlab_list_projects",
-        arguments: { search: "test", page: 2, per_page: 10 }
+        arguments: { search: "test", topic: "platform", page: 2, per_page: 10 }
       });
 
       expect(result.isError).toBeFalsy();
       expect(listProjects).toHaveBeenCalledWith({
         query: expect.objectContaining({
           search: "test",
+          topic: "platform",
           page: 2,
           per_page: 10
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  gitlab_list_group_projects                                         */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handler: gitlab_list_group_projects", () => {
+  it("passes group_id and topic filter via toQuery()", async () => {
+    const listGroupProjects = vi.fn().mockResolvedValue([{ id: 1, name: "alpha" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listGroupProjects } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_group_projects",
+        arguments: {
+          group_id: "group/subgroup",
+          include_subgroups: true,
+          search: "test",
+          topic: "platform",
+          per_page: 20
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listGroupProjects).toHaveBeenCalledWith("group/subgroup", {
+        query: expect.objectContaining({
+          include_subgroups: true,
+          search: "test",
+          topic: "platform",
+          per_page: 20
         })
       });
     } finally {

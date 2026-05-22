@@ -216,6 +216,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       capabilities: readCapabilities,
       inputSchema: {
         search: optionalString,
+        topic: optionalString,
         search_namespaces: optionalBoolean,
         membership: optionalBoolean,
         owned: optionalBoolean,
@@ -316,6 +317,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         group_id: z.string(),
         include_subgroups: optionalBoolean,
         search: optionalString,
+        topic: optionalString,
         order_by: z
           .enum(["name", "path", "created_at", "updated_at", "last_activity_at"])
           .optional(),
