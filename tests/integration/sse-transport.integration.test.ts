@@ -268,6 +268,59 @@ describe("SSE Transport - Capacity limit", () => {
   });
 });
 
+describe("SSE Transport - Path prefix", () => {
+  it("serves prefixed SSE and message endpoints", async () => {
+    const ctx = buildSseContext({ serverName: "sse-prefix-test" });
+    ctx.env.MCP_SERVER_URL = "https://mcp.example.com/gitlab-mcp";
+    const prefixedResult = setupMcpHttpApp({
+      context: ctx,
+      env: ctx.env,
+      logger: ctx.logger
+    });
+
+    const server = createServer(prefixedResult.app);
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", () => resolve());
+    });
+
+    const addr = server.address();
+    const url = typeof addr === "object" && addr !== null ? `http://127.0.0.1:${addr.port}` : "";
+    const controller = new AbortController();
+
+    try {
+      const response = await fetch(`${url}/gitlab-mcp/sse`, {
+        headers: { Accept: "text/event-stream" },
+        signal: controller.signal
+      });
+      const gen = parseSseEvents(response);
+      const first = await gen.next();
+      const event = first.value as SseEvent;
+
+      expect(event.event).toBe("endpoint");
+      expect(event.data).toContain("/gitlab-mcp/messages?sessionId=");
+
+      const res = await fetch(`${url}${event.data}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "ping"
+        })
+      });
+      expect(res.status).toBe(202);
+    } finally {
+      controller.abort();
+      for (const sessionId of prefixedResult.sseSessions.keys()) {
+        await prefixedResult.closeSseSession(sessionId, "shutdown");
+      }
+      await new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+    }
+  });
+});
+
 describe("SSE Transport - Garbage collection", () => {
   it("removes expired SSE sessions after garbageCollectSessions()", async () => {
     const ctx = buildSseContext({ serverName: "sse-gc-test" });

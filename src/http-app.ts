@@ -350,68 +350,70 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   /* ---- SSE endpoints ---- */
 
   if (appEnv.SSE) {
-    app.get("/sse", async (req, res) => {
-      let sessionId: string | undefined;
-      try {
-        const parsedAuth = parseRequestAuth(req);
-        const fallbackToken = appEnv.REMOTE_AUTHORIZATION
-          ? undefined
-          : appEnv.GITLAB_PERSONAL_ACCESS_TOKEN;
+    const createSseConnectHandler =
+      (messageEndpoint: string): express.RequestHandler =>
+      async (req, res) => {
+        let sessionId: string | undefined;
+        try {
+          const parsedAuth = parseRequestAuth(req);
+          const fallbackToken = appEnv.REMOTE_AUTHORIZATION
+            ? undefined
+            : appEnv.GITLAB_PERSONAL_ACCESS_TOKEN;
 
-        if (
-          hasReachedSessionCapacity({
-            streamableSessions: sessions.size,
-            pendingSessions: pendingSessions.size,
-            sseSessions: sseSessions.size,
-            maxSessions: appEnv.MAX_SESSIONS
-          })
-        ) {
-          res.status(503).send(`Maximum ${appEnv.MAX_SESSIONS} concurrent sessions reached`);
-          return;
-        }
-
-        const server = createMcpServer(context);
-        const transport = new SSEServerTransport("/messages", res);
-        sessionId = transport.sessionId;
-        const state: SseSessionState = {
-          sessionId,
-          server,
-          transport,
-          lastAccessAt: Date.now(),
-          closed: false
-        };
-        sseSessions.set(sessionId, state);
-        const currentSessionId = sessionId;
-
-        res.on("close", () => {
-          void closeSseSession(currentSessionId, "client-close");
-        });
-
-        await runWithSessionAuth(
-          {
-            sessionId,
-            token: parsedAuth?.token ?? fallbackToken,
-            apiUrl: parsedAuth?.apiUrl ?? appEnv.GITLAB_API_URL,
-            header: parsedAuth?.header,
-            updatedAt: Date.now()
-          },
-          async () => {
-            await server.connect(transport);
+          if (
+            hasReachedSessionCapacity({
+              streamableSessions: sessions.size,
+              pendingSessions: pendingSessions.size,
+              sseSessions: sseSessions.size,
+              maxSessions: appEnv.MAX_SESSIONS
+            })
+          ) {
+            res.status(503).send(`Maximum ${appEnv.MAX_SESSIONS} concurrent sessions reached`);
+            return;
           }
-        );
-        appLogger.info({ sessionId }, "MCP SSE session initialized");
-      } catch (error) {
-        if (sessionId) {
-          await closeSseSession(sessionId, "connect-error");
-        }
-        appLogger.error({ err: error, sessionId }, "Failed to initialize SSE session");
-        if (!res.headersSent) {
-          res.status(500).send("Failed to initialize SSE session");
-        }
-      }
-    });
 
-    app.post("/messages", async (req, res) => {
+          const server = createMcpServer(context);
+          const transport = new SSEServerTransport(messageEndpoint, res);
+          sessionId = transport.sessionId;
+          const state: SseSessionState = {
+            sessionId,
+            server,
+            transport,
+            lastAccessAt: Date.now(),
+            closed: false
+          };
+          sseSessions.set(sessionId, state);
+          const currentSessionId = sessionId;
+
+          res.on("close", () => {
+            void closeSseSession(currentSessionId, "client-close");
+          });
+
+          await runWithSessionAuth(
+            {
+              sessionId,
+              token: parsedAuth?.token ?? fallbackToken,
+              apiUrl: parsedAuth?.apiUrl ?? appEnv.GITLAB_API_URL,
+              header: parsedAuth?.header,
+              updatedAt: Date.now()
+            },
+            async () => {
+              await server.connect(transport);
+            }
+          );
+          appLogger.info({ sessionId }, "MCP SSE session initialized");
+        } catch (error) {
+          if (sessionId) {
+            await closeSseSession(sessionId, "connect-error");
+          }
+          appLogger.error({ err: error, sessionId }, "Failed to initialize SSE session");
+          if (!res.headersSent) {
+            res.status(500).send("Failed to initialize SSE session");
+          }
+        }
+      };
+
+    const ssePostMessageHandler: express.RequestHandler = async (req, res) => {
       let sessionId: string | undefined;
       try {
         sessionId = String(req.query.sessionId ?? "");
@@ -450,7 +452,17 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
           res.status(500).send("SSE message processing failed");
         }
       }
-    });
+    };
+
+    app.get("/sse", createSseConnectHandler("/messages"));
+    app.post("/messages", ssePostMessageHandler);
+    if (configuredPathPrefix) {
+      app.get(
+        `${configuredPathPrefix}/sse`,
+        createSseConnectHandler(`${configuredPathPrefix}/messages`)
+      );
+      app.post(`${configuredPathPrefix}/messages`, ssePostMessageHandler);
+    }
   }
 
   /* ---- /mcp (streamable HTTP) ---- */
