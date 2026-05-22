@@ -4208,6 +4208,126 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_list_work_item_emoji_reactions",
+      title: "List Work Item Emoji Reactions",
+      description: "List emoji reactions on a work item.",
+      capabilities: readGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema
+      },
+      handler: async (args, context) =>
+        listGraphqlAwardEmoji(
+          context,
+          (
+            await resolveWorkItemGid(
+              context,
+              resolveProjectId(args, context, true),
+              getNumber(args, "iid")
+            )
+          ).workItemGid
+        )
+    },
+    {
+      name: "gitlab_list_work_item_note_emoji_reactions",
+      title: "List Work Item Note Emoji Reactions",
+      description: "List emoji reactions on a work item note by GraphQL note_id.",
+      capabilities: readGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        note_id: z.string().min(1)
+      },
+      handler: async (args, context) => {
+        resolveProjectId(args, context, true);
+        return listGraphqlAwardEmoji(context, getString(args, "note_id"));
+      }
+    },
+    {
+      name: "gitlab_create_work_item_emoji_reaction",
+      title: "Create Work Item Emoji Reaction",
+      description: "Add an emoji reaction to a work item, for example thumbsup, rocket, or eyes.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        name: emojiNameSchema
+      },
+      handler: async (args, context) =>
+        addGraphqlAwardEmoji(
+          context,
+          (
+            await resolveWorkItemGid(
+              context,
+              resolveProjectId(args, context, true),
+              getNumber(args, "iid")
+            )
+          ).workItemGid,
+          getString(args, "name")
+        )
+    },
+    {
+      name: "gitlab_delete_work_item_emoji_reaction",
+      title: "Delete Work Item Emoji Reaction",
+      description:
+        "Remove the current user's emoji reaction from a work item by emoji name. Requires iid and name.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        name: emojiNameSchema
+      },
+      handler: async (args, context) =>
+        removeGraphqlAwardEmoji(
+          context,
+          (
+            await resolveWorkItemGid(
+              context,
+              resolveProjectId(args, context, true),
+              getNumber(args, "iid")
+            )
+          ).workItemGid,
+          getString(args, "name")
+        )
+    },
+    {
+      name: "gitlab_create_work_item_note_emoji_reaction",
+      title: "Create Work Item Note Emoji Reaction",
+      description: "Add an emoji reaction to a work item note by GraphQL note_id.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        note_id: z.string().min(1),
+        name: emojiNameSchema
+      },
+      handler: async (args, context) => {
+        resolveProjectId(args, context, true);
+        return addGraphqlAwardEmoji(context, getString(args, "note_id"), getString(args, "name"));
+      }
+    },
+    {
+      name: "gitlab_delete_work_item_note_emoji_reaction",
+      title: "Delete Work Item Note Emoji Reaction",
+      description:
+        "Remove the current user's emoji reaction from a work item note by GraphQL note_id and emoji name.",
+      capabilities: writeGraphqlCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        iid: workItemIidSchema,
+        note_id: z.string().min(1),
+        name: emojiNameSchema
+      },
+      handler: async (args, context) => {
+        resolveProjectId(args, context, true);
+        return removeGraphqlAwardEmoji(
+          context,
+          getString(args, "note_id"),
+          getString(args, "name")
+        );
+      }
+    },
+    {
       name: "gitlab_get_timeline_events",
       title: "Get Timeline Events",
       description: "List timeline events for an incident work item.",
@@ -5609,6 +5729,71 @@ async function createWorkItemNote(
   return data.createNote.note;
 }
 
+async function addGraphqlAwardEmoji(
+  context: AppContext,
+  awardableId: string,
+  name: string
+): Promise<unknown> {
+  const data = await executeGraphqlData<{
+    awardEmojiAdd: {
+      awardEmoji?: { name: string; user?: { username?: string } } | null;
+      errors?: string[];
+    };
+  }>(
+    context,
+    `mutation($awardableId: AwardableID!, $name: String!) {
+      awardEmojiAdd(input: { awardableId: $awardableId, name: $name }) {
+        awardEmoji { name user { username } }
+        errors
+      }
+    }`,
+    { awardableId, name }
+  );
+  assertNoGraphqlMutationErrors(data.awardEmojiAdd?.errors, "Failed to add emoji reaction");
+  return data.awardEmojiAdd.awardEmoji;
+}
+
+async function listGraphqlAwardEmoji(context: AppContext, awardableId: string): Promise<unknown[]> {
+  const data = await executeGraphqlData<{
+    awardable?: {
+      awardEmoji?: { nodes?: Array<{ name: string; user?: { username?: string } }> };
+    } | null;
+  }>(
+    context,
+    `query($id: AwardableID!) {
+      awardable(id: $id) {
+        awardEmoji { nodes { name user { username } } }
+      }
+    }`,
+    { id: awardableId }
+  );
+  return data.awardable?.awardEmoji?.nodes ?? [];
+}
+
+async function removeGraphqlAwardEmoji(
+  context: AppContext,
+  awardableId: string,
+  name: string
+): Promise<unknown> {
+  const data = await executeGraphqlData<{
+    awardEmojiRemove: {
+      awardEmoji?: { name: string } | null;
+      errors?: string[];
+    };
+  }>(
+    context,
+    `mutation($awardableId: AwardableID!, $name: String!) {
+      awardEmojiRemove(input: { awardableId: $awardableId, name: $name }) {
+        awardEmoji { name }
+        errors
+      }
+    }`,
+    { awardableId, name }
+  );
+  assertNoGraphqlMutationErrors(data.awardEmojiRemove?.errors, "Failed to remove emoji reaction");
+  return data.awardEmojiRemove.awardEmoji ?? { status: "success" };
+}
+
 async function getTimelineEvents(
   context: AppContext,
   projectId: string,
@@ -5835,6 +6020,12 @@ function isGraphqlToolName(name: string): boolean {
     name === "gitlab_move_work_item" ||
     name === "gitlab_list_work_item_notes" ||
     name === "gitlab_create_work_item_note" ||
+    name === "gitlab_list_work_item_emoji_reactions" ||
+    name === "gitlab_list_work_item_note_emoji_reactions" ||
+    name === "gitlab_create_work_item_emoji_reaction" ||
+    name === "gitlab_delete_work_item_emoji_reaction" ||
+    name === "gitlab_create_work_item_note_emoji_reaction" ||
+    name === "gitlab_delete_work_item_note_emoji_reaction" ||
     name === "gitlab_get_timeline_events" ||
     name === "gitlab_create_timeline_event"
   );

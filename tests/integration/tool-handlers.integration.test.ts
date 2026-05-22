@@ -1647,6 +1647,52 @@ describe("Tool handlers: work item GraphQL tools", () => {
     }
   });
 
+  it("creates work item emoji reactions through GraphQL award emoji", async () => {
+    const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
+    const executeGraphql = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: {
+          namespace: {
+            workItem: { id: "gid://gitlab/WorkItem/10" }
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: {
+          awardEmojiAdd: {
+            awardEmoji: { name: "rocket", user: { username: "alice" } },
+            errors: []
+          }
+        }
+      });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getProject, executeGraphql } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_create_work_item_emoji_reaction",
+        arguments: {
+          project_id: "group/project",
+          iid: 10,
+          name: "rocket"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const [, variables] = executeGraphql.mock.calls[1] as [string, Record<string, unknown>];
+      expect(variables).toEqual({
+        awardableId: "gid://gitlab/WorkItem/10",
+        name: "rocket"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
   it("hides work item mutations in read-only mode", async () => {
     const { client, clientTransport, serverTransport } = await createLinkedPair(
       buildContext({ readOnlyMode: true })
@@ -1661,6 +1707,8 @@ describe("Tool handlers: work item GraphQL tools", () => {
       expect(names).not.toContain("gitlab_create_work_item");
       expect(names).not.toContain("gitlab_update_work_item");
       expect(names).not.toContain("gitlab_create_timeline_event");
+      expect(names).not.toContain("gitlab_create_work_item_emoji_reaction");
+      expect(names).not.toContain("gitlab_delete_work_item_note_emoji_reaction");
     } finally {
       await clientTransport.close();
       await serverTransport.close();
