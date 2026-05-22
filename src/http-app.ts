@@ -184,6 +184,10 @@ function getUrlPathPrefix(url: URL): string {
   return url.pathname.replace(/\/+$/, "");
 }
 
+function getConfiguredServerPathPrefix(env: AppContext["env"]): string {
+  return env.MCP_SERVER_URL ? getUrlPathPrefix(new URL(env.MCP_SERVER_URL)) : "";
+}
+
 function getPrefixedOAuthMetadataRoutes(metadataRoute: string, pathPrefix: string): string[] {
   return Array.from(
     new Set([metadataRoute, `${metadataRoute}${pathPrefix}`, `${pathPrefix}${metadataRoute}`])
@@ -283,7 +287,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
   const downloadRateLimits = new Map<string, { count: number; resetAt: number }>();
 
-  app.get("/downloads/:type", async (req, res) => {
+  const downloadProxyHandler: express.RequestHandler = async (req, res) => {
     try {
       const resource = getDownloadResourceFromRequest(req);
       const auth = parseDownloadAuth(req, resource);
@@ -332,7 +336,12 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         res.status(status).json({ error: message });
       }
     }
-  });
+  };
+  const downloadPathPrefix = getConfiguredServerPathPrefix(appEnv);
+  app.get("/downloads/:type", downloadProxyHandler);
+  if (downloadPathPrefix) {
+    app.get(`${downloadPathPrefix}/downloads/:type`, downloadProxyHandler);
+  }
 
   /* ---- SSE endpoints ---- */
 

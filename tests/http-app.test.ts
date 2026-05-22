@@ -385,6 +385,73 @@ describe("http app download proxy", () => {
       });
     }
   });
+
+  it("streams downloads from the configured MCP_SERVER_URL path prefix", async () => {
+    const gitLabServer = createServer((req, res) => {
+      expect(req.url).toBe("/api/v4/projects/group%2Fproject/jobs/43/artifacts");
+      expect(req.headers["private-token"]).toBe("proxy-token");
+      res.statusCode = 200;
+      res.setHeader("content-type", "application/zip");
+      res.end("prefixed-zip-bytes");
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      gitLabServer.listen(0, "127.0.0.1", (error?: Error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = "proxy-token";
+      context.env.MCP_SERVER_URL = "https://mcp.example.com/gitlab-mcp";
+      running = await startServerForContext(context);
+
+      const resource = {
+        type: "job-artifacts",
+        params: { project_id: "group/project", job_id: "43" }
+      };
+      const token = createDownloadToken(
+        { header: "private-token", token: "proxy-token" },
+        resource,
+        {
+          secret: context.env.GITLAB_DOWNLOAD_TOKEN_SECRET,
+          ttlSeconds: context.env.GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS
+        }
+      );
+      const url = new URL(`${running.baseUrl}/gitlab-mcp/downloads/job-artifacts`);
+      url.searchParams.set("project_id", "group/project");
+      url.searchParams.set("job_id", "43");
+      url.searchParams.set("_token", token);
+
+      const response = await fetch(url);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("application/zip");
+      expect(await response.text()).toBe("prefixed-zip-bytes");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+  });
 });
 
 describe("http app MCP OAuth", () => {
