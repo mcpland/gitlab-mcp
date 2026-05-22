@@ -1848,6 +1848,21 @@ export class GitLabClient {
     return this.get(`/projects/${encode(projectId)}/events`, options);
   }
 
+  listWebhooks(
+    scope: { projectId?: string; groupId?: string },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(`${this.webhookBasePath(scope)}/hooks`, options);
+  }
+
+  listWebhookEvents(
+    scope: { projectId?: string; groupId?: string },
+    hookId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(`${this.webhookBasePath(scope)}/hooks/${encode(hookId)}/events`, options);
+  }
+
   // attachments / markdown
   uploadMarkdown(
     projectId: string,
@@ -2294,6 +2309,16 @@ export class GitLabClient {
     const index = this.nextApiUrlIndex % this.apiUrls.length;
     this.nextApiUrlIndex = (this.nextApiUrlIndex + 1) % this.apiUrls.length;
     return this.apiUrls[index] ?? this.baseApiUrl;
+  }
+
+  private webhookBasePath(scope: { projectId?: string; groupId?: string }): string {
+    if (scope.projectId) {
+      return `/projects/${encode(scope.projectId)}`;
+    }
+    if (scope.groupId) {
+      return `/groups/${encode(scope.groupId)}`;
+    }
+    throw new Error("Either projectId or groupId is required");
   }
 
   private resolveAbsoluteUrl(raw: string, apiUrl: string): URL {

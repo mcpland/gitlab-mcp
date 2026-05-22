@@ -3387,6 +3387,88 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         })
     },
     {
+      name: "gitlab_list_webhooks",
+      title: "List Webhooks",
+      description: "List configured webhooks for a project or group.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        group_id: optionalProjectIdSchema,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listWebhooks(resolveWebhookScope(args), {
+          query: toQuery(omit(args, ["project_id", "group_id"]))
+        })
+    },
+    {
+      name: "gitlab_list_webhook_events",
+      title: "List Webhook Events",
+      description:
+        "List recent webhook events for a project or group webhook. Use summary mode for overviews.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        group_id: optionalProjectIdSchema,
+        hook_id: z.union([z.string(), z.number()]),
+        status: optionalStringOrNumber,
+        summary: optionalBoolean,
+        page: optionalNumber,
+        per_page: z.number().int().min(1).max(20).optional()
+      },
+      handler: async (args, context) => {
+        const events = extractRecords(
+          await context.gitlab.listWebhookEvents(
+            resolveWebhookScope(args),
+            getIdString(args, "hook_id"),
+            {
+              query: toQuery({
+                status: args.status,
+                page: args.page,
+                per_page: args.per_page ?? 20
+              })
+            }
+          )
+        );
+        return getOptionalBoolean(args, "summary") ? summarizeWebhookEvents(events) : events;
+      }
+    },
+    {
+      name: "gitlab_get_webhook_event",
+      title: "Get Webhook Event",
+      description:
+        "Find one webhook event by ID. Provide page when known, otherwise scans up to 500 recent events.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        group_id: optionalProjectIdSchema,
+        hook_id: z.union([z.string(), z.number()]),
+        event_id: z.union([z.string(), z.number()]),
+        page: optionalNumber
+      },
+      handler: async (args, context) => {
+        const event = await findWebhookEvent(
+          context,
+          resolveWebhookScope(args),
+          getIdString(args, "hook_id"),
+          getIdString(args, "event_id"),
+          getOptionalNumber(args, "page")
+        );
+
+        if (event) {
+          return event;
+        }
+
+        return {
+          error: `Webhook event ${getIdString(args, "event_id")} not found ${
+            getOptionalNumber(args, "page")
+              ? `on page ${getOptionalNumber(args, "page")}`
+              : "in the 500 most recent events"
+          }`
+        };
+      }
+    },
+    {
       name: "gitlab_upload_markdown",
       title: "Upload Markdown",
       description: "Upload markdown file/attachment to project.",
@@ -3868,6 +3950,67 @@ function filterChangedFiles(
   });
 }
 
+function resolveWebhookScope(args: ToolArgs): { projectId?: string; groupId?: string } {
+  const projectId = getOptionalString(args, "project_id");
+  const groupId = getOptionalString(args, "group_id");
+
+  if ((projectId ? 1 : 0) + (groupId ? 1 : 0) !== 1) {
+    throw new Error("Provide exactly one of project_id or group_id");
+  }
+
+  return projectId ? { projectId } : { groupId };
+}
+
+function summarizeWebhookEvents(
+  events: Array<Record<string, unknown>>
+): Array<Record<string, unknown>> {
+  return events.map((event) => ({
+    id: event.id,
+    url: event.url,
+    trigger: event.trigger,
+    response_status: event.response_status,
+    execution_duration: event.execution_duration
+  }));
+}
+
+async function findWebhookEvent(
+  context: AppContext,
+  scope: { projectId?: string; groupId?: string },
+  hookId: string,
+  eventId: string,
+  page?: number
+): Promise<Record<string, unknown> | undefined> {
+  const perPage = 20;
+  const pages = page ? [page] : Array.from({ length: 25 }, (_value, index) => index + 1);
+
+  for (const currentPage of pages) {
+    const events = extractRecords(
+      await context.gitlab.listWebhookEvents(scope, hookId, {
+        query: { page: currentPage, per_page: perPage }
+      })
+    );
+    const match = events.find((event) => String(event.id) === eventId);
+    if (match) {
+      return match;
+    }
+    if (events.length < perPage) {
+      break;
+    }
+  }
+
+  return undefined;
+}
+
+function extractRecords(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is Record<string, unknown> => typeof item === "object" && item !== null
+  );
+}
+
 function pickMergeRequestForSourceBranch(
   value: unknown,
   sourceBranch: string,
@@ -3959,6 +4102,15 @@ function getString(args: ToolArgs, key: string): string {
   }
 
   return value;
+}
+
+function getIdString(args: ToolArgs, key: string): string {
+  const value = args[key];
+  if ((typeof value !== "string" && typeof value !== "number") || String(value).length === 0) {
+    throw new Error(`'${key}' must be a non-empty string or number`);
+  }
+
+  return String(value);
 }
 
 function getOptionalString(args: ToolArgs, key: string): string | undefined {

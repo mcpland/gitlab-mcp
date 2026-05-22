@@ -1285,6 +1285,143 @@ describe("Tool handlers: todo tools", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Webhook tools                                                      */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: webhook tools", () => {
+  it("passes project scope to gitlab_list_webhooks", async () => {
+    const listWebhooks = vi.fn().mockResolvedValue([{ id: 7, url: "https://example.com" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listWebhooks } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_webhooks",
+        arguments: { project_id: "group/project", page: 2 }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listWebhooks).toHaveBeenCalledWith(
+        { projectId: "group/project" },
+        {
+          query: expect.objectContaining({ page: 2 })
+        }
+      );
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects webhook tools without exactly one scope", async () => {
+    const listWebhooks = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listWebhooks } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_webhooks",
+        arguments: { project_id: "group/project", group_id: "group" }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(listWebhooks).not.toHaveBeenCalled();
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      )!.text;
+      expect(text).toContain("Provide exactly one of project_id or group_id");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("summarizes webhook events", async () => {
+    const listWebhookEvents = vi.fn().mockResolvedValue([
+      {
+        id: 1,
+        url: "https://example.com",
+        trigger: "push_hooks",
+        response_status: "200",
+        execution_duration: 0.42,
+        request_data: "large"
+      }
+    ]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listWebhookEvents } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_webhook_events",
+        arguments: {
+          group_id: "parent/group",
+          hook_id: "7",
+          status: "successful",
+          summary: true
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listWebhookEvents).toHaveBeenCalledWith({ groupId: "parent/group" }, "7", {
+        query: expect.objectContaining({
+          status: "successful",
+          per_page: 20
+        })
+      });
+      const structured = (
+        result as {
+          structuredContent?: { result?: { items?: Array<Record<string, unknown>> } };
+        }
+      ).structuredContent;
+      expect(structured?.result?.items?.[0]).toEqual({
+        id: 1,
+        url: "https://example.com",
+        trigger: "push_hooks",
+        response_status: "200",
+        execution_duration: 0.42
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("finds webhook events by direct page", async () => {
+    const listWebhookEvents = vi.fn().mockResolvedValue([{ id: 101, response_status: "500" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listWebhookEvents } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_webhook_event",
+        arguments: {
+          project_id: "group/project",
+          hook_id: "7",
+          event_id: "101",
+          page: 3
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listWebhookEvents).toHaveBeenCalledWith({ projectId: "group/project" }, "7", {
+        query: { page: 3, per_page: 20 }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  CI lint tools                                                      */
 /* ------------------------------------------------------------------ */
 

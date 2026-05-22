@@ -1457,6 +1457,40 @@ describe("GitLabClient", () => {
       expect(allInit.method).toBe("POST");
     });
 
+    it("lists project and group webhooks", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listWebhooks({ projectId: "group/project" }, { query: { page: 2 } });
+      await client.listWebhooks({ groupId: "parent/group" }, { query: { per_page: 10 } });
+
+      const [projectUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const [groupUrl] = fetchMock.mock.calls[1] as [URL | string];
+      const project = new URL(String(projectUrl));
+      const group = new URL(String(groupUrl));
+
+      expect(project.pathname).toBe("/api/v4/projects/group%2Fproject/hooks");
+      expect(project.searchParams.get("page")).toBe("2");
+      expect(group.pathname).toBe("/api/v4/groups/parent%2Fgroup/hooks");
+      expect(group.searchParams.get("per_page")).toBe("10");
+    });
+
+    it("lists webhook events", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listWebhookEvents({ projectId: "group/project" }, "7", {
+        query: { status: "successful", page: 3, per_page: 20 }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toBe("/api/v4/projects/group%2Fproject/hooks/7/events");
+      expect(url.searchParams.get("status")).toBe("successful");
+      expect(url.searchParams.get("page")).toBe("3");
+      expect(url.searchParams.get("per_page")).toBe("20");
+    });
+
     it("gets one user by ID", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ id: 42, username: "alice" }));
 

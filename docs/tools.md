@@ -56,6 +56,16 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 
 ---
 
+## Webhooks
+
+| Tool                         | Mutating | Description                                                                                                 |
+| ---------------------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_webhooks`       | No       | List webhooks for exactly one `project_id` or `group_id`. Supports pagination.                              |
+| `gitlab_list_webhook_events` | No       | List recent webhook events for `hook_id`. Supports `status`, `summary`, `page`, `per_page` (max 20).        |
+| `gitlab_get_webhook_event`   | No       | Find one webhook event by `event_id`. Supports direct `page`; otherwise scans up to 500 most recent events. |
+
+---
+
 ## Repository & Files
 
 | Tool                           | Mutating | Description                                                                                                                                                                                        |
