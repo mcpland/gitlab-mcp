@@ -281,6 +281,41 @@ describe("Tool handler: gitlab_get_file_contents", () => {
       await serverTransport.close();
     }
   });
+
+  it("decodes base64 file contents when requested", async () => {
+    const getFileContents = vi.fn().mockResolvedValue({
+      file_name: "README.md",
+      content: "IyBIZWxsbwo=",
+      encoding: "base64"
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getFileContents } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_file_contents",
+        arguments: {
+          project_id: "group/project",
+          file_path: "README.md",
+          ref: "main",
+          decode_base64: true
+        }
+      });
+
+      const structured = (result as { structuredContent?: { result?: Record<string, unknown> } })
+        .structuredContent?.result;
+      expect(structured).toMatchObject({
+        file_name: "README.md",
+        content: "# Hello\n",
+        encoding: "utf8"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */

@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { Kind, parse } from "graphql";
@@ -486,7 +488,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: optionalProjectIdSchema,
         file_path: z.string().min(1),
-        ref: optionalRefLikeSchema
+        ref: optionalRefLikeSchema,
+        decode_base64: optionalBoolean
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
@@ -497,7 +500,12 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           };
           ref = typeof project.default_branch === "string" ? project.default_branch : "main";
         }
-        return context.gitlab.getFileContents(projectId, getString(args, "file_path"), ref);
+        const result = await context.gitlab.getFileContents(
+          projectId,
+          getString(args, "file_path"),
+          ref
+        );
+        return maybeDecodeRepositoryFileContents(result, getOptionalBoolean(args, "decode_base64"));
       }
     },
     {
@@ -6130,6 +6138,23 @@ function toStructuredContent(value: unknown): Record<string, unknown> {
 
   return {
     value
+  };
+}
+
+function maybeDecodeRepositoryFileContents(value: unknown, shouldDecode?: boolean): unknown {
+  if (!shouldDecode || typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+
+  const file = value as Record<string, unknown>;
+  if (file.encoding !== "base64" || typeof file.content !== "string") {
+    return value;
+  }
+
+  return {
+    ...file,
+    content: Buffer.from(file.content, "base64").toString("utf8"),
+    encoding: "utf8"
   };
 }
 
