@@ -455,6 +455,43 @@ describe("Tool handler: gitlab_get_merge_request_conflicts", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  gitlab_list_merge_request_pipelines                                */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handler: gitlab_list_merge_request_pipelines", () => {
+  it("passes project_id, merge_request_iid, and pagination", async () => {
+    const listMergeRequestPipelines = vi.fn().mockResolvedValue([{ id: 77, status: "success" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listMergeRequestPipelines } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_merge_request_pipelines",
+        arguments: {
+          project_id: "group/project",
+          merge_request_iid: "11",
+          page: 2,
+          per_page: 10
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listMergeRequestPipelines).toHaveBeenCalledWith("group/project", "11", {
+        query: expect.objectContaining({
+          page: 2,
+          per_page: 10
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_merge_merge_request                                         */
 /* ------------------------------------------------------------------ */
 

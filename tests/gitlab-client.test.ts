@@ -911,6 +911,22 @@ describe("GitLabClient", () => {
       expect(String(requestUrl)).toContain("/projects/proj/merge_requests/123/conflicts");
     });
 
+    it("lists merge request pipelines with pagination", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([{ id: 77, status: "success" }]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listMergeRequestPipelines("proj", "123", {
+        query: { page: 2, per_page: 10 }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+
+      expect(url.pathname).toContain("/projects/proj/merge_requests/123/pipelines");
+      expect(url.searchParams.get("page")).toBe("2");
+      expect(url.searchParams.get("per_page")).toBe("10");
+    });
+
     it("lists deployments with query parameters", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
 

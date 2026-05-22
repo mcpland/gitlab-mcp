@@ -403,6 +403,17 @@ export class GitLabClient {
     );
   }
 
+  listMergeRequestPipelines(
+    projectId: string,
+    mergeRequestIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/pipelines`,
+      options
+    );
+  }
+
   createMergeRequest(
     projectId: string,
     payload: {

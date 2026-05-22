@@ -723,6 +723,23 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_list_merge_request_pipelines",
+      title: "List Merge Request Pipelines",
+      description: "List pipelines associated with a merge request.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: z.string().min(1),
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listMergeRequestPipelines(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          { query: toQuery(omit(args, ["project_id", "merge_request_iid"])) }
+        )
+    },
+    {
       name: "gitlab_create_merge_request",
       title: "Create Merge Request",
       description: "Create a merge request.",
