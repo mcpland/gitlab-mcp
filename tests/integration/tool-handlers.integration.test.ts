@@ -329,6 +329,118 @@ describe("Tool handlers: branch tools", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Commit status tools                                                */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: commit status tools", () => {
+  it("passes filters to gitlab_list_commit_statuses", async () => {
+    const listCommitStatuses = vi.fn().mockResolvedValue([{ sha: "abc123", status: "success" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listCommitStatuses } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_commit_statuses",
+        arguments: {
+          project_id: "group/project",
+          sha: "abc123",
+          ref: "main",
+          name: "external/check",
+          all: false,
+          page: 2,
+          per_page: 20
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listCommitStatuses).toHaveBeenCalledWith("group/project", "abc123", {
+        query: expect.objectContaining({
+          ref: "main",
+          name: "external/check",
+          all: false,
+          page: 2,
+          per_page: 20
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes payload to gitlab_create_commit_status", async () => {
+    const createCommitStatus = vi.fn().mockResolvedValue({
+      sha: "abc123",
+      status: "success"
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { createCommitStatus } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_create_commit_status",
+        arguments: {
+          project_id: "group/project",
+          sha: "abc123",
+          state: "success",
+          context: "external/check",
+          target_url: "https://ci.example.com/build/1",
+          coverage: 87.5,
+          pipeline_id: 42
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(createCommitStatus).toHaveBeenCalledWith("group/project", "abc123", {
+        state: "success",
+        context: "external/check",
+        target_url: "https://ci.example.com/build/1",
+        coverage: 87.5,
+        pipeline_id: 42
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects create commit status with both name and context", async () => {
+    const createCommitStatus = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { createCommitStatus } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_create_commit_status",
+        arguments: {
+          project_id: "group/project",
+          sha: "abc123",
+          state: "success",
+          name: "external/check",
+          context: "external/check"
+        }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(createCommitStatus).not.toHaveBeenCalled();
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      )!.text;
+      expect(text).toContain("Use either name or context");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_create_issue (mutating tool)                                */
 /* ------------------------------------------------------------------ */
 

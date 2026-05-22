@@ -1287,6 +1287,46 @@ describe("GitLabClient", () => {
       expect(String(requestUrl)).toContain("/commits/abc123/diff");
     });
 
+    it("lists commit statuses with filters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listCommitStatuses("proj", "abc123", {
+        query: { ref: "main", name: "external/check", all: false, per_page: 20 }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toContain("/projects/proj/repository/commits/abc123/statuses");
+      expect(url.searchParams.get("ref")).toBe("main");
+      expect(url.searchParams.get("name")).toBe("external/check");
+      expect(url.searchParams.get("all")).toBe("false");
+      expect(url.searchParams.get("per_page")).toBe("20");
+    });
+
+    it("creates commit status with query payload", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ status: "success" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.createCommitStatus("proj", "abc123", {
+        state: "success",
+        ref: "main",
+        context: "external/check",
+        target_url: "https://ci.example.com/build/1",
+        coverage: 87.5,
+        pipeline_id: 42
+      });
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toContain("/projects/proj/statuses/abc123");
+      expect(init.method).toBe("POST");
+      expect(url.searchParams.get("state")).toBe("success");
+      expect(url.searchParams.get("context")).toBe("external/check");
+      expect(url.searchParams.get("coverage")).toBe("87.5");
+      expect(url.searchParams.get("pipeline_id")).toBe("42");
+    });
+
     it("creates issue note with discussion_id", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ id: 1 }));
 

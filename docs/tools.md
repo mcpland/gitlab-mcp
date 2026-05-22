@@ -73,11 +73,13 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 
 ## Commits
 
-| Tool                     | Mutating | Description                                                                                          |
-| ------------------------ | -------- | ---------------------------------------------------------------------------------------------------- |
-| `gitlab_list_commits`    | No       | List commits. Supports `ref_name`, `since`, `until`, `path`, `author`, `all`, `with_stats`, `order`. |
-| `gitlab_get_commit`      | No       | Get one commit by SHA. Params: `sha` (required), `stats`.                                            |
-| `gitlab_get_commit_diff` | No       | Get diff for one commit. Params: `sha` (required), `full_diff`.                                      |
+| Tool                          | Mutating | Description                                                                                                                                      |
+| ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gitlab_list_commits`         | No       | List commits. Supports `ref_name`, `since`, `until`, `path`, `author`, `all`, `with_stats`, `order`.                                             |
+| `gitlab_get_commit`           | No       | Get one commit by SHA. Params: `sha` (required), `stats`.                                                                                        |
+| `gitlab_get_commit_diff`      | No       | Get diff for one commit. Params: `sha` (required), `full_diff`.                                                                                  |
+| `gitlab_list_commit_statuses` | No       | List statuses for a commit. Params: `sha` (required). Supports `ref`, `stage`, `name`, `pipeline_id`, `all`, sorting, and pagination.            |
+| `gitlab_create_commit_status` | **Yes**  | Create or update commit status. Params: `sha`, `state` (required). Supports `ref`, `name` or `context`, `target_url`, `description`, `coverage`. |
 
 ---
 

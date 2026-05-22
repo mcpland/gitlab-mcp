@@ -673,6 +673,59 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_list_commit_statuses",
+      title: "List Commit Statuses",
+      description: "List statuses for a commit.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        sha: z.string().min(1),
+        ref: optionalRefLikeSchema,
+        stage: optionalString,
+        name: optionalString,
+        pipeline_id: optionalNumber,
+        order_by: z.enum(["id", "pipeline_id"]).optional(),
+        sort: z.enum(["asc", "desc"]).optional(),
+        all: optionalBoolean,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listCommitStatuses(
+          resolveProjectId(args, context, true),
+          getString(args, "sha"),
+          { query: toQuery(omit(args, ["project_id", "sha"])) }
+        )
+    },
+    {
+      name: "gitlab_create_commit_status",
+      title: "Create Commit Status",
+      description: "Create or update the status of a commit.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        sha: z.string().min(1),
+        state: z.enum(["pending", "running", "success", "failed", "canceled", "skipped"]),
+        ref: optionalRefLikeSchema,
+        name: optionalString,
+        context: optionalString,
+        target_url: optionalString,
+        description: optionalString,
+        coverage: optionalNumber,
+        pipeline_id: optionalNumber
+      },
+      handler: async (args, context) => {
+        if (getOptionalString(args, "name") && getOptionalString(args, "context")) {
+          throw new Error("Use either name or context when creating a commit status, not both");
+        }
+
+        return context.gitlab.createCommitStatus(
+          resolveProjectId(args, context, true),
+          getString(args, "sha"),
+          toQuery(omit(args, ["project_id", "sha"]))
+        );
+      }
+    },
+    {
       name: "gitlab_list_merge_requests",
       title: "List Merge Requests",
       description: "List merge requests for a project.",

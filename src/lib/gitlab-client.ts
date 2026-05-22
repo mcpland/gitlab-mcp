@@ -398,6 +398,32 @@ export class GitLabClient {
     );
   }
 
+  listCommitStatuses(
+    projectId: string,
+    sha: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/repository/commits/${encode(sha)}/statuses`,
+      options
+    );
+  }
+
+  createCommitStatus(
+    projectId: string,
+    sha: string,
+    payload: Record<string, string | number | boolean | null | undefined>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`/projects/${encode(projectId)}/statuses/${encode(sha)}`, {
+      ...options,
+      query: {
+        ...payload,
+        ...(options.query ?? {})
+      }
+    });
+  }
+
   // merge requests
   listMergeRequests(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/merge_requests`, options);
