@@ -639,6 +639,144 @@ describe("Tool handler: gitlab_create_pipeline", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Tag tools                                                          */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: tag tools", () => {
+  it("passes filters to gitlab_list_tags", async () => {
+    const listTags = vi.fn().mockResolvedValue([{ name: "v1.0.0" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listTags } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_tags",
+        arguments: {
+          project_id: "group/project",
+          search: "^v",
+          order_by: "version",
+          sort: "desc",
+          page: 2,
+          per_page: 10
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listTags).toHaveBeenCalledWith("group/project", {
+        query: expect.objectContaining({
+          search: "^v",
+          order_by: "version",
+          sort: "desc",
+          page: 2,
+          per_page: 10
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes tag name to gitlab_get_tag", async () => {
+    const getTag = vi.fn().mockResolvedValue({ name: "release/v1" });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getTag } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_tag",
+        arguments: { project_id: "group/project", tag_name: "release/v1" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getTag).toHaveBeenCalledWith("group/project", "release/v1");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes payload to gitlab_create_tag", async () => {
+    const createTag = vi.fn().mockResolvedValue({ name: "v1.0.0" });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { createTag } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_create_tag",
+        arguments: {
+          project_id: "group/project",
+          tag_name: "v1.0.0",
+          ref: "main",
+          message: "Release tag"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(createTag).toHaveBeenCalledWith("group/project", {
+        tag_name: "v1.0.0",
+        ref: "main",
+        message: "Release tag"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes tag name to gitlab_delete_tag", async () => {
+    const deleteTag = vi.fn().mockResolvedValue("");
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { deleteTag } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_delete_tag",
+        arguments: { project_id: "group/project", tag_name: "release/v1" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(deleteTag).toHaveBeenCalledWith("group/project", "release/v1");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes tag name to gitlab_get_tag_signature", async () => {
+    const getTagSignature = vi.fn().mockResolvedValue({
+      signature_type: "X509",
+      verification_status: "verified"
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getTagSignature } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_tag_signature",
+        arguments: { project_id: "group/project", tag_name: "release/v1" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getTagSignature).toHaveBeenCalledWith("group/project", "release/v1");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  Response structure                                                 */
 /* ------------------------------------------------------------------ */
 

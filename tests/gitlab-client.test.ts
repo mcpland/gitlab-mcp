@@ -1280,6 +1280,64 @@ describe("GitLabClient", () => {
       expect(urlStr).toContain("/downloads/bin/my%20app.tar.gz");
     });
 
+    it("lists tags with filters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([{ name: "v1.0.0" }]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listTags("proj", {
+        query: { search: "^v", order_by: "version", sort: "desc", per_page: 10 }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toContain("/projects/proj/repository/tags");
+      expect(url.searchParams.get("search")).toBe("^v");
+      expect(url.searchParams.get("order_by")).toBe("version");
+      expect(url.searchParams.get("sort")).toBe("desc");
+      expect(url.searchParams.get("per_page")).toBe("10");
+    });
+
+    it("gets, deletes, and reads signatures for encoded tag names", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ name: "release/v1" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.getTag("proj", "release/v1");
+      await client.deleteTag("proj", "release/v1");
+      await client.getTagSignature("proj", "release/v1");
+
+      const [getUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const [, deleteInit] = fetchMock.mock.calls[1] as [URL | string, RequestInit];
+      const [signatureUrl] = fetchMock.mock.calls[2] as [URL | string];
+
+      expect(String(getUrl)).toContain("/repository/tags/release%2Fv1");
+      expect(deleteInit.method).toBe("DELETE");
+      expect(String(signatureUrl)).toContain("/repository/tags/release%2Fv1/signature");
+    });
+
+    it("creates tags with JSON payload", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ name: "v1.0.0" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.createTag("proj", {
+        tag_name: "v1.0.0",
+        ref: "main",
+        message: "Release tag"
+      });
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const headers = new Headers(init.headers);
+      const body = JSON.parse(init.body as string);
+
+      expect(String(requestUrl)).toContain("/projects/proj/repository/tags");
+      expect(init.method).toBe("POST");
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(body).toEqual({
+        tag_name: "v1.0.0",
+        ref: "main",
+        message: "Release tag"
+      });
+    });
+
     it("deleteLabel uses query param for label name", async () => {
       fetchMock.mockResolvedValue(jsonResponse(null));
 

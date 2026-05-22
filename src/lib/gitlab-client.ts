@@ -1599,6 +1599,52 @@ export class GitLabClient {
     );
   }
 
+  // tags
+  listTags(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/repository/tags`, options);
+  }
+
+  getTag(projectId: string, tagName: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/repository/tags/${encode(tagName)}`, options);
+  }
+
+  createTag(
+    projectId: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`/projects/${encode(projectId)}/repository/tags`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  deleteTag(
+    projectId: string,
+    tagName: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(
+      `/projects/${encode(projectId)}/repository/tags/${encode(tagName)}`,
+      options
+    );
+  }
+
+  getTagSignature(
+    projectId: string,
+    tagName: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/repository/tags/${encode(tagName)}/signature`,
+      options
+    );
+  }
+
   // labels
   listLabels(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/labels`, options);

@@ -58,6 +58,10 @@ describe("Destructive tool descriptions", () => {
         identifiers: ["tag_name"]
       },
       {
+        name: "gitlab_delete_tag",
+        identifiers: ["tag_name"]
+      },
+      {
         name: "gitlab_delete_label",
         identifiers: ["name", "label_id"]
       }

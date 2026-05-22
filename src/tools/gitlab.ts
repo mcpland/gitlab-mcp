@@ -2642,6 +2642,80 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_list_tags",
+      title: "List Tags",
+      description: "List repository tags for a project.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        order_by: z.enum(["name", "updated", "version"]).optional(),
+        sort: z.enum(["asc", "desc"]).optional(),
+        search: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listTags(resolveProjectId(args, context, true), {
+          query: toQuery(omit(args, ["project_id"]))
+        })
+    },
+    {
+      name: "gitlab_get_tag",
+      title: "Get Tag",
+      description: "Get a repository tag by name.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        tag_name: refLikeSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.getTag(resolveProjectId(args, context, true), getString(args, "tag_name"))
+    },
+    {
+      name: "gitlab_create_tag",
+      title: "Create Tag",
+      description: "Create a repository tag from a branch, commit SHA, or another tag.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        tag_name: refLikeSchema,
+        ref: refLikeSchema,
+        message: optionalString
+      },
+      handler: async (args, context) =>
+        context.gitlab.createTag(
+          resolveProjectId(args, context, true),
+          toQuery(omit(args, ["project_id"]))
+        )
+    },
+    {
+      name: "gitlab_delete_tag",
+      title: "Delete Tag",
+      description:
+        "Delete a repository tag permanently. Irreversible for tag_name. Requires tag_name. Recommended pre-check: gitlab_get_tag or gitlab_list_tags.",
+      capabilities: deleteCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        tag_name: refLikeSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteTag(resolveProjectId(args, context, true), getString(args, "tag_name"))
+    },
+    {
+      name: "gitlab_get_tag_signature",
+      title: "Get Tag Signature",
+      description: "Get the X.509 signature for a signed repository tag.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        tag_name: refLikeSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.getTagSignature(
+          resolveProjectId(args, context, true),
+          getString(args, "tag_name")
+        )
+    },
+    {
       name: "gitlab_list_labels",
       title: "List Labels",
       description: "List project labels.",
