@@ -2115,6 +2115,43 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_validate_ci_lint",
+      title: "Validate CI Lint",
+      description: "Validate provided GitLab CI/CD YAML content for a project.",
+      capabilities: readCapabilities,
+      requiresFeature: "pipeline",
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        content: z.string().min(1),
+        dry_run: optionalBoolean,
+        include_jobs: optionalBoolean,
+        ref: optionalRefLikeSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.validateCiLint(
+          resolveProjectId(args, context, true),
+          toQuery(omit(args, ["project_id"]))
+        )
+    },
+    {
+      name: "gitlab_validate_project_ci_lint",
+      title: "Validate Project CI Lint",
+      description: "Validate an existing project CI/CD configuration.",
+      capabilities: readCapabilities,
+      requiresFeature: "pipeline",
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        content_ref: optionalRefLikeSchema,
+        dry_run: optionalBoolean,
+        dry_run_ref: optionalRefLikeSchema,
+        include_jobs: optionalBoolean
+      },
+      handler: async (args, context) =>
+        context.gitlab.validateProjectCiLint(resolveProjectId(args, context, true), {
+          query: toQuery(omit(args, ["project_id"]))
+        })
+    },
+    {
       name: "gitlab_list_job_artifacts",
       title: "List Job Artifacts",
       description: "List files and directories inside a job artifacts archive.",

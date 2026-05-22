@@ -259,6 +259,8 @@ describe("MCP Server Integration - Feature flag filtering", () => {
 
       expect(names).not.toContain("gitlab_list_pipelines");
       expect(names).not.toContain("gitlab_get_pipeline");
+      expect(names).not.toContain("gitlab_validate_ci_lint");
+      expect(names).not.toContain("gitlab_validate_project_ci_lint");
       expect(names).not.toContain("gitlab_list_deployments");
       expect(names).not.toContain("gitlab_list_job_artifacts");
       expect(names).not.toContain("gitlab_get_job_artifact_file");

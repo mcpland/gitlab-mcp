@@ -1249,6 +1249,25 @@ export class GitLabClient {
     return this.get(`/projects/${encode(projectId)}/jobs/${encode(jobId)}/trace`, options);
   }
 
+  validateCiLint(
+    projectId: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`/projects/${encode(projectId)}/ci/lint`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  validateProjectCiLint(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/ci/lint`, options);
+  }
+
   listJobArtifacts(
     projectId: string,
     jobId: string,

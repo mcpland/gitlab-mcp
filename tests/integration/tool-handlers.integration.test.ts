@@ -558,6 +558,84 @@ describe("Tool handler: gitlab_list_issues", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  CI lint tools                                                      */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: CI lint tools", () => {
+  it("passes content payload to gitlab_validate_ci_lint", async () => {
+    const validateCiLint = vi.fn().mockResolvedValue({
+      valid: true,
+      errors: []
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { validateCiLint } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_validate_ci_lint",
+        arguments: {
+          project_id: "group/project",
+          content: "test:\n  script: echo ok",
+          dry_run: true,
+          include_jobs: true,
+          ref: "main"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(validateCiLint).toHaveBeenCalledWith("group/project", {
+        content: "test:\n  script: echo ok",
+        dry_run: true,
+        include_jobs: true,
+        ref: "main"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes query options to gitlab_validate_project_ci_lint", async () => {
+    const validateProjectCiLint = vi.fn().mockResolvedValue({
+      valid: true,
+      errors: []
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { validateProjectCiLint } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_validate_project_ci_lint",
+        arguments: {
+          project_id: "group/project",
+          content_ref: "feature/test",
+          dry_run: true,
+          dry_run_ref: "main",
+          include_jobs: true
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(validateProjectCiLint).toHaveBeenCalledWith("group/project", {
+        query: expect.objectContaining({
+          content_ref: "feature/test",
+          dry_run: true,
+          dry_run_ref: "main",
+          include_jobs: true
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_create_pipeline                                             */
 /* ------------------------------------------------------------------ */
 

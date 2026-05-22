@@ -851,6 +851,56 @@ describe("GitLabClient", () => {
       });
     });
 
+    it("validates CI lint content with JSON payload", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ valid: true, errors: [] }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.validateCiLint("proj", {
+        content: "test:\n  script: echo ok",
+        dry_run: true,
+        include_jobs: true,
+        ref: "main"
+      });
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const headers = new Headers(init.headers);
+      const body = JSON.parse(init.body as string);
+
+      expect(String(requestUrl)).toContain("/projects/proj/ci/lint");
+      expect(init.method).toBe("POST");
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(body).toEqual({
+        content: "test:\n  script: echo ok",
+        dry_run: true,
+        include_jobs: true,
+        ref: "main"
+      });
+    });
+
+    it("validates project CI lint with query parameters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ valid: true, errors: [] }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.validateProjectCiLint("proj", {
+        query: {
+          content_ref: "feature/test",
+          dry_run: true,
+          dry_run_ref: "main",
+          include_jobs: true
+        }
+      });
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const url = new URL(String(requestUrl));
+
+      expect(url.pathname).toContain("/projects/proj/ci/lint");
+      expect(init.method).toBe("GET");
+      expect(url.searchParams.get("content_ref")).toBe("feature/test");
+      expect(url.searchParams.get("dry_run")).toBe("true");
+      expect(url.searchParams.get("dry_run_ref")).toBe("main");
+      expect(url.searchParams.get("include_jobs")).toBe("true");
+    });
+
     it("gets merge request conflicts", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ conflict_files: [] }));
 
