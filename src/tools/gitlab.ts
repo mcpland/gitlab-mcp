@@ -9,6 +9,11 @@ import {
   type PushFileAction
 } from "../lib/gitlab-client.js";
 import {
+  applySearchReplace,
+  applyUnifiedDiff,
+  parseSearchReplaceBlocks
+} from "../lib/patch-helper.js";
+import {
   bodySchema,
   displayNameSchema,
   nullableOptional,
@@ -1950,6 +1955,91 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           getString(args, "issue_iid"),
           payload
         );
+      }
+    },
+    {
+      name: "gitlab_update_issue_description_patch",
+      title: "Update Issue Description Patch",
+      description:
+        "Apply a search/replace or unified diff patch to an issue description without sending the full replacement text.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        issue_iid: z.string().min(1),
+        patch_type: z.enum(["search_replace", "unified_diff"]),
+        patch: z.string().min(1).max(50_000),
+        dry_run: optionalBoolean,
+        create_note: optionalBoolean,
+        allow_multiple: optionalBoolean
+      },
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const issueIid = getString(args, "issue_iid");
+        const issue = (await context.gitlab.getIssue(projectId, issueIid)) as {
+          description?: unknown;
+        };
+        const currentDescription = typeof issue.description === "string" ? issue.description : "";
+
+        const patchType = getString(args, "patch_type");
+        const patch = getString(args, "patch");
+        let result;
+        if (patchType === "search_replace") {
+          const blocks = parseSearchReplaceBlocks(patch);
+          if (blocks.length === 0) {
+            throw new Error(
+              "No valid search/replace blocks found. Expected format: <<<<<<< SEARCH\\ntext\\n=======\\nnew text\\n>>>>>>> REPLACE"
+            );
+          }
+          result = applySearchReplace(
+            currentDescription,
+            blocks,
+            getOptionalBoolean(args, "allow_multiple") ?? false
+          );
+        } else {
+          result = applyUnifiedDiff(currentDescription, patch);
+        }
+
+        if (getOptionalBoolean(args, "dry_run")) {
+          return {
+            status: "preview",
+            dry_run: true,
+            changes: result.changes,
+            summary: result.summary,
+            preview: result.preview
+          };
+        }
+
+        const updatedIssue = (await context.gitlab.updateIssue(projectId, issueIid, {
+          description: result.description
+        })) as Record<string, unknown>;
+
+        let note: unknown;
+        if (getOptionalBoolean(args, "create_note")) {
+          try {
+            await context.gitlab.createIssueNote(projectId, issueIid, {
+              body: `Updated issue description using patch-based tool.\n\n${result.summary}`
+            });
+            note = { status: "created" };
+          } catch (error) {
+            note = {
+              status: "failed",
+              message: error instanceof Error ? error.message : String(error)
+            };
+          }
+        }
+
+        return {
+          status: "success",
+          changes: result.changes,
+          summary: result.summary,
+          note,
+          issue: {
+            iid: updatedIssue.iid,
+            title: updatedIssue.title,
+            web_url: updatedIssue.web_url,
+            updated_at: updatedIssue.updated_at
+          }
+        };
       }
     },
     {

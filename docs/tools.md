@@ -182,17 +182,18 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 
 ## Issues
 
-| Tool                            | Mutating | Description                                                                                                                                                                                    |
-| ------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gitlab_list_issues`            | No       | List issues. When `project_id` is omitted, lists globally. Supports `assignee_id`, `author_id`, `state`, `labels`, `milestone`, `scope`, `search`, `issue_type`, `confidential`, date filters. |
-| `gitlab_my_issues`              | No       | List issues assigned to the current user. Supports `state`, `labels`, `search`, date filters.                                                                                                  |
-| `gitlab_get_issue`              | No       | Get issue by IID.                                                                                                                                                                              |
-| `gitlab_create_issue`           | **Yes**  | Create an issue. Params: `title` (required). Supports `description`, `labels`, `milestone_id`, `due_date`, `confidential`, `issue_type`, `assignee_ids`.                                       |
-| `gitlab_update_issue`           | **Yes**  | Update issue fields. Supports `title`, `description`, `state_event`, `labels`, `assignee_ids`, `weight`, `issue_type`, `discussion_locked`.                                                    |
-| `gitlab_delete_issue`           | **Yes**  | Delete an issue permanently. Irreversible. Requires `issue_iid`. Pre-check with `get_issue`.                                                                                                   |
-| `gitlab_list_issue_discussions` | No       | List issue discussions.                                                                                                                                                                        |
-| `gitlab_create_issue_note`      | **Yes**  | Create issue comment. Params: `body` (required). Supports `discussion_id` (to reply to thread), `created_at`.                                                                                  |
-| `gitlab_update_issue_note`      | **Yes**  | Update an issue note. Provide either `body` or `resolved` (not both).                                                                                                                          |
+| Tool                                    | Mutating | Description                                                                                                                                                                                    |
+| --------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_issues`                    | No       | List issues. When `project_id` is omitted, lists globally. Supports `assignee_id`, `author_id`, `state`, `labels`, `milestone`, `scope`, `search`, `issue_type`, `confidential`, date filters. |
+| `gitlab_my_issues`                      | No       | List issues assigned to the current user. Supports `state`, `labels`, `search`, date filters.                                                                                                  |
+| `gitlab_get_issue`                      | No       | Get issue by IID.                                                                                                                                                                              |
+| `gitlab_create_issue`                   | **Yes**  | Create an issue. Params: `title` (required). Supports `description`, `labels`, `milestone_id`, `due_date`, `confidential`, `issue_type`, `assignee_ids`.                                       |
+| `gitlab_update_issue`                   | **Yes**  | Update issue fields. Supports `title`, `description`, `state_event`, `labels`, `assignee_ids`, `weight`, `issue_type`, `discussion_locked`.                                                    |
+| `gitlab_update_issue_description_patch` | **Yes**  | Apply `search_replace` or `unified_diff` patch to an issue description. Supports `dry_run`, `create_note`, `allow_multiple`.                                                                   |
+| `gitlab_delete_issue`                   | **Yes**  | Delete an issue permanently. Irreversible. Requires `issue_iid`. Pre-check with `get_issue`.                                                                                                   |
+| `gitlab_list_issue_discussions`         | No       | List issue discussions.                                                                                                                                                                        |
+| `gitlab_create_issue_note`              | **Yes**  | Create issue comment. Params: `body` (required). Supports `discussion_id` (to reply to thread), `created_at`.                                                                                  |
+| `gitlab_update_issue_note`              | **Yes**  | Update an issue note. Provide either `body` or `resolved` (not both).                                                                                                                          |
 
 ### Todos
 

@@ -588,6 +588,103 @@ describe("Tool handler: gitlab_create_issue", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  gitlab_update_issue_description_patch                              */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handler: gitlab_update_issue_description_patch", () => {
+  it("previews search/replace patches without updating on dry_run", async () => {
+    const getIssue = vi.fn().mockResolvedValue({
+      iid: 5,
+      description: "before\nkeep"
+    });
+    const updateIssue = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getIssue, updateIssue } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_update_issue_description_patch",
+        arguments: {
+          project_id: "group/project",
+          issue_iid: "5",
+          patch_type: "search_replace",
+          patch: "<<<<<<< SEARCH\nbefore\n=======\nafter\n>>>>>>> REPLACE",
+          dry_run: true
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getIssue).toHaveBeenCalledWith("group/project", "5");
+      expect(updateIssue).not.toHaveBeenCalled();
+
+      const structured = (result as { structuredContent?: { result?: Record<string, unknown> } })
+        .structuredContent;
+      expect(structured?.result).toMatchObject({
+        status: "preview",
+        dry_run: true,
+        changes: 1
+      });
+      expect(String(structured?.result?.preview)).toContain("after");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("updates the issue description and optionally creates a note", async () => {
+    const getIssue = vi.fn().mockResolvedValue({
+      iid: 5,
+      description: "before\nkeep"
+    });
+    const updateIssue = vi.fn().mockResolvedValue({
+      iid: 5,
+      title: "Bug",
+      web_url: "https://gitlab.example.com/issue/5",
+      updated_at: "2026-05-22T00:00:00Z"
+    });
+    const createIssueNote = vi.fn().mockResolvedValue({ id: 1 });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getIssue, updateIssue, createIssueNote } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_update_issue_description_patch",
+        arguments: {
+          project_id: "group/project",
+          issue_iid: "5",
+          patch_type: "search_replace",
+          patch: "<<<<<<< SEARCH\nbefore\n=======\nafter\n>>>>>>> REPLACE",
+          create_note: true
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(updateIssue).toHaveBeenCalledWith("group/project", "5", {
+        description: "after\nkeep"
+      });
+      expect(createIssueNote).toHaveBeenCalledWith("group/project", "5", {
+        body: expect.stringContaining("Updated issue description using patch-based tool")
+      });
+
+      const structured = (result as { structuredContent?: { result?: Record<string, unknown> } })
+        .structuredContent;
+      expect(structured?.result).toMatchObject({
+        status: "success",
+        changes: 1,
+        note: { status: "created" }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_get_merge_request                                           */
 /* ------------------------------------------------------------------ */
 
