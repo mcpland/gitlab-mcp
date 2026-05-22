@@ -154,4 +154,5 @@ The server enforces these cross-field constraints at startup:
 - `GITLAB_USE_OAUTH=true` requires `GITLAB_OAUTH_CLIENT_ID`
 - `ENABLE_DYNAMIC_API_URL=true` requires `REMOTE_AUTHORIZATION=true`
 - `SSE=true` is not compatible with `REMOTE_AUTHORIZATION=true`
+- `HTTP_HOST` values other than `127.0.0.1`, `localhost`, or `::1` cannot use a server-side `GITLAB_PERSONAL_ACCESS_TOKEN` unless `REMOTE_AUTHORIZATION=true`
 - `NODE_TLS_REJECT_UNAUTHORIZED=0` requires `GITLAB_ALLOW_INSECURE_TLS=true`

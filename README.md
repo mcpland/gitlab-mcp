@@ -245,9 +245,12 @@ Remote auth behavior matrix:
 
 | Server Mode                                                 | Required Request Headers                                                                      | Token Fallback Chain |
 | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------- |
-| `REMOTE_AUTHORIZATION=false`                                | none                                                                                          | enabled              |
+| `REMOTE_AUTHORIZATION=false` on local HTTP bind only        | none                                                                                          | enabled              |
 | `REMOTE_AUTHORIZATION=true`                                 | `Authorization: Bearer <token>`, `Private-Token: <token>`, or `Job-Token: <token>`            | disabled             |
 | `REMOTE_AUTHORIZATION=true` + `ENABLE_DYNAMIC_API_URL=true` | `Authorization`, `Private-Token`, or `Job-Token`, and `X-GitLab-API-URL: https://host/api/v4` | disabled             |
+
+When `HTTP_HOST` is not `127.0.0.1`, `localhost`, or `::1`, HTTP startup rejects
+server-side `GITLAB_PERSONAL_ACCESS_TOKEN` unless `REMOTE_AUTHORIZATION=true`.
 
 ### Docker
 

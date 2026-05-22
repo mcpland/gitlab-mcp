@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 
 import { env } from "./config/env.js";
 import { GitLabClient } from "./lib/gitlab-client.js";
+import { assertSafeHttpAuthConfig } from "./lib/http-auth-guard.js";
 import { logger } from "./lib/logger.js";
 import { configureNetworkRuntime } from "./lib/network.js";
 import { OutputFormatter } from "./lib/output.js";
@@ -16,6 +17,8 @@ import type { AppContext } from "./types/context.js";
 /* ------------------------------------------------------------------ */
 /*  Module entry point                                                 */
 /* ------------------------------------------------------------------ */
+
+assertSafeHttpAuthConfig(env);
 
 const requestRuntime = new GitLabRequestRuntime(env, logger);
 configureNetworkRuntime(env, logger);
