@@ -38,8 +38,24 @@ describe("Destructive tool descriptions", () => {
         identifiers: ["merge_request_iid", "note_id"]
       },
       {
+        name: "gitlab_delete_merge_request_emoji_reaction",
+        identifiers: ["merge_request_iid", "award_id"]
+      },
+      {
+        name: "gitlab_delete_merge_request_note_emoji_reaction",
+        identifiers: ["merge_request_iid", "note_id", "award_id"]
+      },
+      {
         name: "gitlab_delete_issue",
         identifiers: ["issue_iid"]
+      },
+      {
+        name: "gitlab_delete_issue_emoji_reaction",
+        identifiers: ["issue_iid", "award_id"]
+      },
+      {
+        name: "gitlab_delete_issue_note_emoji_reaction",
+        identifiers: ["issue_iid", "note_id", "award_id"]
       },
       {
         name: "gitlab_delete_issue_link",

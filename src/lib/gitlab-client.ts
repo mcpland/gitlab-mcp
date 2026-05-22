@@ -96,6 +96,8 @@ export interface GitLabArtifactFileContent {
 
 export type GitLabPipelineInputValue = string | number | boolean | Array<string | number | boolean>;
 
+type AwardEmojiEntity = "issues" | "merge_requests";
+
 export class GitLabApiError extends Error {
   constructor(
     message: string,
@@ -825,6 +827,89 @@ export class GitLabClient {
     );
   }
 
+  listMergeRequestEmojiReactions(
+    projectId: string,
+    mergeRequestIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(this.awardEmojiPath("merge_requests", projectId, mergeRequestIid), options);
+  }
+
+  createMergeRequestEmojiReaction(
+    projectId: string,
+    mergeRequestIid: string,
+    name: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.createAwardEmoji(
+      this.awardEmojiPath("merge_requests", projectId, mergeRequestIid),
+      name,
+      options
+    );
+  }
+
+  deleteMergeRequestEmojiReaction(
+    projectId: string,
+    mergeRequestIid: string,
+    awardId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(
+      this.awardEmojiPath("merge_requests", projectId, mergeRequestIid, { awardId }),
+      options
+    );
+  }
+
+  listMergeRequestNoteEmojiReactions(
+    projectId: string,
+    mergeRequestIid: string,
+    noteId: string,
+    payload: { discussion_id?: string } = {},
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      this.awardEmojiPath("merge_requests", projectId, mergeRequestIid, {
+        noteId,
+        discussionId: payload.discussion_id
+      }),
+      options
+    );
+  }
+
+  createMergeRequestNoteEmojiReaction(
+    projectId: string,
+    mergeRequestIid: string,
+    noteId: string,
+    payload: { name: string; discussion_id?: string },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.createAwardEmoji(
+      this.awardEmojiPath("merge_requests", projectId, mergeRequestIid, {
+        noteId,
+        discussionId: payload.discussion_id
+      }),
+      payload.name,
+      options
+    );
+  }
+
+  deleteMergeRequestNoteEmojiReaction(
+    projectId: string,
+    mergeRequestIid: string,
+    noteId: string,
+    payload: { award_id: string; discussion_id?: string },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(
+      this.awardEmojiPath("merge_requests", projectId, mergeRequestIid, {
+        noteId,
+        discussionId: payload.discussion_id,
+        awardId: payload.award_id
+      }),
+      options
+    );
+  }
+
   getDraftNote(
     projectId: string,
     mergeRequestIid: string,
@@ -1146,6 +1231,82 @@ export class GitLabClient {
         ...(options.headers ?? {})
       }
     });
+  }
+
+  listIssueEmojiReactions(
+    projectId: string,
+    issueIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(this.awardEmojiPath("issues", projectId, issueIid), options);
+  }
+
+  createIssueEmojiReaction(
+    projectId: string,
+    issueIid: string,
+    name: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.createAwardEmoji(this.awardEmojiPath("issues", projectId, issueIid), name, options);
+  }
+
+  deleteIssueEmojiReaction(
+    projectId: string,
+    issueIid: string,
+    awardId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(this.awardEmojiPath("issues", projectId, issueIid, { awardId }), options);
+  }
+
+  listIssueNoteEmojiReactions(
+    projectId: string,
+    issueIid: string,
+    noteId: string,
+    payload: { discussion_id?: string } = {},
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      this.awardEmojiPath("issues", projectId, issueIid, {
+        noteId,
+        discussionId: payload.discussion_id
+      }),
+      options
+    );
+  }
+
+  createIssueNoteEmojiReaction(
+    projectId: string,
+    issueIid: string,
+    noteId: string,
+    payload: { name: string; discussion_id?: string },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.createAwardEmoji(
+      this.awardEmojiPath("issues", projectId, issueIid, {
+        noteId,
+        discussionId: payload.discussion_id
+      }),
+      payload.name,
+      options
+    );
+  }
+
+  deleteIssueNoteEmojiReaction(
+    projectId: string,
+    issueIid: string,
+    noteId: string,
+    payload: { award_id: string; discussion_id?: string },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(
+      this.awardEmojiPath("issues", projectId, issueIid, {
+        noteId,
+        discussionId: payload.discussion_id,
+        awardId: payload.award_id
+      }),
+      options
+    );
   }
 
   updateIssueNote(
@@ -2390,6 +2551,44 @@ export class GitLabClient {
       return `/groups/${encode(scope.groupId)}`;
     }
     throw new Error("Either projectId or groupId is required");
+  }
+
+  private awardEmojiPath(
+    entity: AwardEmojiEntity,
+    projectId: string,
+    entityIid: string,
+    options: { noteId?: string; discussionId?: string; awardId?: string } = {}
+  ): string {
+    let path = `/projects/${encode(projectId)}/${entity}/${encode(entityIid)}`;
+
+    if (options.noteId) {
+      path += options.discussionId
+        ? `/discussions/${encode(options.discussionId)}/notes/${encode(options.noteId)}`
+        : `/notes/${encode(options.noteId)}`;
+    }
+
+    path += "/award_emoji";
+
+    if (options.awardId) {
+      path += `/${encode(options.awardId)}`;
+    }
+
+    return path;
+  }
+
+  private createAwardEmoji(
+    path: string,
+    name: string,
+    options: GitLabRequestOptions
+  ): Promise<unknown> {
+    return this.post(path, {
+      ...options,
+      body: JSON.stringify({ name }),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
   }
 
   private resolveAbsoluteUrl(raw: string, apiUrl: string): URL {

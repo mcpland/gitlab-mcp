@@ -1324,6 +1324,141 @@ describe("Tool handlers: todo tools", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Emoji reaction tools                                               */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: emoji reaction tools", () => {
+  it("passes arguments to merge request emoji reaction methods", async () => {
+    const listMergeRequestEmojiReactions = vi.fn().mockResolvedValue([{ id: 1, name: "rocket" }]);
+    const createMergeRequestNoteEmojiReaction = vi.fn().mockResolvedValue({
+      id: 2,
+      name: "thumbsup"
+    });
+    const deleteMergeRequestNoteEmojiReaction = vi.fn().mockResolvedValue("");
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        gitlabStub: {
+          listMergeRequestEmojiReactions,
+          createMergeRequestNoteEmojiReaction,
+          deleteMergeRequestNoteEmojiReaction
+        }
+      })
+    );
+
+    try {
+      await client.callTool({
+        name: "gitlab_list_merge_request_emoji_reactions",
+        arguments: { project_id: "group/project", merge_request_iid: "7", page: 2 }
+      });
+      await client.callTool({
+        name: "gitlab_create_merge_request_note_emoji_reaction",
+        arguments: {
+          project_id: "group/project",
+          merge_request_iid: "7",
+          note_id: "33",
+          discussion_id: "disc-1",
+          name: "thumbsup"
+        }
+      });
+      await client.callTool({
+        name: "gitlab_delete_merge_request_note_emoji_reaction",
+        arguments: {
+          project_id: "group/project",
+          merge_request_iid: "7",
+          note_id: "33",
+          discussion_id: "disc-1",
+          award_id: "2"
+        }
+      });
+
+      expect(listMergeRequestEmojiReactions).toHaveBeenCalledWith("group/project", "7", {
+        query: expect.objectContaining({ page: 2 })
+      });
+      expect(createMergeRequestNoteEmojiReaction).toHaveBeenCalledWith("group/project", "7", "33", {
+        name: "thumbsup",
+        discussion_id: "disc-1"
+      });
+      expect(deleteMergeRequestNoteEmojiReaction).toHaveBeenCalledWith("group/project", "7", "33", {
+        award_id: "2",
+        discussion_id: "disc-1"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes arguments to issue emoji reaction methods", async () => {
+    const listIssueNoteEmojiReactions = vi.fn().mockResolvedValue([{ id: 1, name: "eyes" }]);
+    const createIssueEmojiReaction = vi.fn().mockResolvedValue({ id: 2, name: "rocket" });
+    const deleteIssueEmojiReaction = vi.fn().mockResolvedValue("");
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        gitlabStub: {
+          listIssueNoteEmojiReactions,
+          createIssueEmojiReaction,
+          deleteIssueEmojiReaction
+        }
+      })
+    );
+
+    try {
+      await client.callTool({
+        name: "gitlab_list_issue_note_emoji_reactions",
+        arguments: { project_id: "group/project", issue_iid: "5", note_id: "44", per_page: 10 }
+      });
+      await client.callTool({
+        name: "gitlab_create_issue_emoji_reaction",
+        arguments: { project_id: "group/project", issue_iid: "5", name: "rocket" }
+      });
+      await client.callTool({
+        name: "gitlab_delete_issue_emoji_reaction",
+        arguments: { project_id: "group/project", issue_iid: "5", award_id: "2" }
+      });
+
+      expect(listIssueNoteEmojiReactions).toHaveBeenCalledWith(
+        "group/project",
+        "5",
+        "44",
+        {
+          discussion_id: undefined
+        },
+        {
+          query: expect.objectContaining({ per_page: 10 })
+        }
+      );
+      expect(createIssueEmojiReaction).toHaveBeenCalledWith("group/project", "5", "rocket");
+      expect(deleteIssueEmojiReaction).toHaveBeenCalledWith("group/project", "5", "2");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("hides emoji reaction mutations in read-only mode", async () => {
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ readOnlyMode: true })
+    );
+
+    try {
+      const result = await client.listTools();
+      const names = result.tools.map((tool) => tool.name);
+
+      expect(names).toContain("gitlab_list_issue_emoji_reactions");
+      expect(names).toContain("gitlab_list_merge_request_emoji_reactions");
+      expect(names).not.toContain("gitlab_create_issue_emoji_reaction");
+      expect(names).not.toContain("gitlab_delete_merge_request_emoji_reaction");
+      expect(names).not.toContain("gitlab_create_merge_request_note_emoji_reaction");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  Webhook tools                                                      */
 /* ------------------------------------------------------------------ */
 

@@ -175,6 +175,17 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 | `gitlab_delete_merge_request_note` | **Yes**  | Delete a top-level MR note permanently. Irreversible. Requires `merge_request_iid`, `note_id`. Pre-check with `get_merge_request_note` or `list_merge_request_notes`. |
 | `gitlab_create_note`               | **Yes**  | Create a note on an issue or MR. Params: `noteable_type` (`issue`/`merge_request`), `noteable_iid`, `body` (required).                                                |
 
+### MR Emoji Reactions
+
+| Tool                                              | Mutating | Description                                                                                                                   |
+| ------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_merge_request_emoji_reactions`       | No       | List emoji reactions on an MR. Params: `merge_request_iid` (required).                                                        |
+| `gitlab_list_merge_request_note_emoji_reactions`  | No       | List emoji reactions on an MR note. Params: `merge_request_iid`, `note_id` (required). Supports `discussion_id`.              |
+| `gitlab_create_merge_request_emoji_reaction`      | **Yes**  | Add an emoji reaction to an MR. Params: `merge_request_iid`, `name` (required).                                               |
+| `gitlab_delete_merge_request_emoji_reaction`      | **Yes**  | Delete an emoji reaction from an MR. Irreversible for that reaction. Params: `merge_request_iid`, `award_id` (required).      |
+| `gitlab_create_merge_request_note_emoji_reaction` | **Yes**  | Add an emoji reaction to an MR note. Params: `merge_request_iid`, `note_id`, `name` (required). Supports `discussion_id`.     |
+| `gitlab_delete_merge_request_note_emoji_reaction` | **Yes**  | Delete an emoji reaction from an MR note. Irreversible for that reaction. Params: `merge_request_iid`, `note_id`, `award_id`. |
+
 ---
 
 ## Draft Notes
@@ -205,6 +216,17 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 | `gitlab_list_issue_discussions`         | No       | List issue discussions.                                                                                                                                                                        |
 | `gitlab_create_issue_note`              | **Yes**  | Create issue comment. Params: `body` (required). Supports `discussion_id` (to reply to thread), `created_at`.                                                                                  |
 | `gitlab_update_issue_note`              | **Yes**  | Update an issue note. Provide either `body` or `resolved` (not both).                                                                                                                          |
+
+### Issue Emoji Reactions
+
+| Tool                                      | Mutating | Description                                                                                                              |
+| ----------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `gitlab_list_issue_emoji_reactions`       | No       | List emoji reactions on an issue. Params: `issue_iid` (required).                                                        |
+| `gitlab_list_issue_note_emoji_reactions`  | No       | List emoji reactions on an issue note. Params: `issue_iid`, `note_id` (required). Supports `discussion_id`.              |
+| `gitlab_create_issue_emoji_reaction`      | **Yes**  | Add an emoji reaction to an issue. Params: `issue_iid`, `name` (required).                                               |
+| `gitlab_delete_issue_emoji_reaction`      | **Yes**  | Delete an emoji reaction from an issue. Irreversible for that reaction. Params: `issue_iid`, `award_id` (required).      |
+| `gitlab_create_issue_note_emoji_reaction` | **Yes**  | Add an emoji reaction to an issue note. Params: `issue_iid`, `note_id`, `name` (required). Supports `discussion_id`.     |
+| `gitlab_delete_issue_note_emoji_reaction` | **Yes**  | Delete an emoji reaction from an issue note. Irreversible for that reaction. Params: `issue_iid`, `note_id`, `award_id`. |
 
 ### Todos
 

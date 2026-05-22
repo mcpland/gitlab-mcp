@@ -1419,6 +1419,67 @@ describe("GitLabClient", () => {
       expect(String(requestUrl)).not.toContain("/discussions/");
     });
 
+    it("manages merge request emoji reactions", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse([{ id: 1, name: "rocket" }]))
+        .mockResolvedValueOnce(jsonResponse({ id: 2, name: "thumbsup" }))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listMergeRequestEmojiReactions("group/project", "7", {
+        query: { page: 2 }
+      });
+      await client.createMergeRequestNoteEmojiReaction("group/project", "7", "33", {
+        discussion_id: "disc-1",
+        name: "thumbsup"
+      });
+      await client.deleteMergeRequestEmojiReaction("group/project", "7", "2");
+
+      const [listUrl, listInit] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const [createUrl, createInit] = fetchMock.mock.calls[1] as [URL | string, RequestInit];
+      const [deleteUrl, deleteInit] = fetchMock.mock.calls[2] as [URL | string, RequestInit];
+
+      expect(String(listUrl)).toContain("/projects/group%2Fproject/merge_requests/7/award_emoji");
+      expect(new URL(String(listUrl)).searchParams.get("page")).toBe("2");
+      expect(listInit.method).toBe("GET");
+      expect(String(createUrl)).toContain(
+        "/merge_requests/7/discussions/disc-1/notes/33/award_emoji"
+      );
+      expect(createInit.method).toBe("POST");
+      expect(JSON.parse(createInit.body as string)).toEqual({ name: "thumbsup" });
+      expect(String(deleteUrl)).toContain("/merge_requests/7/award_emoji/2");
+      expect(deleteInit.method).toBe("DELETE");
+    });
+
+    it("manages issue emoji reactions", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ id: 2, name: "rocket" }))
+        .mockResolvedValueOnce(jsonResponse([{ id: 3, name: "eyes" }]))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.createIssueEmojiReaction("group/project", "5", "rocket");
+      await client.listIssueNoteEmojiReactions("group/project", "5", "44", {
+        discussion_id: "disc-1"
+      });
+      await client.deleteIssueNoteEmojiReaction("group/project", "5", "44", {
+        discussion_id: "disc-1",
+        award_id: "3"
+      });
+
+      const [createUrl, createInit] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const [listUrl, listInit] = fetchMock.mock.calls[1] as [URL | string, RequestInit];
+      const [deleteUrl, deleteInit] = fetchMock.mock.calls[2] as [URL | string, RequestInit];
+
+      expect(String(createUrl)).toContain("/projects/group%2Fproject/issues/5/award_emoji");
+      expect(createInit.method).toBe("POST");
+      expect(JSON.parse(createInit.body as string)).toEqual({ name: "rocket" });
+      expect(String(listUrl)).toContain("/issues/5/discussions/disc-1/notes/44/award_emoji");
+      expect(listInit.method).toBe("GET");
+      expect(String(deleteUrl)).toContain("/issues/5/discussions/disc-1/notes/44/award_emoji/3");
+      expect(deleteInit.method).toBe("DELETE");
+    });
+
     it("draft note creation maps body to note field", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ id: 1 }));
 

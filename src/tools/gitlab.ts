@@ -77,6 +77,8 @@ const paginationShape = {
   page: optionalNumber,
   per_page: optionalNumber
 } satisfies ToolSchemaShape;
+const emojiNameSchema = z.string().min(1);
+const awardEmojiIdSchema = z.string().min(1);
 
 export function registerGitLabTools(server: McpServer, context: AppContext): void {
   const definitions = getGitLabToolDefinitions();
@@ -1779,6 +1781,133 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_list_merge_request_emoji_reactions",
+      title: "List Merge Request Emoji Reactions",
+      description: "List emoji reactions on a merge request.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: z.string().min(1),
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listMergeRequestEmojiReactions(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          { query: toQuery(omit(args, ["project_id", "merge_request_iid"])) }
+        )
+    },
+    {
+      name: "gitlab_list_merge_request_note_emoji_reactions",
+      title: "List MR Note Emoji Reactions",
+      description:
+        "List emoji reactions on a merge request note. Pass discussion_id for discussion replies.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: z.string().min(1),
+        note_id: z.string().min(1),
+        discussion_id: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listMergeRequestNoteEmojiReactions(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "note_id"),
+          { discussion_id: getOptionalString(args, "discussion_id") },
+          {
+            query: toQuery(
+              omit(args, ["project_id", "merge_request_iid", "note_id", "discussion_id"])
+            )
+          }
+        )
+    },
+    {
+      name: "gitlab_create_merge_request_emoji_reaction",
+      title: "Create Merge Request Emoji Reaction",
+      description:
+        "Add an emoji reaction to a merge request, for example thumbsup, rocket, or eyes.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: z.string().min(1),
+        name: emojiNameSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.createMergeRequestEmojiReaction(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "name")
+        )
+    },
+    {
+      name: "gitlab_delete_merge_request_emoji_reaction",
+      title: "Delete Merge Request Emoji Reaction",
+      description:
+        "Delete an emoji reaction from a merge request permanently. Irreversible for that reaction. Requires merge_request_iid and award_id. Recommended pre-check: gitlab_list_merge_request_emoji_reactions.",
+      capabilities: deleteCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: z.string().min(1),
+        award_id: awardEmojiIdSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteMergeRequestEmojiReaction(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "award_id")
+        )
+    },
+    {
+      name: "gitlab_create_merge_request_note_emoji_reaction",
+      title: "Create MR Note Emoji Reaction",
+      description:
+        "Add an emoji reaction to a merge request note. Pass discussion_id for discussion replies.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: z.string().min(1),
+        note_id: z.string().min(1),
+        discussion_id: optionalString,
+        name: emojiNameSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.createMergeRequestNoteEmojiReaction(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "note_id"),
+          {
+            name: getString(args, "name"),
+            discussion_id: getOptionalString(args, "discussion_id")
+          }
+        )
+    },
+    {
+      name: "gitlab_delete_merge_request_note_emoji_reaction",
+      title: "Delete MR Note Emoji Reaction",
+      description:
+        "Delete an emoji reaction from a merge request note permanently. Irreversible for that reaction. Requires merge_request_iid, note_id, and award_id. Recommended pre-check: gitlab_list_merge_request_note_emoji_reactions.",
+      capabilities: deleteCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: z.string().min(1),
+        note_id: z.string().min(1),
+        discussion_id: optionalString,
+        award_id: awardEmojiIdSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteMergeRequestNoteEmojiReaction(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "note_id"),
+          {
+            award_id: getString(args, "award_id"),
+            discussion_id: getOptionalString(args, "discussion_id")
+          }
+        )
+    },
+    {
       name: "gitlab_list_issues",
       title: "List Issues",
       description: "List issues in project.",
@@ -2156,6 +2285,128 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           { body, resolved }
         );
       }
+    },
+    {
+      name: "gitlab_list_issue_emoji_reactions",
+      title: "List Issue Emoji Reactions",
+      description: "List emoji reactions on an issue.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        issue_iid: z.string().min(1),
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listIssueEmojiReactions(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          { query: toQuery(omit(args, ["project_id", "issue_iid"])) }
+        )
+    },
+    {
+      name: "gitlab_list_issue_note_emoji_reactions",
+      title: "List Issue Note Emoji Reactions",
+      description:
+        "List emoji reactions on an issue note. Pass discussion_id for discussion replies.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        issue_iid: z.string().min(1),
+        note_id: z.string().min(1),
+        discussion_id: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listIssueNoteEmojiReactions(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          getString(args, "note_id"),
+          { discussion_id: getOptionalString(args, "discussion_id") },
+          { query: toQuery(omit(args, ["project_id", "issue_iid", "note_id", "discussion_id"])) }
+        )
+    },
+    {
+      name: "gitlab_create_issue_emoji_reaction",
+      title: "Create Issue Emoji Reaction",
+      description: "Add an emoji reaction to an issue, for example thumbsup, rocket, or eyes.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        issue_iid: z.string().min(1),
+        name: emojiNameSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.createIssueEmojiReaction(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          getString(args, "name")
+        )
+    },
+    {
+      name: "gitlab_delete_issue_emoji_reaction",
+      title: "Delete Issue Emoji Reaction",
+      description:
+        "Delete an emoji reaction from an issue permanently. Irreversible for that reaction. Requires issue_iid and award_id. Recommended pre-check: gitlab_list_issue_emoji_reactions.",
+      capabilities: deleteCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        issue_iid: z.string().min(1),
+        award_id: awardEmojiIdSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteIssueEmojiReaction(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          getString(args, "award_id")
+        )
+    },
+    {
+      name: "gitlab_create_issue_note_emoji_reaction",
+      title: "Create Issue Note Emoji Reaction",
+      description:
+        "Add an emoji reaction to an issue note. Pass discussion_id for discussion replies.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        issue_iid: z.string().min(1),
+        note_id: z.string().min(1),
+        discussion_id: optionalString,
+        name: emojiNameSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.createIssueNoteEmojiReaction(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          getString(args, "note_id"),
+          {
+            name: getString(args, "name"),
+            discussion_id: getOptionalString(args, "discussion_id")
+          }
+        )
+    },
+    {
+      name: "gitlab_delete_issue_note_emoji_reaction",
+      title: "Delete Issue Note Emoji Reaction",
+      description:
+        "Delete an emoji reaction from an issue note permanently. Irreversible for that reaction. Requires issue_iid, note_id, and award_id. Recommended pre-check: gitlab_list_issue_note_emoji_reactions.",
+      capabilities: deleteCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        issue_iid: z.string().min(1),
+        note_id: z.string().min(1),
+        discussion_id: optionalString,
+        award_id: awardEmojiIdSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteIssueNoteEmojiReaction(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid"),
+          getString(args, "note_id"),
+          {
+            award_id: getString(args, "award_id"),
+            discussion_id: getOptionalString(args, "discussion_id")
+          }
+        )
     },
     {
       name: "gitlab_list_issue_links",
