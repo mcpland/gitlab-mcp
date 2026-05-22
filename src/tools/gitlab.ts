@@ -224,6 +224,31 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         })
     },
     {
+      name: "gitlab_create_group",
+      title: "Create Group",
+      description: "Create a new GitLab group or subgroup.",
+      capabilities: adminCapabilities,
+      inputSchema: {
+        name: displayNameSchema,
+        path: z.string().min(1),
+        description: optionalString,
+        visibility: z.enum(["private", "internal", "public"]).optional(),
+        parent_id: optionalNumber
+      },
+      handler: async (args, context) =>
+        context.gitlab.createGroup({
+          name: getString(args, "name"),
+          path: getString(args, "path"),
+          description: getOptionalString(args, "description"),
+          visibility: getOptionalString(args, "visibility") as
+            | "private"
+            | "internal"
+            | "public"
+            | undefined,
+          parent_id: getOptionalNumber(args, "parent_id")
+        })
+    },
+    {
       name: "gitlab_list_project_members",
       title: "List Project Members",
       description: "List members of a project.",

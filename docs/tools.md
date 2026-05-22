@@ -23,6 +23,7 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 | `gitlab_get_project`           | No       | Get project details by ID or path.                                                                                                            |
 | `gitlab_list_projects`         | No       | List projects available to the current user. Supports `search`, `visibility`, `membership`, `owned`, `archived`, `order_by`, `sort`.          |
 | `gitlab_create_repository`     | **Yes**  | Create a new GitLab project. Params: `name`, `description`, `visibility`, `initialize_with_readme`, `path`, `namespace_id`, `default_branch`. |
+| `gitlab_create_group`          | **Yes**  | Create a new GitLab group or subgroup. Params: `name`, `path` (required). Supports `description`, `visibility`, `parent_id`.                  |
 | `gitlab_fork_repository`       | **Yes**  | Fork a project to another namespace. Params: `namespace`, `namespace_id`, `path`, `name`, `description`, `visibility`, `default_branch`.      |
 | `gitlab_list_project_members`  | No       | List members of a project. Supports `query`, `user_ids`, `skip_users`, `include_inheritance`.                                                 |
 | `gitlab_list_group_projects`   | No       | List projects under a group. Params: `group_id` (required). Supports `include_subgroups`, `search`, filters.                                  |

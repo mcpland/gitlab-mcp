@@ -333,6 +333,34 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("per_page")).toBe("7");
     });
 
+    it("creates groups with JSON payload", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ id: 1, name: "Team" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.createGroup({
+        name: "Team",
+        path: "team",
+        description: "Team group",
+        visibility: "private",
+        parent_id: 42
+      });
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const headers = new Headers(init.headers);
+      const body = JSON.parse(init.body as string);
+
+      expect(new URL(String(requestUrl)).pathname).toBe("/api/v4/groups");
+      expect(init.method).toBe("POST");
+      expect(headers.get("Content-Type")).toBe("application/json");
+      expect(body).toEqual({
+        name: "Team",
+        path: "team",
+        description: "Team group",
+        visibility: "private",
+        parent_id: 42
+      });
+    });
+
     it("searches code globally with filters", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
 

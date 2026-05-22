@@ -83,6 +83,45 @@ describe("Tool handler: gitlab_list_projects", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  gitlab_create_group                                                */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handler: gitlab_create_group", () => {
+  it("passes payload to createGroup", async () => {
+    const createGroup = vi.fn().mockResolvedValue({ id: 1, name: "Team" });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { createGroup } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_create_group",
+        arguments: {
+          name: "Team",
+          path: "team",
+          description: "Team group",
+          visibility: "private",
+          parent_id: 42
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(createGroup).toHaveBeenCalledWith({
+        name: "Team",
+        path: "team",
+        description: "Team group",
+        visibility: "private",
+        parent_id: 42
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  Code search tools                                                  */
 /* ------------------------------------------------------------------ */
 

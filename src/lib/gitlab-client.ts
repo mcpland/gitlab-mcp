@@ -171,6 +171,26 @@ export class GitLabClient {
     });
   }
 
+  createGroup(
+    payload: {
+      name: string;
+      path: string;
+      description?: string;
+      visibility?: "private" | "internal" | "public";
+      parent_id?: number;
+    },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post("/groups", {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
   listProjectMembers(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/members/all`, options);
   }
