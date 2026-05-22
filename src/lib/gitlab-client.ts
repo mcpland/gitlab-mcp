@@ -1264,6 +1264,57 @@ export class GitLabClient {
     return this.delete(`/projects/${encode(projectId)}/wikis/${encode(slug)}`, options);
   }
 
+  listGroupWikiPages(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/groups/${encode(groupId)}/wikis`, options);
+  }
+
+  getGroupWikiPage(
+    groupId: string,
+    slug: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(`/groups/${encode(groupId)}/wikis/${encode(slug)}`, options);
+  }
+
+  createGroupWikiPage(
+    groupId: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`/groups/${encode(groupId)}/wikis`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  updateGroupWikiPage(
+    groupId: string,
+    slug: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.put(`/groups/${encode(groupId)}/wikis/${encode(slug)}`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  deleteGroupWikiPage(
+    groupId: string,
+    slug: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(`/groups/${encode(groupId)}/wikis/${encode(slug)}`, options);
+  }
+
   // pipelines
   listPipelines(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/pipelines`, options);

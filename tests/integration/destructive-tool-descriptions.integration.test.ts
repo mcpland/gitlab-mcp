@@ -50,6 +50,10 @@ describe("Destructive tool descriptions", () => {
         identifiers: ["slug"]
       },
       {
+        name: "gitlab_delete_group_wiki_page",
+        identifiers: ["group_id", "slug"]
+      },
+      {
         name: "gitlab_delete_milestone",
         identifiers: ["milestone_id"]
       },

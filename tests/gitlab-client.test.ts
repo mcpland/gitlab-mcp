@@ -1457,6 +1457,30 @@ describe("GitLabClient", () => {
       expect(allInit.method).toBe("POST");
     });
 
+    it("uses group wiki endpoints", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ slug: "home" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listGroupWikiPages("parent/group", { query: { with_content: true } });
+      await client.getGroupWikiPage("parent/group", "home");
+      await client.createGroupWikiPage("parent/group", { title: "Home", content: "Hello" });
+      await client.updateGroupWikiPage("parent/group", "home", { content: "Updated" });
+      await client.deleteGroupWikiPage("parent/group", "home");
+
+      const [listUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const [getUrl] = fetchMock.mock.calls[1] as [URL | string];
+      const [, createInit] = fetchMock.mock.calls[2] as [URL | string, RequestInit];
+      const [, updateInit] = fetchMock.mock.calls[3] as [URL | string, RequestInit];
+      const [, deleteInit] = fetchMock.mock.calls[4] as [URL | string, RequestInit];
+
+      expect(new URL(String(listUrl)).pathname).toBe("/api/v4/groups/parent%2Fgroup/wikis");
+      expect(new URL(String(listUrl)).searchParams.get("with_content")).toBe("true");
+      expect(new URL(String(getUrl)).pathname).toBe("/api/v4/groups/parent%2Fgroup/wikis/home");
+      expect(createInit.method).toBe("POST");
+      expect(updateInit.method).toBe("PUT");
+      expect(deleteInit.method).toBe("DELETE");
+    });
+
     it("lists project and group webhooks", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
 

@@ -239,6 +239,9 @@ describe("MCP Server Integration - Feature flag filtering", () => {
       expect(names).not.toContain("gitlab_list_wiki_pages");
       expect(names).not.toContain("gitlab_get_wiki_page");
       expect(names).not.toContain("gitlab_create_wiki_page");
+      expect(names).not.toContain("gitlab_list_group_wiki_pages");
+      expect(names).not.toContain("gitlab_get_group_wiki_page");
+      expect(names).not.toContain("gitlab_create_group_wiki_page");
       // But other tools remain
       expect(names).toContain("gitlab_get_project");
     } finally {

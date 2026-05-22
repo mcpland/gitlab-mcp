@@ -2312,6 +2312,96 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_list_group_wiki_pages",
+      title: "List Group Wiki Pages",
+      description: "List wiki pages in a group.",
+      capabilities: readCapabilities,
+      requiresFeature: "wiki",
+      inputSchema: {
+        group_id: projectIdSchema,
+        with_content: optionalBoolean,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listGroupWikiPages(getString(args, "group_id"), {
+          query: toQuery(omit(args, ["group_id"]))
+        })
+    },
+    {
+      name: "gitlab_get_group_wiki_page",
+      title: "Get Group Wiki Page",
+      description: "Get group wiki page by slug.",
+      capabilities: readCapabilities,
+      requiresFeature: "wiki",
+      inputSchema: {
+        group_id: projectIdSchema,
+        slug: slugSchema,
+        version: optionalString
+      },
+      handler: async (args, context) =>
+        context.gitlab.getGroupWikiPage(getString(args, "group_id"), getString(args, "slug"), {
+          query: toQuery(omit(args, ["group_id", "slug"]))
+        })
+    },
+    {
+      name: "gitlab_create_group_wiki_page",
+      title: "Create Group Wiki Page",
+      description: "Create a group wiki page.",
+      capabilities: writeCapabilities,
+      requiresFeature: "wiki",
+      inputSchema: {
+        group_id: projectIdSchema,
+        title: z.string().min(1),
+        content: z.string().min(1),
+        format: optionalString
+      },
+      handler: async (args, context) =>
+        context.gitlab.createGroupWikiPage(getString(args, "group_id"), {
+          title: getString(args, "title"),
+          content: getString(args, "content"),
+          format: getOptionalString(args, "format")
+        })
+    },
+    {
+      name: "gitlab_update_group_wiki_page",
+      title: "Update Group Wiki Page",
+      description: "Update group wiki page by slug.",
+      capabilities: writeCapabilities,
+      requiresFeature: "wiki",
+      inputSchema: {
+        group_id: projectIdSchema,
+        slug: slugSchema,
+        title: optionalString,
+        content: optionalString,
+        format: optionalString
+      },
+      handler: async (args, context) => {
+        const payload = toQuery(omit(args, ["group_id", "slug"]));
+        if (Object.keys(payload).length === 0) {
+          throw new Error("At least one of title, content, or format must be provided");
+        }
+        return context.gitlab.updateGroupWikiPage(
+          getString(args, "group_id"),
+          getString(args, "slug"),
+          payload
+        );
+      }
+    },
+    {
+      name: "gitlab_delete_group_wiki_page",
+      title: "Delete Group Wiki Page",
+      description:
+        "Delete a group wiki page permanently. Irreversible. Requires group_id and slug. Recommended pre-check: gitlab_get_group_wiki_page or gitlab_list_group_wiki_pages.",
+      capabilities: deleteCapabilities,
+      requiresFeature: "wiki",
+      inputSchema: {
+        group_id: projectIdSchema,
+        slug: slugSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteGroupWikiPage(getString(args, "group_id"), getString(args, "slug"))
+    },
+    {
       name: "gitlab_list_pipelines",
       title: "List Pipelines",
       description: "List pipelines for a project.",

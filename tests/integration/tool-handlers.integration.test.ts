@@ -1422,6 +1422,84 @@ describe("Tool handlers: webhook tools", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Group wiki tools                                                   */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: group wiki tools", () => {
+  it("passes filters to gitlab_list_group_wiki_pages", async () => {
+    const listGroupWikiPages = vi.fn().mockResolvedValue([{ slug: "home" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listGroupWikiPages } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_group_wiki_pages",
+        arguments: { group_id: "parent/group", with_content: true, page: 2 }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listGroupWikiPages).toHaveBeenCalledWith("parent/group", {
+        query: expect.objectContaining({ with_content: true, page: 2 })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("creates, updates, and deletes group wiki pages", async () => {
+    const createGroupWikiPage = vi.fn().mockResolvedValue({ slug: "home" });
+    const updateGroupWikiPage = vi.fn().mockResolvedValue({ slug: "home" });
+    const deleteGroupWikiPage = vi.fn().mockResolvedValue("");
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        gitlabStub: { createGroupWikiPage, updateGroupWikiPage, deleteGroupWikiPage }
+      })
+    );
+
+    try {
+      await client.callTool({
+        name: "gitlab_create_group_wiki_page",
+        arguments: {
+          group_id: "parent/group",
+          title: "Home",
+          content: "Hello",
+          format: "markdown"
+        }
+      });
+      await client.callTool({
+        name: "gitlab_update_group_wiki_page",
+        arguments: {
+          group_id: "parent/group",
+          slug: "home",
+          content: "Updated"
+        }
+      });
+      await client.callTool({
+        name: "gitlab_delete_group_wiki_page",
+        arguments: { group_id: "parent/group", slug: "home" }
+      });
+
+      expect(createGroupWikiPage).toHaveBeenCalledWith("parent/group", {
+        title: "Home",
+        content: "Hello",
+        format: "markdown"
+      });
+      expect(updateGroupWikiPage).toHaveBeenCalledWith("parent/group", "home", {
+        content: "Updated"
+      });
+      expect(deleteGroupWikiPage).toHaveBeenCalledWith("parent/group", "home");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  CI lint tools                                                      */
 /* ------------------------------------------------------------------ */
 
