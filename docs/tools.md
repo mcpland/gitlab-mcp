@@ -28,6 +28,9 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 | `gitlab_list_group_projects`   | No       | List projects under a group. Params: `group_id` (required). Supports `include_subgroups`, `search`, filters.                                  |
 | `gitlab_list_group_iterations` | No       | List iterations for a group. Params: `group_id` (required). Supports `state`, `search`, date filters.                                         |
 | `gitlab_search_repositories`   | No       | Search repositories by keyword. Params: `search` (required).                                                                                  |
+| `gitlab_search_code`           | No       | Search code globally. Params: `search` (required). Supports `filename`, `path`, `extension`, pagination.                                      |
+| `gitlab_search_project_code`   | No       | Search code in a project. Params: `project_id`, `search` (required). Supports `ref`, `filename`, `path`, `extension`, pagination.             |
+| `gitlab_search_group_code`     | No       | Search code in a group. Params: `group_id`, `search` (required). Supports `filename`, `path`, `extension`, pagination.                        |
 
 ---
 
@@ -67,7 +70,7 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 | `gitlab_get_branch`            | No       | Get details for one branch. Params: `branch` (required).                                                                                                                                           |
 | `gitlab_delete_branch`         | **Yes**  | Delete a repository branch. Params: `branch` (required).                                                                                                                                           |
 | `gitlab_get_branch_diffs`      | No       | Compare two branches/refs and return diffs. Params: `from`, `to` (required), `straight`, `excluded_file_patterns`.                                                                                 |
-| `gitlab_search_code_blobs`     | No       | Search code in a project. Params: `search` (required), `ref`.                                                                                                                                      |
+| `gitlab_search_code_blobs`     | No       | Search code in a project. Params: `search` (required), `ref`. Also supports `filename`, `path`, `extension`.                                                                                       |
 
 ---
 

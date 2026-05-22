@@ -83,6 +83,108 @@ describe("Tool handler: gitlab_list_projects", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Code search tools                                                  */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: code search tools", () => {
+  it("passes filters to gitlab_search_code", async () => {
+    const searchCode = vi.fn().mockResolvedValue([{ path: "src/index.ts" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { searchCode } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_search_code",
+        arguments: {
+          search: "logger",
+          filename: "*.ts",
+          extension: "ts",
+          page: 2
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(searchCode).toHaveBeenCalledWith("logger", {
+        query: expect.objectContaining({
+          filename: "*.ts",
+          extension: "ts",
+          page: 2
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes filters to gitlab_search_project_code", async () => {
+    const searchCodeBlobs = vi.fn().mockResolvedValue([{ path: "src/index.ts" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { searchCodeBlobs } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_search_project_code",
+        arguments: {
+          project_id: "group/project",
+          search: "logger",
+          ref: "main",
+          path: "src/*",
+          per_page: 5
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(searchCodeBlobs).toHaveBeenCalledWith("group/project", "logger", {
+        query: expect.objectContaining({
+          ref: "main",
+          path: "src/*",
+          per_page: 5
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes filters to gitlab_search_group_code", async () => {
+    const searchGroupCodeBlobs = vi.fn().mockResolvedValue([{ path: "src/index.ts" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { searchGroupCodeBlobs } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_search_group_code",
+        arguments: {
+          group_id: "parent/group",
+          search: "logger",
+          filename: "*.ts",
+          page: 2
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(searchGroupCodeBlobs).toHaveBeenCalledWith("parent/group", "logger", {
+        query: expect.objectContaining({
+          filename: "*.ts",
+          page: 2
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_get_file_contents                                           */
 /* ------------------------------------------------------------------ */
 

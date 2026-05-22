@@ -333,6 +333,46 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("per_page")).toBe("7");
     });
 
+    it("searches code globally with filters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.searchCode("logger", {
+        query: { filename: "*.ts", path: "src/*", extension: "ts", page: 2 }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+
+      expect(url.pathname).toBe("/api/v4/search");
+      expect(url.searchParams.get("scope")).toBe("blobs");
+      expect(url.searchParams.get("search")).toBe("logger");
+      expect(url.searchParams.get("filename")).toBe("*.ts");
+      expect(url.searchParams.get("path")).toBe("src/*");
+      expect(url.searchParams.get("extension")).toBe("ts");
+      expect(url.searchParams.get("page")).toBe("2");
+    });
+
+    it("searches code in projects and groups", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.searchCodeBlobs("group/project", "logger", { query: { ref: "main" } });
+      await client.searchGroupCodeBlobs("parent/group", "logger", { query: { per_page: 5 } });
+
+      const [projectUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const [groupUrl] = fetchMock.mock.calls[1] as [URL | string];
+      const project = new URL(String(projectUrl));
+      const group = new URL(String(groupUrl));
+
+      expect(project.pathname).toContain("/projects/group%2Fproject/search");
+      expect(project.searchParams.get("scope")).toBe("blobs");
+      expect(project.searchParams.get("ref")).toBe("main");
+      expect(group.pathname).toContain("/groups/parent%2Fgroup/search");
+      expect(group.searchParams.get("scope")).toBe("blobs");
+      expect(group.searchParams.get("per_page")).toBe("5");
+    });
+
     it("skips null and undefined query parameters", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
 

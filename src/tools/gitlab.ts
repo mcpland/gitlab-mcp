@@ -319,6 +319,9 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: optionalProjectIdSchema,
         search: z.string().min(1),
         ref: optionalRefLikeSchema,
+        filename: optionalString,
+        path: optionalString,
+        extension: optionalString,
         ...paginationShape
       },
       handler: async (args, context) =>
@@ -326,6 +329,67 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           resolveProjectId(args, context, true),
           getString(args, "search"),
           { query: toQuery(omit(args, ["project_id", "search"])) }
+        )
+    },
+    {
+      name: "gitlab_search_code",
+      title: "Search Code",
+      description:
+        "Search code across all projects on the GitLab instance. Requires GitLab code search support.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        search: z.string().min(1),
+        filename: optionalString,
+        path: optionalString,
+        extension: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.searchCode(getString(args, "search"), {
+          query: toQuery(omit(args, ["search"]))
+        })
+    },
+    {
+      name: "gitlab_search_project_code",
+      title: "Search Project Code",
+      description: "Search code in a specific project.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        search: z.string().min(1),
+        ref: optionalRefLikeSchema,
+        filename: optionalString,
+        path: optionalString,
+        extension: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.searchCodeBlobs(
+          resolveProjectId(args, context, true),
+          getString(args, "search"),
+          { query: toQuery(omit(args, ["project_id", "search"])) }
+        )
+    },
+    {
+      name: "gitlab_search_group_code",
+      title: "Search Group Code",
+      description: "Search code in a specific group.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        group_id: projectIdSchema,
+        search: z.string().min(1),
+        filename: optionalString,
+        path: optionalString,
+        extension: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.searchGroupCodeBlobs(
+          getString(args, "group_id"),
+          getString(args, "search"),
+          {
+            query: toQuery(omit(args, ["group_id", "search"]))
+          }
         )
     },
     {

@@ -225,12 +225,38 @@ export class GitLabClient {
     });
   }
 
+  searchCode(search: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get("/search", {
+      ...options,
+      query: {
+        scope: "blobs",
+        search,
+        ...(options.query ?? {})
+      }
+    });
+  }
+
   searchCodeBlobs(
     projectId: string,
     search: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(`/projects/${encode(projectId)}/search`, {
+      ...options,
+      query: {
+        scope: "blobs",
+        search,
+        ...(options.query ?? {})
+      }
+    });
+  }
+
+  searchGroupCodeBlobs(
+    groupId: string,
+    search: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(`/groups/${encode(groupId)}/search`, {
       ...options,
       query: {
         scope: "blobs",
