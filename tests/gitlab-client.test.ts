@@ -21,11 +21,16 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
-function jsonResponse(data: unknown, status = 200) {
+function jsonResponse(data: unknown, status = 200, headers: HeadersInit = {}) {
+  const responseHeaders = new Headers(headers);
+  if (!responseHeaders.has("content-type")) {
+    responseHeaders.set("content-type", "application/json");
+  }
+
   return new Response(JSON.stringify(data), {
     status,
     statusText: status === 200 ? "OK" : "Error",
-    headers: { "content-type": "application/json" }
+    headers: responseHeaders
   });
 }
 
@@ -854,6 +859,61 @@ describe("GitLabClient", () => {
 
       expect(String(getUrl)).toContain("/projects/proj/repository/branches/feature%2Fa");
       expect(deleteInit.method).toBe("DELETE");
+    });
+
+    it("preserves legacy repository tree array responses", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([{ name: "src", type: "tree" }]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.getRepositoryTree("proj", {
+        query: { path: "src", ref: "main", recursive: true }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toContain("/projects/proj/repository/tree");
+      expect(url.searchParams.get("path")).toBe("src");
+      expect(url.searchParams.get("ref")).toBe("main");
+      expect(url.searchParams.get("recursive")).toBe("true");
+      expect(result).toEqual([{ name: "src", type: "tree" }]);
+    });
+
+    it("returns keyset repository tree pagination token", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse([{ name: "a.ts", type: "blob" }], 200, {
+          "x-next-page-token": "abc123"
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.getRepositoryTree("proj", {
+        query: { pagination: "keyset", per_page: 1 }
+      });
+
+      expect(result).toEqual({
+        items: [{ name: "a.ts", type: "blob" }],
+        next_page_token: "abc123",
+        pagination_note:
+          "Pass next_page_token as page_token with pagination=keyset to retrieve the next page."
+      });
+    });
+
+    it("uses x-next-page as keyset repository tree token fallback", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse([{ name: "b.ts", type: "blob" }], 200, {
+          "x-next-page": "fallback-token"
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.getRepositoryTree("proj", {
+        query: { pagination: "keyset" }
+      });
+
+      expect(result).toMatchObject({
+        items: [{ name: "b.ts", type: "blob" }],
+        next_page_token: "fallback-token"
+      });
     });
 
     it("gets file contents with ref", async () => {

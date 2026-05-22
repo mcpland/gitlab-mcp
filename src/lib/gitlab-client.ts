@@ -289,8 +289,73 @@ export class GitLabClient {
   }
 
   // repository/files
-  getRepositoryTree(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/repository/tree`, options);
+  async getRepositoryTree(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    const config = this.resolveRequestConfig(options);
+    const url = new URL(`projects/${encode(projectId)}/repository/tree`, `${config.apiUrl}/`);
+
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      if (value !== undefined && value !== null) {
+        url.searchParams.set(key, String(value));
+      }
+    }
+
+    const response = await this.fetchRawResponse(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        ...(options.headers ?? {})
+      },
+      token: config.token,
+      authHeader: config.authHeader
+    });
+
+    let body: unknown;
+    try {
+      body = await this.parseResponseBody(response);
+    } catch (error) {
+      if (response.ok) {
+        throw error;
+      }
+
+      throw new GitLabApiError(
+        `GitLab API request failed: ${response.status} ${response.statusText}`,
+        response.status,
+        {
+          message: error instanceof Error ? error.message : "Failed to read GitLab error response"
+        }
+      );
+    }
+
+    if (!response.ok) {
+      throw new GitLabApiError(
+        `GitLab API request failed: ${response.status} ${response.statusText}`,
+        response.status,
+        body
+      );
+    }
+
+    const usesKeyset = options.query?.pagination === "keyset";
+    const nextPageToken =
+      response.headers.get("x-next-page-token") ??
+      (usesKeyset ? response.headers.get("x-next-page") : null) ??
+      undefined;
+
+    if (!usesKeyset && !nextPageToken) {
+      return body;
+    }
+
+    return {
+      items: Array.isArray(body) ? body : [],
+      ...(nextPageToken
+        ? {
+            next_page_token: nextPageToken,
+            pagination_note:
+              "Pass next_page_token as page_token with pagination=keyset to retrieve the next page."
+          }
+        : {
+            pagination_note: "No next_page_token was returned; this is the final keyset page."
+          })
+    };
   }
 
   getFileContents(
