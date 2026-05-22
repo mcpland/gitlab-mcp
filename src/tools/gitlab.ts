@@ -4604,10 +4604,14 @@ function resolveDownloadTokenAuth(context: AppContext):
 function assertAuthReady(context: AppContext): void {
   const auth = getSessionAuth();
 
-  if (context.env.REMOTE_AUTHORIZATION) {
+  if (context.env.REMOTE_AUTHORIZATION || context.env.GITLAB_MCP_OAUTH) {
     const token = auth?.token;
     if (!token) {
-      throw new Error("Missing remote authorization token for this session");
+      throw new Error(
+        context.env.REMOTE_AUTHORIZATION
+          ? "Missing remote authorization token for this session"
+          : "Missing OAuth authorization token for this session"
+      );
     }
 
     if (context.env.ENABLE_DYNAMIC_API_URL && !auth?.apiUrl) {

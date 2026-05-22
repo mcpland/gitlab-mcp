@@ -8,6 +8,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+import { runWithSessionAuth } from "../../src/lib/auth-context.js";
 import { buildContext, createLinkedPair } from "./_helpers.js";
 
 /* ------------------------------------------------------------------ */
@@ -2553,6 +2554,40 @@ describe("assertAuthReady with no token", () => {
         (c) => c.type === "text"
       )!.text;
       expect(text).toContain("Authentication required");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("accepts MCP OAuth session tokens without static fallback auth", async () => {
+    const getProject = vi.fn().mockResolvedValue({
+      id: 42,
+      name: "oauth-project",
+      path_with_namespace: "group/oauth-project"
+    });
+    const context = buildContext({ token: null, gitlabStub: { getProject } });
+    context.env.GITLAB_MCP_OAUTH = true;
+    context.env.MCP_SERVER_URL = "https://mcp.example.com";
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(context);
+
+    try {
+      const result = await runWithSessionAuth(
+        {
+          token: "oauth-session-token",
+          header: "authorization",
+          updatedAt: Date.now()
+        },
+        () =>
+          client.callTool({
+            name: "gitlab_get_project",
+            arguments: { project_id: "group/oauth-project" }
+          })
+      );
+
+      expect(result.isError).toBeFalsy();
+      expect(getProject).toHaveBeenCalledWith("group/oauth-project");
     } finally {
       await clientTransport.close();
       await serverTransport.close();
