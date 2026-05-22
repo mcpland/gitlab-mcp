@@ -485,6 +485,7 @@ function buildEnv(overrides: Partial<AppEnv> = {}): AppEnv {
     GITLAB_MAX_LOCAL_FILE_BYTES: 250_000_000,
     GITLAB_DOWNLOAD_TOKEN_SECRET: undefined,
     GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS: 300,
+    OAUTH_STATELESS_MODE: false,
     ...overrides
   } as AppEnv;
 }

@@ -64,6 +64,7 @@ const defaultEnv: AppContext["env"] = {
   HTTP_JSON_ONLY: false,
   SSE: false,
   SESSION_TIMEOUT_SECONDS: 3600,
+  OAUTH_STATELESS_MODE: false,
   MAX_SESSIONS: 1000,
   MAX_REQUESTS_PER_MINUTE: 300,
   HTTP_HOST: "127.0.0.1",

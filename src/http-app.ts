@@ -169,6 +169,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       maxSessions: appEnv.MAX_SESSIONS,
       remoteAuthorization: appEnv.REMOTE_AUTHORIZATION,
       mcpOAuth: appEnv.GITLAB_MCP_OAUTH,
+      statelessMode: appEnv.OAUTH_STATELESS_MODE,
       readOnlyMode: appEnv.GITLAB_READ_ONLY_MODE,
       sseEnabled: appEnv.SSE
     });
@@ -386,6 +387,11 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         return;
       }
 
+      if (appEnv.OAUTH_STATELESS_MODE) {
+        await handleStatelessMcpRequest(req, res, parsedAuth);
+        return;
+      }
+
       if (incomingSessionId && !session) {
         res.status(404).json({
           jsonrpc: "2.0",
@@ -499,6 +505,55 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   });
 
   /* ---- Internal helpers (closures) ---- */
+
+  async function handleStatelessMcpRequest(
+    req: express.Request,
+    res: express.Response,
+    auth?: SessionAuth
+  ): Promise<void> {
+    const server = createMcpServer(context);
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: appEnv.HTTP_JSON_ONLY
+    });
+
+    transport.onerror = (error) => {
+      appLogger.error({ err: error }, "MCP stateless transport error");
+    };
+
+    const fallbackToken =
+      appEnv.REMOTE_AUTHORIZATION || appEnv.GITLAB_MCP_OAUTH
+        ? undefined
+        : appEnv.GITLAB_PERSONAL_ACCESS_TOKEN;
+
+    try {
+      await server.connect(transport);
+      await runWithSessionAuth(
+        {
+          sessionId: undefined,
+          token: auth?.token ?? fallbackToken,
+          apiUrl: auth?.apiUrl ?? appEnv.GITLAB_API_URL,
+          header: auth?.header,
+          updatedAt: auth?.updatedAt ?? Date.now()
+        },
+        async () => {
+          await transport.handleRequest(req, res, req.body);
+        }
+      );
+    } finally {
+      try {
+        await transport.close();
+      } catch (error) {
+        appLogger.warn({ err: error }, "Failed to close stateless transport cleanly");
+      }
+
+      try {
+        await server.close();
+      } catch (error) {
+        appLogger.warn({ err: error }, "Failed to close stateless MCP server cleanly");
+      }
+    }
+  }
 
   async function createSession(initialAuth?: SessionAuth): Promise<SessionState> {
     const server = createMcpServer(context);

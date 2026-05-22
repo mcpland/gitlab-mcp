@@ -273,6 +273,10 @@ MCP_SERVER_URL=https://mcp.example.com
 
 The HTTP server then exposes OAuth metadata and authorize/token/register/revoke endpoints backed by the configured GitLab instance. `/mcp` accepts validated `Authorization: Bearer <oauth_token>` requests, while `Private-Token` and `Job-Token` headers remain supported as direct bypass headers.
 
+### Stateless HTTP Mode
+
+Set `OAUTH_STATELESS_MODE=true` for multi-replica HTTP deployments where MCP session affinity is not available. The server creates a fresh Streamable HTTP transport for each request and does not store MCP sessions in memory. In `REMOTE_AUTHORIZATION` or `GITLAB_MCP_OAUTH` mode, clients must send the auth header on every request.
+
 ---
 
 ## Cloudflare Bypass

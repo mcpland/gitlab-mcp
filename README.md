@@ -395,6 +395,7 @@ node dist/http.js --env-file=.env.production
 | HTTP Server     | `HTTP_JSON_ONLY`                          | `false`                     | Force JSON-only responses (no streaming framing).                                        |
 | HTTP Server     | `SSE`                                     | `false`                     | Enable legacy SSE endpoints (`/sse`, `/messages`). Not compatible with remote auth.      |
 | Sessions        | `SESSION_TIMEOUT_SECONDS`                 | `3600`                      | Idle session timeout in HTTP mode.                                                       |
+| Sessions        | `OAUTH_STATELESS_MODE`                    | `false`                     | Use stateless Streamable HTTP transports; clients must send auth on every request.       |
 | Sessions        | `MAX_SESSIONS`                            | `1000`                      | Maximum concurrent sessions (`503` when reached).                                        |
 | Sessions        | `MAX_REQUESTS_PER_MINUTE`                 | `300`                       | Per-session rate limit (`429` when exceeded).                                            |
 | Policy          | `GITLAB_READ_ONLY_MODE`                   | `false`                     | Disable tools that require `write`, `delete`, or `admin` capabilities.                   |

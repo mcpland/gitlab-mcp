@@ -55,6 +55,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       HTTP_JSON_ONLY: false,
       SSE: false,
       SESSION_TIMEOUT_SECONDS: 3600,
+      OAUTH_STATELESS_MODE: false,
       MAX_SESSIONS: overrides?.maxSessions ?? 1000,
       MAX_REQUESTS_PER_MINUTE: 300,
       HTTP_HOST: "127.0.0.1",
@@ -423,5 +424,35 @@ describe("http app MCP OAuth", () => {
 
     expect(mcpResponse.status).toBe(401);
     expect(mcpResponse.headers.get("www-authenticate")).toContain("Bearer");
+  });
+});
+
+describe("http app stateless mode", () => {
+  it("handles initialize without creating a stored session", async () => {
+    const context = buildContext();
+    context.env.OAUTH_STATELESS_MODE = true;
+    running = await startServerForContext(context);
+
+    const response = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "stateless-test", version: "0.0.1" }
+        }
+      })
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("mcp-session-id")).toBeNull();
+    expect(running.pendingSessions.size).toBe(0);
   });
 });

@@ -102,6 +102,7 @@ const envSchema = z.object({
   REMOTE_AUTHORIZATION: z.enum(["true", "false"]).default("false"),
   ENABLE_DYNAMIC_API_URL: z.enum(["true", "false"]).default("false"),
   SESSION_TIMEOUT_SECONDS: z.coerce.number().int().min(1).max(86_400).default(3_600),
+  OAUTH_STATELESS_MODE: z.enum(["true", "false"]).default("false"),
   MAX_SESSIONS: z.coerce.number().int().min(1).max(10_000).default(1_000),
   MAX_REQUESTS_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(300),
   HTTP_HOST: z.string().min(1).default("127.0.0.1"),
@@ -155,6 +156,10 @@ if (data.SSE === "true" && data.GITLAB_MCP_OAUTH === "true") {
   throw new Error("SSE=true is not compatible with GITLAB_MCP_OAUTH=true");
 }
 
+if (data.SSE === "true" && data.OAUTH_STATELESS_MODE === "true") {
+  throw new Error("SSE=true is not compatible with OAUTH_STATELESS_MODE=true");
+}
+
 if (data.NODE_TLS_REJECT_UNAUTHORIZED === "0" && data.GITLAB_ALLOW_INSECURE_TLS !== "true") {
   throw new Error(
     "NODE_TLS_REJECT_UNAUTHORIZED=0 requires GITLAB_ALLOW_INSECURE_TLS=true acknowledgment"
@@ -178,6 +183,7 @@ export const env = {
   USE_RELEASE: parseBoolean(data.USE_RELEASE, true),
   REMOTE_AUTHORIZATION: parseBoolean(data.REMOTE_AUTHORIZATION, false),
   ENABLE_DYNAMIC_API_URL: parseBoolean(data.ENABLE_DYNAMIC_API_URL, false),
+  OAUTH_STATELESS_MODE: parseBoolean(data.OAUTH_STATELESS_MODE, false),
   HTTP_JSON_ONLY: parseBoolean(data.HTTP_JSON_ONLY, false),
   SSE: parseBoolean(data.SSE, false),
   GITLAB_ALLOWED_PROJECT_IDS: parseCsv(data.GITLAB_ALLOWED_PROJECT_IDS),
