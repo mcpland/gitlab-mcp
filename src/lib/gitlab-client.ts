@@ -1053,6 +1053,18 @@ export class GitLabClient {
     });
   }
 
+  listTodos(options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get("/todos", options);
+  }
+
+  markTodoDone(todoId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.post(`/todos/${encode(todoId)}/mark_as_done`, options);
+  }
+
+  markAllTodosDone(options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.post("/todos/mark_as_done", options);
+  }
+
   listIssueDiscussions(
     projectId: string,
     issueIid: string,

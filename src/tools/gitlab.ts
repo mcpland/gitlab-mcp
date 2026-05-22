@@ -1649,6 +1649,71 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_list_todos",
+      title: "List Todos",
+      description: "List to-do items for the current authenticated user.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        action: z
+          .enum([
+            "assigned",
+            "mentioned",
+            "build_failed",
+            "marked",
+            "approval_required",
+            "unmergeable",
+            "directly_addressed",
+            "merge_train_removed",
+            "member_access_requested"
+          ])
+          .optional(),
+        author_id: optionalNumber,
+        project_id: optionalNumber,
+        group_id: optionalNumber,
+        state: z.enum(["pending", "done"]).optional(),
+        type: z
+          .enum([
+            "Issue",
+            "MergeRequest",
+            "Commit",
+            "Epic",
+            "DesignManagement::Design",
+            "AlertManagement::Alert",
+            "Project",
+            "Namespace",
+            "Vulnerability",
+            "WikiPage::Meta"
+          ])
+          .optional(),
+        ...paginationShape
+      },
+      handler: async (args, context) => context.gitlab.listTodos({ query: toQuery(args) })
+    },
+    {
+      name: "gitlab_mark_todo_done",
+      title: "Mark Todo Done",
+      description: "Mark one to-do item as done.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        todo_id: z.string().min(1)
+      },
+      handler: async (args, context) => context.gitlab.markTodoDone(getString(args, "todo_id"))
+    },
+    {
+      name: "gitlab_mark_all_todos_done",
+      title: "Mark All Todos Done",
+      description: "Mark all pending to-do items as done for the current authenticated user.",
+      capabilities: writeCapabilities,
+      inputSchema: {},
+      handler: async (_args, context) => {
+        await context.gitlab.markAllTodosDone();
+        return {
+          status: "success",
+          message: "All pending to-do items marked as done"
+        };
+      }
+    },
+    {
       name: "gitlab_get_issue",
       title: "Get Issue",
       description: "Get issue by IID.",

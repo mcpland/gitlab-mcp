@@ -1384,6 +1384,39 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("scope")).toBe("assigned_to_me");
     });
 
+    it("lists todos with filters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([{ id: 102, state: "pending" }]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listTodos({
+        query: { state: "pending", action: "assigned", project_id: 123, page: 2 }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toBe("/api/v4/todos");
+      expect(url.searchParams.get("state")).toBe("pending");
+      expect(url.searchParams.get("action")).toBe("assigned");
+      expect(url.searchParams.get("project_id")).toBe("123");
+      expect(url.searchParams.get("page")).toBe("2");
+    });
+
+    it("marks todos done", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ id: 102, state: "done" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.markTodoDone("102");
+      await client.markAllTodosDone();
+
+      const [oneUrl, oneInit] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const [allUrl, allInit] = fetchMock.mock.calls[1] as [URL | string, RequestInit];
+
+      expect(new URL(String(oneUrl)).pathname).toBe("/api/v4/todos/102/mark_as_done");
+      expect(oneInit.method).toBe("POST");
+      expect(new URL(String(allUrl)).pathname).toBe("/api/v4/todos/mark_as_done");
+      expect(allInit.method).toBe("POST");
+    });
+
     it("gets one user by ID", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ id: 42, username: "alice" }));
 

@@ -865,6 +865,113 @@ describe("Tool handlers: user tools", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Todo tools                                                         */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: todo tools", () => {
+  it("passes filters to gitlab_list_todos", async () => {
+    const listTodos = vi.fn().mockResolvedValue([{ id: 102, state: "pending" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listTodos } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_todos",
+        arguments: {
+          state: "pending",
+          action: "assigned",
+          project_id: 123,
+          page: 2,
+          per_page: 5
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listTodos).toHaveBeenCalledWith({
+        query: expect.objectContaining({
+          state: "pending",
+          action: "assigned",
+          project_id: 123,
+          page: 2,
+          per_page: 5
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes todo_id to gitlab_mark_todo_done", async () => {
+    const markTodoDone = vi.fn().mockResolvedValue({ id: 102, state: "done" });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { markTodoDone } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_mark_todo_done",
+        arguments: { todo_id: "102" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(markTodoDone).toHaveBeenCalledWith("102");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("returns a success payload for gitlab_mark_all_todos_done", async () => {
+    const markAllTodosDone = vi.fn().mockResolvedValue("");
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { markAllTodosDone } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_mark_all_todos_done",
+        arguments: {}
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(markAllTodosDone).toHaveBeenCalledWith();
+
+      const structured = (result as { structuredContent?: { result?: unknown } }).structuredContent;
+      expect(structured?.result).toEqual({
+        status: "success",
+        message: "All pending to-do items marked as done"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("hides todo mutations in read-only mode", async () => {
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ readOnlyMode: true })
+    );
+
+    try {
+      const result = await client.listTools();
+      const names = result.tools.map((tool) => tool.name);
+
+      expect(names).toContain("gitlab_list_todos");
+      expect(names).not.toContain("gitlab_mark_todo_done");
+      expect(names).not.toContain("gitlab_mark_all_todos_done");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  CI lint tools                                                      */
 /* ------------------------------------------------------------------ */
 

@@ -189,6 +189,14 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 | `gitlab_create_issue_note`      | **Yes**  | Create issue comment. Params: `body` (required). Supports `discussion_id` (to reply to thread), `created_at`.                                                                                  |
 | `gitlab_update_issue_note`      | **Yes**  | Update an issue note. Provide either `body` or `resolved` (not both).                                                                                                                          |
 
+### Todos
+
+| Tool                         | Mutating | Description                                                                                                                   |
+| ---------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_todos`          | No       | List to-do items for the current user. Supports `action`, `author_id`, `project_id`, `group_id`, `state`, `type`, pagination. |
+| `gitlab_mark_todo_done`      | **Yes**  | Mark one to-do item as done. Params: `todo_id` (required).                                                                    |
+| `gitlab_mark_all_todos_done` | **Yes**  | Mark all pending to-do items as done for the current authenticated user.                                                      |
+
 ### Issue Links
 
 | Tool                       | Mutating | Description                                                                                                                                                       |
