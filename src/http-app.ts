@@ -508,7 +508,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       ? authorization.slice(7).trim()
       : undefined;
 
-    const token = jobToken || privateToken || bearerToken;
+    const token = privateToken || jobToken || bearerToken;
 
     let apiUrl: string | undefined;
 
@@ -534,10 +534,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     return {
       token,
       apiUrl,
-      header: jobToken
-        ? "job-token"
-        : privateToken
-          ? "private-token"
+      header: privateToken
+        ? "private-token"
+        : jobToken
+          ? "job-token"
           : bearerToken
             ? "authorization"
             : undefined,
