@@ -800,6 +800,25 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("ref")).toBe("main");
     });
 
+    it("gets file blame with encoded path and range", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.getFileBlame("proj", "src/index.ts", "main", {
+        query: {
+          "range[start]": 10,
+          "range[end]": 20
+        }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toContain("/repository/files/src%2Findex.ts/blame");
+      expect(url.searchParams.get("ref")).toBe("main");
+      expect(url.searchParams.get("range[start]")).toBe("10");
+      expect(url.searchParams.get("range[end]")).toBe("20");
+    });
+
     it("uploads markdown file", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ markdown: "![file](/uploads/abc/file.md)" }));
 

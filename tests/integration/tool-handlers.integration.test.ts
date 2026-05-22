@@ -143,6 +143,110 @@ describe("Tool handler: gitlab_get_file_contents", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  gitlab_get_file_blame                                              */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handler: gitlab_get_file_blame", () => {
+  it("passes file path, ref, and line range", async () => {
+    const getFileBlame = vi.fn().mockResolvedValue([
+      {
+        lines: ["console.log('ok');"],
+        commit: { id: "abc123", author_name: "Alice" }
+      }
+    ]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getFileBlame } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_file_blame",
+        arguments: {
+          project_id: "group/project",
+          file_path: "src/index.ts",
+          ref: "main",
+          range_start: 10,
+          range_end: 20
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getFileBlame).toHaveBeenCalledWith("group/project", "src/index.ts", "main", {
+        query: {
+          "range[start]": 10,
+          "range[end]": 20
+        }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects a partial line range", async () => {
+    const getFileBlame = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getFileBlame } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_file_blame",
+        arguments: {
+          project_id: "group/project",
+          file_path: "src/index.ts",
+          ref: "main",
+          range_start: 10
+        }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFileBlame).not.toHaveBeenCalled();
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      )!.text;
+      expect(text).toContain("range_start and range_end must be provided together");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects an inverted line range", async () => {
+    const getFileBlame = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getFileBlame } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_file_blame",
+        arguments: {
+          project_id: "group/project",
+          file_path: "src/index.ts",
+          ref: "main",
+          range_start: 20,
+          range_end: 10
+        }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFileBlame).not.toHaveBeenCalled();
+      const text = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      )!.text;
+      expect(text).toContain("range_start must be less than or equal to range_end");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  Branch tools                                                       */
 /* ------------------------------------------------------------------ */
 

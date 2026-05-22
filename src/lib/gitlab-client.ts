@@ -260,6 +260,21 @@ export class GitLabClient {
     });
   }
 
+  getFileBlame(
+    projectId: string,
+    filePath: string,
+    ref: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/repository/files/${encode(filePath)}/blame`, {
+      ...options,
+      query: {
+        ref,
+        ...(options.query ?? {})
+      }
+    });
+  }
+
   createOrUpdateFile(
     projectId: string,
     filePath: string,

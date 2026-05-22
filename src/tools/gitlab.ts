@@ -370,6 +370,43 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_get_file_blame",
+      title: "Get File Blame",
+      description:
+        "Get git blame for a repository file at a given ref. Optional line range must provide both range_start and range_end.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        file_path: z.string().min(1),
+        ref: refLikeSchema,
+        range_start: z.number().int().positive().optional(),
+        range_end: z.number().int().positive().optional()
+      },
+      handler: async (args, context) => {
+        const rangeStart = getOptionalNumber(args, "range_start");
+        const rangeEnd = getOptionalNumber(args, "range_end");
+
+        if ((rangeStart === undefined) !== (rangeEnd === undefined)) {
+          throw new Error("range_start and range_end must be provided together");
+        }
+        if (rangeStart !== undefined && rangeEnd !== undefined && rangeStart > rangeEnd) {
+          throw new Error("range_start must be less than or equal to range_end");
+        }
+
+        return context.gitlab.getFileBlame(
+          resolveProjectId(args, context, true),
+          getString(args, "file_path"),
+          getString(args, "ref"),
+          {
+            query: toQuery({
+              "range[start]": rangeStart,
+              "range[end]": rangeEnd
+            })
+          }
+        );
+      }
+    },
+    {
       name: "gitlab_create_or_update_file",
       title: "Create Or Update File",
       description: "Create or update one file in repository.",
