@@ -50,6 +50,7 @@ const envSchema = z.object({
   GITLAB_PERSONAL_ACCESS_TOKEN: z.string().min(1).optional(),
   GITLAB_JOB_TOKEN: z.string().min(1).optional(),
   GITLAB_USE_OAUTH: z.enum(["true", "false"]).default("false"),
+  GITLAB_MCP_OAUTH: z.enum(["true", "false"]).default("false"),
   GITLAB_OAUTH_CLIENT_ID: z.string().optional(),
   GITLAB_OAUTH_CLIENT_SECRET: z.string().optional(),
   GITLAB_OAUTH_GITLAB_URL: z.string().optional(),
@@ -142,8 +143,16 @@ if (data.GITLAB_USE_OAUTH === "true" && !data.GITLAB_OAUTH_CLIENT_ID) {
   throw new Error("GITLAB_USE_OAUTH=true requires GITLAB_OAUTH_CLIENT_ID");
 }
 
+if (data.GITLAB_MCP_OAUTH === "true" && !data.MCP_SERVER_URL) {
+  throw new Error("GITLAB_MCP_OAUTH=true requires MCP_SERVER_URL");
+}
+
 if (data.SSE === "true" && data.REMOTE_AUTHORIZATION === "true") {
   throw new Error("SSE=true is not compatible with REMOTE_AUTHORIZATION=true");
+}
+
+if (data.SSE === "true" && data.GITLAB_MCP_OAUTH === "true") {
+  throw new Error("SSE=true is not compatible with GITLAB_MCP_OAUTH=true");
 }
 
 if (data.NODE_TLS_REJECT_UNAUTHORIZED === "0" && data.GITLAB_ALLOW_INSECURE_TLS !== "true") {
@@ -158,6 +167,7 @@ export const env = {
   GITLAB_ERROR_DETAIL_MODE:
     data.GITLAB_ERROR_DETAIL_MODE ?? (data.NODE_ENV === "production" ? "safe" : "full"),
   GITLAB_USE_OAUTH: parseBoolean(data.GITLAB_USE_OAUTH, false),
+  GITLAB_MCP_OAUTH: parseBoolean(data.GITLAB_MCP_OAUTH, false),
   GITLAB_OAUTH_AUTO_OPEN_BROWSER: parseBoolean(data.GITLAB_OAUTH_AUTO_OPEN_BROWSER, true),
   GITLAB_CLOUDFLARE_BYPASS: parseBoolean(data.GITLAB_CLOUDFLARE_BYPASS, false),
   GITLAB_ALLOW_INSECURE_TOKEN_FILE: parseBoolean(data.GITLAB_ALLOW_INSECURE_TOKEN_FILE, false),

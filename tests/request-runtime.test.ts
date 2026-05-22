@@ -463,6 +463,7 @@ function buildEnv(overrides: Partial<AppEnv> = {}): AppEnv {
   return {
     GITLAB_API_URL: "https://gitlab.example.com/api/v4",
     GITLAB_USE_OAUTH: false,
+    GITLAB_MCP_OAUTH: false,
     GITLAB_OAUTH_CLIENT_ID: undefined,
     GITLAB_OAUTH_CLIENT_SECRET: undefined,
     GITLAB_OAUTH_GITLAB_URL: undefined,

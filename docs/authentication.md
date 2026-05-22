@@ -262,6 +262,17 @@ X-GitLab-API-URL: https://other-gitlab.example.com/api/v4
 4. All GitLab API calls within that request use the per-session credentials
 5. Requests missing required headers are rejected before tool execution
 
+### MCP OAuth Discovery
+
+For clients that support MCP OAuth, enable GitLab-backed discovery/proxy endpoints:
+
+```bash
+GITLAB_MCP_OAUTH=true
+MCP_SERVER_URL=https://mcp.example.com
+```
+
+The HTTP server then exposes OAuth metadata and authorize/token/register/revoke endpoints backed by the configured GitLab instance. `/mcp` accepts validated `Authorization: Bearer <oauth_token>` requests, while `Private-Token` and `Job-Token` headers remain supported as direct bypass headers.
+
 ---
 
 ## Cloudflare Bypass

@@ -7,6 +7,11 @@ import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import {
+  getOAuthProtectedResourceMetadataUrl,
+  mcpAuthRouter
+} from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Express } from "express";
 import express from "express";
@@ -18,6 +23,8 @@ import {
   type DownloadTokenResource
 } from "./lib/download-token.js";
 import { hasReachedSessionCapacity } from "./lib/session-capacity.js";
+import { createGitLabMcpOAuthProvider } from "./lib/mcp-oauth-provider.js";
+import { resolveOauthScopes } from "./lib/oauth-scopes.js";
 import { createMcpServer } from "./server/build-server.js";
 import type { GitLabAuthHeader } from "./types/auth.js";
 import type { AppContext } from "./types/context.js";
@@ -114,6 +121,34 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   const sessions = new Map<string, SessionState>();
   const pendingSessions = new Set<SessionState>();
   const sseSessions = new Map<string, SseSessionState>();
+  const oauthIssuerUrl = appEnv.GITLAB_MCP_OAUTH
+    ? new URL(appEnv.MCP_SERVER_URL ?? `http://${appEnv.HTTP_HOST}:${String(appEnv.HTTP_PORT)}`)
+    : undefined;
+  const oauthProvider = appEnv.GITLAB_MCP_OAUTH
+    ? createGitLabMcpOAuthProvider(appEnv.GITLAB_API_URL)
+    : undefined;
+  const oauthScopes = resolveOauthScopes(appEnv.GITLAB_OAUTH_SCOPES, appEnv.GITLAB_READ_ONLY_MODE);
+  const oauthBearerAuth =
+    appEnv.GITLAB_MCP_OAUTH && oauthProvider && oauthIssuerUrl
+      ? requireBearerAuth({
+          verifier: oauthProvider,
+          requiredScopes: [],
+          resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(oauthIssuerUrl)
+        })
+      : undefined;
+
+  if (appEnv.GITLAB_MCP_OAUTH && oauthProvider && oauthIssuerUrl) {
+    app.use(
+      mcpAuthRouter({
+        provider: oauthProvider,
+        issuerUrl: oauthIssuerUrl,
+        baseUrl: oauthIssuerUrl,
+        scopesSupported: oauthScopes,
+        resourceName: appEnv.MCP_SERVER_NAME,
+        resourceServerUrl: oauthIssuerUrl
+      })
+    );
+  }
 
   /* ---- /healthz ---- */
 
@@ -133,6 +168,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       pendingSessions: pendingSessions.size,
       maxSessions: appEnv.MAX_SESSIONS,
       remoteAuthorization: appEnv.REMOTE_AUTHORIZATION,
+      mcpOAuth: appEnv.GITLAB_MCP_OAUTH,
       readOnlyMode: appEnv.GITLAB_READ_ONLY_MODE,
       sseEnabled: appEnv.SSE
     });
@@ -301,7 +337,21 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
   /* ---- /mcp (streamable HTTP) ---- */
 
-  app.all("/mcp", async (req, res) => {
+  const mcpOAuthAuthMiddleware: express.RequestHandler = (req, res, next) => {
+    if (!oauthBearerAuth) {
+      next();
+      return;
+    }
+
+    if (req.header("private-token")?.trim() || req.header("job-token")?.trim()) {
+      next();
+      return;
+    }
+
+    oauthBearerAuth(req, res, next);
+  };
+
+  app.all("/mcp", mcpOAuthAuthMiddleware, async (req, res) => {
     const incomingSessionId = req.header("mcp-session-id") ?? undefined;
     let session = incomingSessionId ? sessions.get(incomingSessionId) : undefined;
     let createdSession = false;
@@ -309,13 +359,14 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     try {
       const parsedAuth = parseRequestAuth(req);
 
-      if (appEnv.REMOTE_AUTHORIZATION && !parsedAuth?.token) {
+      if ((appEnv.REMOTE_AUTHORIZATION || appEnv.GITLAB_MCP_OAUTH) && !parsedAuth?.token) {
         res.status(401).json({
           jsonrpc: "2.0",
           error: {
             code: -32010,
-            message:
-              "Missing remote authorization token. Provide 'Authorization: Bearer <token>', 'Private-Token', or 'Job-Token'."
+            message: appEnv.REMOTE_AUTHORIZATION
+              ? "Missing remote authorization token. Provide 'Authorization: Bearer <token>', 'Private-Token', or 'Job-Token'."
+              : "Missing OAuth authorization token. Provide 'Authorization: Bearer <token>', 'Private-Token', or 'Job-Token'."
           },
           id: null
         });
@@ -546,9 +597,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   }
 
   function buildRuntimeAuth(session: SessionState): SessionAuth | undefined {
-    const fallbackToken = appEnv.REMOTE_AUTHORIZATION
-      ? undefined
-      : appEnv.GITLAB_PERSONAL_ACCESS_TOKEN;
+    const fallbackToken =
+      appEnv.REMOTE_AUTHORIZATION || appEnv.GITLAB_MCP_OAUTH
+        ? undefined
+        : appEnv.GITLAB_PERSONAL_ACCESS_TOKEN;
 
     return {
       sessionId: session.sessionId,
@@ -658,7 +710,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   }
 
   function parseRequestAuth(req: express.Request): SessionAuth | undefined {
-    if (!appEnv.REMOTE_AUTHORIZATION) {
+    if (!appEnv.REMOTE_AUTHORIZATION && !appEnv.GITLAB_MCP_OAUTH) {
       return undefined;
     }
 

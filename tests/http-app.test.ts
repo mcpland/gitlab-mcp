@@ -27,6 +27,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
       GITLAB_PERSONAL_ACCESS_TOKEN: "test-token",
       GITLAB_USE_OAUTH: false,
+      GITLAB_MCP_OAUTH: false,
       GITLAB_OAUTH_AUTO_OPEN_BROWSER: false,
       GITLAB_OAUTH_SCOPES: "api",
       GITLAB_READ_ONLY_MODE: false,
@@ -382,5 +383,45 @@ describe("http app download proxy", () => {
         });
       });
     }
+  });
+});
+
+describe("http app MCP OAuth", () => {
+  it("exposes OAuth metadata and rejects unauthenticated MCP requests", async () => {
+    const context = buildContext();
+    context.env.GITLAB_MCP_OAUTH = true;
+    context.env.MCP_SERVER_URL = "https://mcp.example.com";
+    context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+    running = await startServerForContext(context);
+
+    const protectedResource = await fetch(
+      `${running.baseUrl}/.well-known/oauth-protected-resource`
+    );
+    const protectedBody = (await protectedResource.json()) as {
+      authorization_servers?: string[];
+      resource?: string;
+    };
+
+    expect(protectedResource.status).toBe(200);
+    expect(protectedBody.resource).toBe("https://mcp.example.com/");
+    expect(protectedBody.authorization_servers).toContain("https://mcp.example.com/");
+
+    const authServer = await fetch(`${running.baseUrl}/.well-known/oauth-authorization-server`);
+    const authBody = (await authServer.json()) as {
+      authorization_endpoint?: string;
+      token_endpoint?: string;
+    };
+    expect(authServer.status).toBe(200);
+    expect(authBody.authorization_endpoint).toBe("https://mcp.example.com/authorize");
+    expect(authBody.token_endpoint).toBe("https://mcp.example.com/token");
+
+    const mcpResponse = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} })
+    });
+
+    expect(mcpResponse.status).toBe(401);
+    expect(mcpResponse.headers.get("www-authenticate")).toContain("Bearer");
   });
 });

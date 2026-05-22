@@ -36,6 +36,7 @@ const defaultEnv: AppContext["env"] = {
   GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
   GITLAB_PERSONAL_ACCESS_TOKEN: "test-token",
   GITLAB_USE_OAUTH: false,
+  GITLAB_MCP_OAUTH: false,
   GITLAB_OAUTH_AUTO_OPEN_BROWSER: false,
   GITLAB_OAUTH_SCOPES: "api",
   GITLAB_READ_ONLY_MODE: false,

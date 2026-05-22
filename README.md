@@ -388,6 +388,7 @@ node dist/http.js --env-file=.env.production
 | GitLab API      | `GITLAB_JOB_TOKEN`                        | —                           | Static CI job token fallback when no personal access token is configured.                |
 | Remote Auth     | `REMOTE_AUTHORIZATION`                    | `false`                     | Require per-request token headers in HTTP mode (disables fallback token chain).          |
 | Remote Auth     | `ENABLE_DYNAMIC_API_URL`                  | `false`                     | Require `X-GitLab-API-URL` per request. Requires `REMOTE_AUTHORIZATION=true`.            |
+| Remote Auth     | `GITLAB_MCP_OAUTH`                        | `false`                     | Enable MCP OAuth discovery/proxy endpoints for HTTP mode. Requires `MCP_SERVER_URL`.     |
 | HTTP Server     | `HTTP_HOST`                               | `127.0.0.1`                 | HTTP bind host (`0.0.0.0` for external access).                                          |
 | HTTP Server     | `HTTP_PORT`                               | `3333`                      | HTTP server port.                                                                        |
 | HTTP Server     | `MCP_SERVER_URL`                          | —                           | Public base URL used when HTTP download tools return proxy URLs.                         |
@@ -403,6 +404,7 @@ node dist/http.js --env-file=.env.production
 | Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                           |
 | Policy          | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | `false`                     | Keep GraphQL tools enabled when project scope restriction is active.                     |
 | Auth Extensions | `GITLAB_USE_OAUTH`                        | `false`                     | Enable OAuth 2.0 PKCE flow.                                                              |
+| Auth Extensions | `GITLAB_OAUTH_SCOPES`                     | mode-dependent              | OAuth scopes advertised/requested by local OAuth and MCP OAuth.                          |
 | Auth Extensions | `GITLAB_TOKEN_SCRIPT`                     | —                           | Resolve token from an external script.                                                   |
 | Auth Extensions | `GITLAB_TOKEN_FILE`                       | —                           | Resolve token from a local file.                                                         |
 | Auth Extensions | `GITLAB_AUTH_COOKIE_PATH`                 | —                           | Enable cookie-jar based session auth from Netscape cookie file.                          |
