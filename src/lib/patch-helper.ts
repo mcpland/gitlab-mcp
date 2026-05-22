@@ -173,7 +173,7 @@ function parseUnifiedDiffHunks(patch: string): UnifiedHunk[] {
       continue;
     }
 
-    if (current && (/^[ +\-\\]/.test(line) || line === "")) {
+    if (current && /^[ +\-\\]/.test(line)) {
       current.lines.push(line);
     }
   }

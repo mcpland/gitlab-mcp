@@ -31,4 +31,13 @@ describe("patch helper", () => {
     expect(result.description).toBe("one\nTWO\nthree");
     expect(result.changes).toBe(2);
   });
+
+  it("applies standard unified diffs that end with a trailing newline", () => {
+    const result = applyUnifiedDiff(
+      "one\ntwo\nthree",
+      "--- current\n+++ updated\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n"
+    );
+
+    expect(result.description).toBe("one\nTWO\nthree");
+  });
 });
