@@ -1774,15 +1774,28 @@ describe("GitLabClient", () => {
       expect(String(requestUrl)).toContain("/releases/v1.0.0");
     });
 
-    it("downloadReleaseAsset encodes path segments", async () => {
-      fetchMock.mockResolvedValue(jsonResponse({}));
+    it("downloadReleaseAsset encodes path segments and returns binary content as base64", async () => {
+      const bytes = new Uint8Array([0, 255, 1, 2]);
+      fetchMock.mockResolvedValue(
+        new Response(bytes, {
+          headers: {
+            "content-type": "application/gzip",
+            "content-disposition": 'attachment; filename="asset.tar.gz"'
+          }
+        })
+      );
 
       const client = new GitLabClient("https://gitlab.example.com", "token");
-      await client.downloadReleaseAsset("proj", "v1.0", "bin/my app.tar.gz");
+      const result = await client.downloadReleaseAsset("proj", "v1.0", "bin/my app.tar.gz");
 
       const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
       const urlStr = String(requestUrl);
       expect(urlStr).toContain("/downloads/bin/my%20app.tar.gz");
+      expect(result).toEqual({
+        fileName: "asset.tar.gz",
+        contentType: "application/gzip",
+        base64: Buffer.from(bytes).toString("base64")
+      });
     });
 
     it("lists tags with filters", async () => {

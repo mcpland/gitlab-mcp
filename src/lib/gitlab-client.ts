@@ -2089,11 +2089,23 @@ export class GitLabClient {
     tagName: string,
     directAssetPath: string,
     options: GitLabRequestOptions = {}
-  ): Promise<unknown> {
+  ): Promise<GitLabDownloadedFile> {
+    const requestConfig = this.resolveRequestConfig(options);
     const safePath = encodeSlashPath(directAssetPath);
-    return this.get(
-      `/projects/${encode(projectId)}/releases/${encode(tagName)}/downloads/${safePath}`,
-      options
+    const url = new URL(
+      `projects/${encode(projectId)}/releases/${encode(tagName)}/downloads/${safePath}`,
+      `${requestConfig.apiUrl}/`
+    );
+
+    return this.downloadFile(
+      url,
+      {
+        headers: options.headers,
+        token: requestConfig.token,
+        authHeader: requestConfig.authHeader
+      },
+      "Release asset",
+      path.basename(directAssetPath) || "release-asset"
     );
   }
 
