@@ -810,6 +810,120 @@ describe("Tool handler: gitlab_list_merge_request_pipelines", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  MR large diff workflow                                             */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: MR large diff workflow", () => {
+  it("lists changed files without diff content and applies exclusions", async () => {
+    const getMergeRequestDiffs = vi.fn().mockResolvedValue({
+      changes: [
+        {
+          new_path: "src/index.ts",
+          old_path: "src/index.ts",
+          new_file: false,
+          deleted_file: false,
+          renamed_file: false,
+          diff: "@@ -1 +1 @@"
+        },
+        {
+          new_path: "vendor/generated.js",
+          old_path: "vendor/generated.js",
+          new_file: false,
+          deleted_file: false,
+          renamed_file: false,
+          diff: "large"
+        }
+      ]
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getMergeRequestDiffs } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_merge_request_changed_files",
+        arguments: {
+          project_id: "group/project",
+          merge_request_iid: "11",
+          excluded_file_patterns: ["^vendor/"]
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getMergeRequestDiffs).toHaveBeenCalledWith("group/project", "11");
+
+      const structured = (
+        result as {
+          structuredContent?: { result?: { items?: unknown[]; count?: number } };
+        }
+      ).structuredContent;
+      expect(structured?.result?.items).toEqual([
+        {
+          new_path: "src/index.ts",
+          old_path: "src/index.ts",
+          new_file: false,
+          deleted_file: false,
+          renamed_file: false
+        }
+      ]);
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("returns requested file diffs and not-found results", async () => {
+    const listMergeRequestDiffs = vi.fn().mockResolvedValue([
+      {
+        new_path: "src/index.ts",
+        old_path: "src/index.ts",
+        diff: "@@ -1 +1 @@"
+      }
+    ]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listMergeRequestDiffs } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_merge_request_file_diff",
+        arguments: {
+          project_id: "group/project",
+          merge_request_iid: "11",
+          file_paths: ["src/index.ts", "missing.ts"],
+          unidiff: true
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listMergeRequestDiffs).toHaveBeenCalledWith("group/project", "11", {
+        query: expect.objectContaining({
+          page: 1,
+          per_page: 20,
+          unidiff: true
+        })
+      });
+
+      const structured = (
+        result as {
+          structuredContent?: { result?: { items?: unknown[]; count?: number } };
+        }
+      ).structuredContent;
+      expect(structured?.result?.items?.[0]).toMatchObject({ new_path: "src/index.ts" });
+      expect(structured?.result?.items?.[1]).toMatchObject({
+        file_path: "missing.ts",
+        error: "File not found in merge request diffs: missing.ts"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_merge_merge_request                                         */
 /* ------------------------------------------------------------------ */
 

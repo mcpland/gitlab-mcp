@@ -1073,6 +1073,34 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_list_merge_request_changed_files",
+      title: "List Merge Request Changed Files",
+      description: "Step 1 for large MR review: return changed file metadata without diff content.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: optionalString,
+        source_branch: optionalRefLikeSchema,
+        excluded_file_patterns: optionalStringArray
+      },
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const mergeRequestIid = await resolveMergeRequestIid(args, context, projectId, {
+          requireOpened: false
+        });
+        const response = await context.gitlab.getMergeRequestDiffs(projectId, mergeRequestIid);
+        const files = extractMergeRequestChanges(response).map((item) => ({
+          new_path: item.new_path,
+          old_path: item.old_path,
+          new_file: item.new_file,
+          deleted_file: item.deleted_file,
+          renamed_file: item.renamed_file
+        }));
+
+        return filterChangedFiles(files, getOptionalStringArray(args, "excluded_file_patterns"));
+      }
+    },
+    {
       name: "gitlab_list_merge_request_diffs",
       title: "List Merge Request Diffs",
       description: "List detailed MR diffs (versions/changes view).",
@@ -1090,6 +1118,77 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           getString(args, "merge_request_iid"),
           { query: toQuery(omit(args, ["project_id", "merge_request_iid"])) }
         )
+    },
+    {
+      name: "gitlab_get_merge_request_file_diff",
+      title: "Get Merge Request File Diff",
+      description:
+        "Step 2 for large MR review: fetch diffs for specific files from a merge request.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: optionalString,
+        source_branch: optionalRefLikeSchema,
+        file_paths: z.array(z.string().min(1)).min(1),
+        unidiff: optionalBoolean
+      },
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const mergeRequestIid = await resolveMergeRequestIid(args, context, projectId, {
+          requireOpened: false
+        });
+        const requested = getRequiredStringArray(args, "file_paths");
+        const remaining = new Set(requested);
+        const results: unknown[] = [];
+        let page = 1;
+        const perPage = 20;
+
+        while (remaining.size > 0) {
+          const pageItems = extractMergeRequestDiffRecords(
+            await context.gitlab.listMergeRequestDiffs(projectId, mergeRequestIid, {
+              query: toQuery({
+                page,
+                per_page: perPage,
+                unidiff: getOptionalBoolean(args, "unidiff")
+              })
+            })
+          );
+
+          if (pageItems.length === 0) {
+            break;
+          }
+
+          for (const item of pageItems) {
+            const newPath = typeof item.new_path === "string" ? item.new_path : undefined;
+            const oldPath = typeof item.old_path === "string" ? item.old_path : undefined;
+
+            if ((newPath && remaining.has(newPath)) || (oldPath && remaining.has(oldPath))) {
+              results.push(item);
+              if (newPath) {
+                remaining.delete(newPath);
+              }
+              if (oldPath) {
+                remaining.delete(oldPath);
+              }
+            }
+          }
+
+          if (pageItems.length < perPage) {
+            break;
+          }
+          page += 1;
+        }
+
+        for (const missing of remaining) {
+          results.push({
+            file_path: missing,
+            error: `File not found in merge request diffs: ${missing}`,
+            hint: "Use gitlab_list_merge_request_changed_files to verify the correct file paths."
+          });
+        }
+
+        return results;
+      }
     },
     {
       name: "gitlab_get_merge_request_code_context",
@@ -3616,6 +3715,69 @@ function toCsvValue(value: unknown): string | undefined {
   return undefined;
 }
 
+async function resolveMergeRequestIid(
+  args: ToolArgs,
+  context: AppContext,
+  projectId: string,
+  options: { requireOpened: boolean }
+): Promise<string> {
+  const mergeRequestIid = getOptionalString(args, "merge_request_iid");
+  if (mergeRequestIid) {
+    return mergeRequestIid;
+  }
+
+  const sourceBranch = getOptionalString(args, "source_branch");
+  if (!sourceBranch) {
+    throw new Error("Either merge_request_iid or source_branch must be provided");
+  }
+
+  const candidates = await context.gitlab.listMergeRequests(projectId, {
+    query: {
+      source_branch: sourceBranch,
+      per_page: 100,
+      page: 1
+    }
+  });
+  const match = pickMergeRequestForSourceBranch(candidates, sourceBranch, options);
+  return getMergeRequestIid(match);
+}
+
+function extractMergeRequestChanges(value: unknown): Array<Record<string, unknown>> {
+  if (typeof value !== "object" || value === null || !("changes" in value)) {
+    return [];
+  }
+
+  const changes = (value as { changes?: unknown }).changes;
+  return extractMergeRequestDiffRecords(changes);
+}
+
+function extractMergeRequestDiffRecords(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is Record<string, unknown> => typeof item === "object" && item !== null
+  );
+}
+
+function filterChangedFiles(
+  files: Array<Record<string, unknown>>,
+  patterns: string[] | undefined
+): Array<Record<string, unknown>> {
+  if (!patterns || patterns.length === 0) {
+    return files;
+  }
+
+  const regexes = patterns.map((pattern) => new RegExp(pattern));
+  return files.filter((file) => {
+    const paths = [file.new_path, file.old_path].filter(
+      (value): value is string => typeof value === "string"
+    );
+    return !regexes.some((regex) => paths.some((filePath) => regex.test(filePath)));
+  });
+}
+
 function pickMergeRequestForSourceBranch(
   value: unknown,
   sourceBranch: string,
@@ -3741,6 +3903,14 @@ function getBoolean(args: ToolArgs, key: string): boolean {
     throw new Error(`'${key}' must be boolean`);
   }
 
+  return value;
+}
+
+function getRequiredStringArray(args: ToolArgs, key: string): string[] {
+  const value = getOptionalStringArray(args, key);
+  if (!value || value.length === 0) {
+    throw new Error(`'${key}' must be a non-empty string array`);
+  }
   return value;
 }
 
