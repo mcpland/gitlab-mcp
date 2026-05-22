@@ -12,6 +12,7 @@ export interface GitLabClientOptions {
   maxAttachmentBytes?: number;
   maxLocalFileBytes?: number;
   maxResponseBodyBytes?: number;
+  defaultAuthHeader?: GitLabAuthHeader;
   beforeRequest?: (
     context: GitLabBeforeRequestContext
   ) => Promise<GitLabBeforeRequestResult | void>;
@@ -115,6 +116,7 @@ export class GitLabClient {
   private readonly apiUrls: string[];
   private nextApiUrlIndex = 0;
   private readonly defaultToken?: string;
+  private readonly defaultAuthHeader?: GitLabAuthHeader;
   private readonly timeoutMs: number;
   private readonly maxAttachmentBytes: number;
   private readonly maxLocalFileBytes: number;
@@ -128,6 +130,7 @@ export class GitLabClient {
       .filter((item) => item.length > 0) ?? [this.baseApiUrl];
     this.apiUrls = configuredApiUrls.length > 0 ? configuredApiUrls : [this.baseApiUrl];
     this.defaultToken = defaultToken;
+    this.defaultAuthHeader = options.defaultAuthHeader;
     this.timeoutMs = options.timeoutMs ?? 20_000;
     this.maxAttachmentBytes =
       options.maxAttachmentBytes ?? GitLabClient.DEFAULT_MAX_ATTACHMENT_BYTES;
@@ -2085,7 +2088,7 @@ export class GitLabClient {
     const sessionAuth = getSessionAuth();
     const apiUrl = options.apiUrl ?? sessionAuth?.apiUrl ?? this.pickApiUrl();
     const token = options.token ?? sessionAuth?.token ?? this.defaultToken;
-    const authHeader = options.authHeader ?? sessionAuth?.header;
+    const authHeader = options.authHeader ?? sessionAuth?.header ?? this.defaultAuthHeader;
 
     return {
       apiUrl: normalizeApiUrl(apiUrl),

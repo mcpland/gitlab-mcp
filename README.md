@@ -250,7 +250,8 @@ Remote auth behavior matrix:
 | `REMOTE_AUTHORIZATION=true` + `ENABLE_DYNAMIC_API_URL=true` | `Authorization`, `Private-Token`, or `Job-Token`, and `X-GitLab-API-URL: https://host/api/v4` | disabled             |
 
 When `HTTP_HOST` is not `127.0.0.1`, `localhost`, or `::1`, HTTP startup rejects
-server-side `GITLAB_PERSONAL_ACCESS_TOKEN` unless `REMOTE_AUTHORIZATION=true`.
+server-side `GITLAB_PERSONAL_ACCESS_TOKEN` or `GITLAB_JOB_TOKEN` unless
+`REMOTE_AUTHORIZATION=true`.
 
 ### Docker
 
@@ -384,6 +385,7 @@ node dist/http.js --env-file=.env.production
 | --------------- | ----------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------- |
 | GitLab API      | `GITLAB_API_URL`                          | `https://gitlab.com/api/v4` | Base API URL. Supports comma-separated multi-instance URLs.                         |
 | GitLab API      | `GITLAB_PERSONAL_ACCESS_TOKEN`            | —                           | Static default token used when `REMOTE_AUTHORIZATION=false`.                        |
+| GitLab API      | `GITLAB_JOB_TOKEN`                        | —                           | Static CI job token fallback when no personal access token is configured.           |
 | Remote Auth     | `REMOTE_AUTHORIZATION`                    | `false`                     | Require per-request token headers in HTTP mode (disables fallback token chain).     |
 | Remote Auth     | `ENABLE_DYNAMIC_API_URL`                  | `false`                     | Require `X-GitLab-API-URL` per request. Requires `REMOTE_AUTHORIZATION=true`.       |
 | HTTP Server     | `HTTP_HOST`                               | `127.0.0.1`                 | HTTP bind host (`0.0.0.0` for external access).                                     |
@@ -424,7 +426,7 @@ Authentication behavior depends on mode:
    When `ENABLE_DYNAMIC_API_URL=true`, each request must also include `X-GitLab-API-URL`.
 2. **`REMOTE_AUTHORIZATION=false` (default mode)**
    The server resolves credentials in this order:
-   `GITLAB_PERSONAL_ACCESS_TOKEN` -> OAuth PKCE (`GITLAB_USE_OAUTH=true`) -> `GITLAB_TOKEN_SCRIPT` -> `GITLAB_TOKEN_FILE`.
+   `GITLAB_PERSONAL_ACCESS_TOKEN` -> `GITLAB_JOB_TOKEN` -> OAuth PKCE (`GITLAB_USE_OAUTH=true`) -> `GITLAB_TOKEN_SCRIPT` -> `GITLAB_TOKEN_FILE`.
 
 Cookie-based auth (`GITLAB_AUTH_COOKIE_PATH`) is applied independently via a cookie jar and can work with or without a token.
 

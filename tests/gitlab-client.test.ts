@@ -122,6 +122,39 @@ describe("GitLabClient", () => {
       expect(headers.has("PRIVATE-TOKEN")).toBe(false);
       expect(headers.has("Authorization")).toBe(false);
     });
+
+    it("uses job-token header when configured as the default auth header", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "job-token-123", {
+        defaultAuthHeader: "job-token"
+      });
+      await client.listProjects();
+
+      const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const headers = new Headers(init.headers);
+      expect(headers.get("JOB-TOKEN")).toBe("job-token-123");
+      expect(headers.has("PRIVATE-TOKEN")).toBe(false);
+      expect(headers.has("Authorization")).toBe(false);
+    });
+
+    it("lets explicit request auth override the default job-token auth header", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "job-token-123", {
+        defaultAuthHeader: "job-token"
+      });
+      await client.listProjects({
+        token: "pat-token-123",
+        authHeader: "private-token"
+      });
+
+      const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const headers = new Headers(init.headers);
+      expect(headers.get("PRIVATE-TOKEN")).toBe("pat-token-123");
+      expect(headers.has("JOB-TOKEN")).toBe(false);
+      expect(headers.has("Authorization")).toBe(false);
+    });
   });
 
   describe("error handling", () => {

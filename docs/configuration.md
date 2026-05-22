@@ -24,6 +24,7 @@ node dist/http.js --env-file=.env.production
 | ------------------------------ | ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GITLAB_API_URL`               | string | `https://gitlab.com/api/v4` | Base API URL. Supports **comma-separated** URLs for multi-instance rotation. Each URL is automatically normalized to end with `/api/v4`.          |
 | `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —                           | Static default token for requests in default mode (`REMOTE_AUTHORIZATION=false`). If omitted, runtime can still resolve OAuth/script/file tokens. |
+| `GITLAB_JOB_TOKEN`             | string | —                           | Static CI job token fallback. Used with the `JOB-TOKEN` header only when `GITLAB_PERSONAL_ACCESS_TOKEN` is not configured.                        |
 
 ### Multi-Instance Example
 
@@ -35,11 +36,12 @@ The client will normalize each entry and rotate across them for load distributio
 
 ## Authentication
 
-### Personal Access Token
+### Personal Access Token and CI Job Token
 
-| Variable                       | Type   | Default | Description                                                         |
-| ------------------------------ | ------ | ------- | ------------------------------------------------------------------- |
-| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —       | Token with `api` scope. Used as the default request token when set. |
+| Variable                       | Type   | Default | Description                                                                   |
+| ------------------------------ | ------ | ------- | ----------------------------------------------------------------------------- |
+| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —       | Token with `api` scope. Used as the default request token when set.           |
+| `GITLAB_JOB_TOKEN`             | string | —       | CI job token. Used as the default `JOB-TOKEN` only when no PAT is configured. |
 
 ### OAuth 2.0 PKCE
 
@@ -154,5 +156,5 @@ The server enforces these cross-field constraints at startup:
 - `GITLAB_USE_OAUTH=true` requires `GITLAB_OAUTH_CLIENT_ID`
 - `ENABLE_DYNAMIC_API_URL=true` requires `REMOTE_AUTHORIZATION=true`
 - `SSE=true` is not compatible with `REMOTE_AUTHORIZATION=true`
-- `HTTP_HOST` values other than `127.0.0.1`, `localhost`, or `::1` cannot use a server-side `GITLAB_PERSONAL_ACCESS_TOKEN` unless `REMOTE_AUTHORIZATION=true`
+- `HTTP_HOST` values other than `127.0.0.1`, `localhost`, or `::1` cannot use a server-side `GITLAB_PERSONAL_ACCESS_TOKEN` or `GITLAB_JOB_TOKEN` unless `REMOTE_AUTHORIZATION=true`
 - `NODE_TLS_REJECT_UNAUTHORIZED=0` requires `GITLAB_ALLOW_INSECURE_TLS=true`

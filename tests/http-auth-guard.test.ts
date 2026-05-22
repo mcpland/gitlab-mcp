@@ -25,7 +25,7 @@ describe("assertSafeHttpAuthConfig", () => {
     ).not.toThrow();
   });
 
-  it("allows non-local bind hosts without a static PAT", () => {
+  it("allows non-local bind hosts without a static token", () => {
     expect(() =>
       assertSafeHttpAuthConfig({
         HTTP_HOST: "0.0.0.0",
@@ -41,6 +41,16 @@ describe("assertSafeHttpAuthConfig", () => {
         GITLAB_PERSONAL_ACCESS_TOKEN: "glpat-test",
         REMOTE_AUTHORIZATION: false
       })
-    ).toThrow("Refusing to start HTTP server with GITLAB_PERSONAL_ACCESS_TOKEN");
+    ).toThrow("Refusing to start HTTP server with a static GitLab token");
+  });
+
+  it("rejects static job token usage on non-local HTTP bind hosts", () => {
+    expect(() =>
+      assertSafeHttpAuthConfig({
+        HTTP_HOST: "0.0.0.0",
+        GITLAB_JOB_TOKEN: "job-token-test",
+        REMOTE_AUTHORIZATION: false
+      })
+    ).toThrow("Refusing to start HTTP server with a static GitLab token");
   });
 });

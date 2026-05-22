@@ -47,6 +47,7 @@ const envSchema = z.object({
   MCP_SERVER_VERSION: z.string().min(1).default(DEFAULT_SERVER_VERSION),
   GITLAB_API_URL: z.string().min(1).default("https://gitlab.com/api/v4"),
   GITLAB_PERSONAL_ACCESS_TOKEN: z.string().min(1).optional(),
+  GITLAB_JOB_TOKEN: z.string().min(1).optional(),
   GITLAB_USE_OAUTH: z.enum(["true", "false"]).default("false"),
   GITLAB_OAUTH_CLIENT_ID: z.string().optional(),
   GITLAB_OAUTH_CLIENT_SECRET: z.string().optional(),

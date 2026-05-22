@@ -8,9 +8,10 @@ gitlab-mcp supports multiple authentication methods. Token behavior depends on w
 
 ```
 Static PAT (GITLAB_PERSONAL_ACCESS_TOKEN)
-  └─> OAuth 2.0 PKCE
-      └─> External token script
-          └─> Token file
+  └─> CI job token (GITLAB_JOB_TOKEN)
+      └─> OAuth 2.0 PKCE
+          └─> External token script
+              └─> Token file
 ```
 
 ### Remote Authorization Mode (`REMOTE_AUTHORIZATION=true`, HTTP)
@@ -40,7 +41,20 @@ When `REMOTE_AUTHORIZATION=true`, request headers are required and PAT fallback 
 
 ---
 
-## 2. OAuth 2.0 PKCE
+## 2. CI Job Token
+
+For GitLab CI contexts, set `GITLAB_JOB_TOKEN` when no personal access token is configured.
+Requests use GitLab's `JOB-TOKEN` header.
+
+```bash
+GITLAB_JOB_TOKEN="$CI_JOB_TOKEN"
+```
+
+If both `GITLAB_PERSONAL_ACCESS_TOKEN` and `GITLAB_JOB_TOKEN` are set, the personal access token takes precedence.
+
+---
+
+## 3. OAuth 2.0 PKCE
 
 Browser-based OAuth flow for interactive use. The server launches a local callback server and opens the browser for authorization.
 
@@ -98,7 +112,7 @@ GITLAB_OAUTH_AUTO_OPEN_BROWSER=false
 
 ---
 
-## 3. External Token Script
+## 4. External Token Script
 
 Execute a shell command to obtain a token dynamically. Useful for integration with secret managers, vault systems, or custom token providers.
 
@@ -149,7 +163,7 @@ The resolved token is cached for `GITLAB_TOKEN_CACHE_SECONDS` to avoid repeated 
 
 ---
 
-## 4. Token File
+## 5. Token File
 
 Read a token from a file on disk. The file should contain a raw token string or JSON (same format as the token script output).
 
@@ -171,7 +185,7 @@ The token is cached for `GITLAB_TOKEN_CACHE_SECONDS` (default: 300s).
 
 ---
 
-## 5. Cookie-Based Auth
+## 6. Cookie-Based Auth
 
 Use browser cookies from a Netscape-format cookie file. This is useful when working with GitLab instances that use SSO or other browser-based authentication.
 
@@ -207,7 +221,7 @@ Lines starting with `#HttpOnly_` are parsed as HttpOnly cookies.
 
 ---
 
-## 6. Remote Authorization (HTTP Mode)
+## 7. Remote Authorization (HTTP Mode)
 
 In HTTP transport mode, this enables strict per-request credentials. This is the recommended approach for shared/multi-user deployments.
 

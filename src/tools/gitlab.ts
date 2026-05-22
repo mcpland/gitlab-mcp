@@ -2952,6 +2952,7 @@ function assertAuthReady(context: AppContext): void {
 
   const hasFallbackAuth =
     Boolean(context.env.GITLAB_PERSONAL_ACCESS_TOKEN) ||
+    Boolean(context.env.GITLAB_JOB_TOKEN) ||
     Boolean(context.env.GITLAB_USE_OAUTH && context.env.GITLAB_OAUTH_CLIENT_ID) ||
     Boolean(context.env.GITLAB_TOKEN_SCRIPT) ||
     Boolean(context.env.GITLAB_TOKEN_FILE) ||
@@ -2959,7 +2960,7 @@ function assertAuthReady(context: AppContext): void {
 
   if (!hasFallbackAuth) {
     throw new Error(
-      "Authentication required: set GITLAB_PERSONAL_ACCESS_TOKEN, GITLAB_TOKEN_SCRIPT, GITLAB_TOKEN_FILE, or GITLAB_AUTH_COOKIE_PATH"
+      "Authentication required: set GITLAB_PERSONAL_ACCESS_TOKEN, GITLAB_JOB_TOKEN, GITLAB_TOKEN_SCRIPT, GITLAB_TOKEN_FILE, or GITLAB_AUTH_COOKIE_PATH"
     );
   }
 }

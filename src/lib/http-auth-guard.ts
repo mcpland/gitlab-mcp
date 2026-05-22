@@ -1,11 +1,14 @@
 interface HttpAuthGuardConfig {
   HTTP_HOST: string;
   GITLAB_PERSONAL_ACCESS_TOKEN?: string;
+  GITLAB_JOB_TOKEN?: string;
   REMOTE_AUTHORIZATION: boolean;
 }
 
 export function assertSafeHttpAuthConfig(config: HttpAuthGuardConfig): void {
-  if (config.REMOTE_AUTHORIZATION || !config.GITLAB_PERSONAL_ACCESS_TOKEN) {
+  const hasStaticToken = Boolean(config.GITLAB_PERSONAL_ACCESS_TOKEN || config.GITLAB_JOB_TOKEN);
+
+  if (config.REMOTE_AUTHORIZATION || !hasStaticToken) {
     return;
   }
 
@@ -14,7 +17,7 @@ export function assertSafeHttpAuthConfig(config: HttpAuthGuardConfig): void {
   }
 
   throw new Error(
-    "Refusing to start HTTP server with GITLAB_PERSONAL_ACCESS_TOKEN on a non-local bind host. " +
+    "Refusing to start HTTP server with a static GitLab token on a non-local bind host. " +
       "Set REMOTE_AUTHORIZATION=true for remote HTTP deployments, or bind HTTP_HOST to 127.0.0.1/localhost."
   );
 }

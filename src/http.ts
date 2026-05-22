@@ -22,14 +22,21 @@ assertSafeHttpAuthConfig(env);
 
 const requestRuntime = new GitLabRequestRuntime(env, logger);
 configureNetworkRuntime(env, logger);
+const defaultToken = env.GITLAB_PERSONAL_ACCESS_TOKEN ?? env.GITLAB_JOB_TOKEN;
+const defaultAuthHeader = env.GITLAB_PERSONAL_ACCESS_TOKEN
+  ? undefined
+  : env.GITLAB_JOB_TOKEN
+    ? "job-token"
+    : undefined;
 
 const context: AppContext = {
   env,
   logger,
-  gitlab: new GitLabClient(env.GITLAB_API_URL, env.GITLAB_PERSONAL_ACCESS_TOKEN, {
+  gitlab: new GitLabClient(env.GITLAB_API_URL, defaultToken, {
     apiUrls: env.GITLAB_API_URLS,
     timeoutMs: env.GITLAB_HTTP_TIMEOUT_MS,
     maxLocalFileBytes: env.GITLAB_MAX_LOCAL_FILE_BYTES,
+    defaultAuthHeader,
     beforeRequest: (requestContext) => requestRuntime.beforeRequest(requestContext)
   }),
   policy: new ToolPolicyEngine({
