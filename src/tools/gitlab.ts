@@ -502,6 +502,51 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_list_branches",
+      title: "List Branches",
+      description: "List repository branches.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        search: optionalString,
+        regex: optionalString,
+        sort: z.enum(["name_asc", "updated_asc", "updated_desc"]).optional(),
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listBranches(resolveProjectId(args, context, true), {
+          query: toQuery(omit(args, ["project_id"]))
+        })
+    },
+    {
+      name: "gitlab_get_branch",
+      title: "Get Branch",
+      description: "Get details for one repository branch.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        branch: refLikeSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.getBranch(resolveProjectId(args, context, true), getString(args, "branch"))
+    },
+    {
+      name: "gitlab_delete_branch",
+      title: "Delete Branch",
+      description:
+        "Delete a repository branch permanently. Requires branch. Recommended pre-check: gitlab_get_branch.",
+      capabilities: deleteCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        branch: refLikeSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.deleteBranch(
+          resolveProjectId(args, context, true),
+          getString(args, "branch")
+        )
+    },
+    {
       name: "gitlab_get_branch_diffs",
       title: "Get Branch Diffs",
       description: "Compare two branches/refs and return diffs.",

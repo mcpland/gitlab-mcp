@@ -143,6 +143,88 @@ describe("Tool handler: gitlab_get_file_contents", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Branch tools                                                       */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: branch tools", () => {
+  it("passes filters to gitlab_list_branches", async () => {
+    const listBranches = vi.fn().mockResolvedValue([{ name: "release/1.0" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listBranches } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_branches",
+        arguments: {
+          project_id: "group/project",
+          search: "release",
+          sort: "updated_desc",
+          page: 2,
+          per_page: 20
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listBranches).toHaveBeenCalledWith("group/project", {
+        query: expect.objectContaining({
+          search: "release",
+          sort: "updated_desc",
+          page: 2,
+          per_page: 20
+        })
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes branch name to gitlab_get_branch", async () => {
+    const getBranch = vi.fn().mockResolvedValue({ name: "feature/a" });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getBranch } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_branch",
+        arguments: { project_id: "group/project", branch: "feature/a" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getBranch).toHaveBeenCalledWith("group/project", "feature/a");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes branch name to gitlab_delete_branch", async () => {
+    const deleteBranch = vi.fn().mockResolvedValue({ ok: true });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { deleteBranch } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_delete_branch",
+        arguments: { project_id: "group/project", branch: "feature/a" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(deleteBranch).toHaveBeenCalledWith("group/project", "feature/a");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_create_issue (mutating tool)                                */
 /* ------------------------------------------------------------------ */
 

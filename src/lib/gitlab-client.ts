@@ -323,6 +323,32 @@ export class GitLabClient {
     });
   }
 
+  listBranches(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/repository/branches`, options);
+  }
+
+  getBranch(
+    projectId: string,
+    branch: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encode(projectId)}/repository/branches/${encode(branch)}`,
+      options
+    );
+  }
+
+  deleteBranch(
+    projectId: string,
+    branch: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(
+      `/projects/${encode(projectId)}/repository/branches/${encode(branch)}`,
+      options
+    );
+  }
+
   getBranchDiffs(
     projectId: string,
     payload: {

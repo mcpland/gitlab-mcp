@@ -759,6 +759,35 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("ref")).toBe("main");
     });
 
+    it("lists branches with filters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([{ name: "main" }]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listBranches("proj", {
+        query: { search: "release", per_page: 20 }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toContain("/projects/proj/repository/branches");
+      expect(url.searchParams.get("search")).toBe("release");
+      expect(url.searchParams.get("per_page")).toBe("20");
+    });
+
+    it("gets and deletes branches with encoded names", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ name: "feature/a" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.getBranch("proj", "feature/a");
+      await client.deleteBranch("proj", "feature/a");
+
+      const [getUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const [, deleteInit] = fetchMock.mock.calls[1] as [URL | string, RequestInit];
+
+      expect(String(getUrl)).toContain("/projects/proj/repository/branches/feature%2Fa");
+      expect(deleteInit.method).toBe("DELETE");
+    });
+
     it("gets file contents with ref", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ content: "aGVsbG8=", encoding: "base64" }));
 
