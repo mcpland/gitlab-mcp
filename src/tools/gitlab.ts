@@ -931,7 +931,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         const mergeRequestIid = getOptionalString(args, "merge_request_iid");
 
         if (mergeRequestIid) {
-          return context.gitlab.getMergeRequest(projectId, mergeRequestIid);
+          const mergeRequest = await context.gitlab.getMergeRequest(projectId, mergeRequestIid);
+          return withMergeRequestSummaries(projectId, mergeRequest, context);
         }
 
         const sourceBranch = getOptionalString(args, "source_branch");
@@ -950,7 +951,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           requireOpened: false
         });
 
-        return match;
+        const mergeRequest = await getDetailedMergeRequestFromMatch(projectId, match, context);
+        return withMergeRequestSummaries(projectId, mergeRequest, context);
       }
     },
     {
@@ -6415,6 +6417,175 @@ function getMergeRequestIid(mergeRequest: Record<string, unknown>): string {
   }
 
   throw new Error("Matched merge request is missing a valid iid");
+}
+
+async function getDetailedMergeRequestFromMatch(
+  projectId: string,
+  mergeRequest: Record<string, unknown>,
+  context: AppContext
+): Promise<unknown> {
+  if (typeof context.gitlab.getMergeRequest !== "function") {
+    return mergeRequest;
+  }
+
+  return context.gitlab.getMergeRequest(projectId, getMergeRequestIid(mergeRequest));
+}
+
+async function withMergeRequestSummaries(
+  projectId: string,
+  mergeRequest: unknown,
+  context: AppContext
+): Promise<unknown> {
+  if (typeof mergeRequest !== "object" || mergeRequest === null || Array.isArray(mergeRequest)) {
+    return mergeRequest;
+  }
+
+  const record = mergeRequest as Record<string, unknown>;
+  const [commitAdditionSummary, approvalSummary] = await Promise.all([
+    buildMergeRequestCommitAdditionSummary(projectId, record, context),
+    buildMergeRequestApprovalSummary(projectId, record, context)
+  ]);
+
+  return {
+    ...record,
+    commit_addition_summary: commitAdditionSummary,
+    approval_summary: approvalSummary
+  };
+}
+
+async function buildMergeRequestCommitAdditionSummary(
+  projectId: string,
+  mergeRequest: Record<string, unknown>,
+  context: AppContext
+): Promise<Record<string, unknown>> {
+  const targetBranch =
+    typeof mergeRequest.target_branch === "string" ? mergeRequest.target_branch : null;
+
+  try {
+    const sourceCommitCount = await context.gitlab.countMergeRequestCommits(
+      projectId,
+      getMergeRequestIid(mergeRequest)
+    );
+    const project = (await context.gitlab.getProject(projectId)) as Record<string, unknown>;
+    const mergeMethod = typeof project.merge_method === "string" ? project.merge_method : null;
+    const mergeCommitCount = estimateMergeCommitCount(mergeMethod, sourceCommitCount);
+    const summary =
+      targetBranch && mergeCommitCount !== null
+        ? `${sourceCommitCount} commits and ${mergeCommitCount} merge commit${
+            mergeCommitCount === 1 ? "" : "s"
+          } will be added to ${targetBranch}.`
+        : null;
+
+    return {
+      target_branch: targetBranch,
+      source_commits_count: sourceCommitCount,
+      merge_method: mergeMethod,
+      merge_commit_count: mergeCommitCount,
+      summary
+    };
+  } catch (error) {
+    return {
+      target_branch: targetBranch,
+      source_commits_count: null,
+      merge_method: null,
+      merge_commit_count: null,
+      summary: null,
+      unavailable_reason: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function estimateMergeCommitCount(
+  mergeMethod: string | null,
+  sourceCommitCount: number
+): number | null {
+  if (sourceCommitCount === 0) {
+    return 0;
+  }
+
+  if (mergeMethod === "merge") {
+    return 1;
+  }
+
+  if (mergeMethod === "ff" || mergeMethod === "rebase_merge") {
+    return 0;
+  }
+
+  return null;
+}
+
+async function buildMergeRequestApprovalSummary(
+  projectId: string,
+  mergeRequest: Record<string, unknown>,
+  context: AppContext
+): Promise<Record<string, unknown>> {
+  try {
+    const approvalState = (await context.gitlab.getMergeRequestApprovalState(
+      projectId,
+      getMergeRequestIid(mergeRequest)
+    )) as Record<string, unknown>;
+    const approvedBy = extractRecords(approvalState.approved_by);
+    const approvedByUsernames = getApprovalUsernames(approvalState, approvedBy);
+    const rules = extractRecords(approvalState.rules);
+
+    return {
+      approved:
+        typeof approvalState.approved === "boolean"
+          ? approvalState.approved
+          : inferMergeRequestApproved(rules),
+      user_has_approved:
+        typeof approvalState.user_has_approved === "boolean"
+          ? approvalState.user_has_approved
+          : null,
+      user_can_approve:
+        typeof approvalState.user_can_approve === "boolean" ? approvalState.user_can_approve : null,
+      approved_by: approvedBy,
+      approved_by_usernames: approvedByUsernames,
+      rules_count: Array.isArray(approvalState.rules) ? approvalState.rules.length : null,
+      source_endpoint:
+        approvalState.source_endpoint === "approval_state" ||
+        approvalState.source_endpoint === "approvals"
+          ? approvalState.source_endpoint
+          : null
+    };
+  } catch (error) {
+    return {
+      approved: null,
+      user_has_approved: null,
+      user_can_approve: null,
+      approved_by: [],
+      approved_by_usernames: [],
+      rules_count: null,
+      source_endpoint: null,
+      unavailable_reason: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+function getApprovalUsernames(
+  approvalState: Record<string, unknown>,
+  approvedBy: Array<Record<string, unknown>>
+): string[] {
+  const explicit = approvalState.approved_by_usernames;
+  if (Array.isArray(explicit) && explicit.every((item) => typeof item === "string")) {
+    return explicit;
+  }
+
+  return approvedBy
+    .map((user) => user.username)
+    .filter((username): username is string => typeof username === "string");
+}
+
+function inferMergeRequestApproved(rules: Array<Record<string, unknown>>): boolean | null {
+  if (rules.length === 0) {
+    return null;
+  }
+
+  if (rules.some((rule) => typeof rule.approved !== "boolean")) {
+    return null;
+  }
+
+  return rules.every((rule) => rule.approved === true);
 }
 
 function getString(args: ToolArgs, key: string): string {

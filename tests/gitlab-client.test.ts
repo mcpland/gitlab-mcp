@@ -947,6 +947,86 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("range[end]")).toBe("20");
     });
 
+    it("requests merge request diverged commit count by default", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ iid: 7, diverged_commits_count: 3 }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.getMergeRequest("proj", "7");
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toContain("/projects/proj/merge_requests/7");
+      expect(url.searchParams.get("include_diverged_commits_count")).toBe("true");
+    });
+
+    it("counts merge request commits across pages", async () => {
+      fetchMock
+        .mockResolvedValueOnce(
+          jsonResponse([{ id: "a" }, { id: "b" }], 200, {
+            "x-next-page": "2"
+          })
+        )
+        .mockResolvedValueOnce(jsonResponse([{ id: "c" }]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const count = await client.countMergeRequestCommits("proj", "7");
+
+      expect(count).toBe(3);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [firstUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const [secondUrl] = fetchMock.mock.calls[1] as [URL | string];
+      expect(new URL(String(firstUrl)).searchParams.get("page")).toBe("1");
+      expect(new URL(String(secondUrl)).searchParams.get("page")).toBe("2");
+    });
+
+    it("adds approvers to merge request approval_state responses", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          rules: [
+            {
+              approved: true,
+              approved_by: [
+                { id: 1, username: "alice" },
+                { id: 1, username: "alice" }
+              ]
+            }
+          ]
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.getMergeRequestApprovalState("proj", "7");
+
+      expect(result).toMatchObject({
+        approved_by: [{ id: 1, username: "alice" }],
+        approved_by_usernames: ["alice"],
+        source_endpoint: "approval_state"
+      });
+    });
+
+    it("falls back to approvals endpoint when approval_state is unavailable", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ message: "404" }, 404)).mockResolvedValueOnce(
+        jsonResponse({
+          approved: true,
+          user_has_approved: false,
+          user_can_approve: true,
+          approved_by: [{ user: { id: 2, username: "bob" } }]
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.getMergeRequestApprovalState("proj", "7");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result).toMatchObject({
+        approved: true,
+        user_has_approved: false,
+        user_can_approve: true,
+        approved_by_usernames: ["bob"],
+        source_endpoint: "approvals"
+      });
+    });
+
     it("uploads markdown file", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ markdown: "![file](/uploads/abc/file.md)" }));
 

@@ -102,7 +102,7 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 | Tool                                      | Mutating | Description                                                                                                                                                                                                                               |
 | ----------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `gitlab_list_merge_requests`              | No       | List MRs. When `project_id` is omitted, lists globally. Supports `assignee_id`, `author_id`, `reviewer_id`, `state`, `labels`, `milestone`, `source_branch`, `target_branch`, `scope`, `order_by`, `sort`, date filters, `search`, `wip`. |
-| `gitlab_get_merge_request`                | No       | Get one MR. Params: `merge_request_iid` or `source_branch`.                                                                                                                                                                               |
+| `gitlab_get_merge_request`                | No       | Get one MR. Includes diverged commit count when GitLab returns it, plus commit addition and approval summaries. Params: `merge_request_iid` or `source_branch`.                                                                           |
 | `gitlab_list_merge_request_pipelines`     | No       | List pipelines associated with an MR. Params: `merge_request_iid` (required), supports pagination.                                                                                                                                        |
 | `gitlab_create_merge_request`             | **Yes**  | Create an MR. Params: `source_branch`, `target_branch`, `title` (required). Supports `description`, `assignee_ids`, `reviewer_ids`, `labels`, `draft`, `squash`, `remove_source_branch`.                                                  |
 | `gitlab_update_merge_request`             | **Yes**  | Update MR fields. Params: `merge_request_iid` (required). Supports `title`, `description`, `target_branch`, `state_event`, `labels`, `assignee_ids`, `reviewer_ids`, `draft`, `squash`.                                                   |
@@ -141,11 +141,11 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 
 ### MR Approvals
 
-| Tool                                      | Mutating | Description                                         |
-| ----------------------------------------- | -------- | --------------------------------------------------- |
-| `gitlab_approve_merge_request`            | **Yes**  | Approve an MR. Supports `sha`, `approval_password`. |
-| `gitlab_unapprove_merge_request`          | **Yes**  | Remove current user's approval from an MR.          |
-| `gitlab_get_merge_request_approval_state` | No       | Get approval state for an MR.                       |
+| Tool                                      | Mutating | Description                                                                                 |
+| ----------------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
+| `gitlab_approve_merge_request`            | **Yes**  | Approve an MR. Supports `sha`, `approval_password`.                                         |
+| `gitlab_unapprove_merge_request`          | **Yes**  | Remove current user's approval from an MR.                                                  |
+| `gitlab_get_merge_request_approval_state` | No       | Get approval state for an MR, with approvals fallback when `approval_state` is unavailable. |
 
 ---
 

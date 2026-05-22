@@ -829,6 +829,66 @@ describe("Tool handler: gitlab_get_merge_request", () => {
     }
   });
 
+  it("adds commit addition and approval summaries", async () => {
+    const getMergeRequest = vi.fn().mockResolvedValue({
+      iid: 7,
+      title: "Add feature",
+      state: "opened",
+      target_branch: "main",
+      diverged_commits_count: 2
+    });
+    const countMergeRequestCommits = vi.fn().mockResolvedValue(3);
+    const getProject = vi.fn().mockResolvedValue({ merge_method: "merge" });
+    const getMergeRequestApprovalState = vi.fn().mockResolvedValue({
+      approved: true,
+      approved_by: [{ id: 1, username: "alice" }],
+      approved_by_usernames: ["alice"],
+      rules: [{ approved: true }],
+      source_endpoint: "approval_state"
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        gitlabStub: {
+          getMergeRequest,
+          countMergeRequestCommits,
+          getProject,
+          getMergeRequestApprovalState
+        }
+      })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_merge_request",
+        arguments: { project_id: "group/project", merge_request_iid: "7" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const structured = (result as { structuredContent?: { result?: Record<string, unknown> } })
+        .structuredContent?.result;
+      expect(structured).toMatchObject({
+        diverged_commits_count: 2,
+        commit_addition_summary: {
+          target_branch: "main",
+          source_commits_count: 3,
+          merge_method: "merge",
+          merge_commit_count: 1,
+          summary: "3 commits and 1 merge commit will be added to main."
+        },
+        approval_summary: {
+          approved: true,
+          approved_by_usernames: ["alice"],
+          rules_count: 1,
+          source_endpoint: "approval_state"
+        }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
   it("prefers opened merge request when source_branch matches multiple states", async () => {
     const listMergeRequests = vi.fn().mockResolvedValue([
       { iid: 10, source_branch: "feature/a", state: "closed" },

@@ -551,8 +551,74 @@ export class GitLabClient {
     mergeRequestIid: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}`, {
+      ...options,
+      query: {
+        include_diverged_commits_count: true,
+        ...(options.query ?? {})
+      }
+    });
+  }
+
+  async countMergeRequestCommits(
+    projectId: string,
+    mergeRequestIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<number> {
+    const config = this.resolveRequestConfig(options);
+    let page = 1;
+    let totalCount = 0;
+
+    while (true) {
+      const url = new URL(
+        `projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/commits`,
+        `${config.apiUrl}/`
+      );
+      for (const [key, value] of Object.entries(options.query ?? {})) {
+        if (value !== undefined && value !== null) {
+          url.searchParams.set(key, String(value));
+        }
+      }
+      if (!url.searchParams.has("per_page")) {
+        url.searchParams.set("per_page", "100");
+      }
+      url.searchParams.set("page", String(page));
+
+      const response = await this.fetchRawResponse(url, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          ...(options.headers ?? {})
+        },
+        token: config.token,
+        authHeader: config.authHeader
+      });
+      const body = await this.parseApiResponse(response);
+      if (!Array.isArray(body)) {
+        throw new Error("Unexpected merge request commits response format");
+      }
+
+      totalCount += body.length;
+      const nextPage = response.headers.get("x-next-page");
+      if (!nextPage) {
+        return totalCount;
+      }
+
+      const parsedNextPage = Number.parseInt(nextPage, 10);
+      if (!Number.isFinite(parsedNextPage) || parsedNextPage <= page) {
+        return totalCount;
+      }
+      page = parsedNextPage;
+    }
+  }
+
+  listMergeRequestCommits(
+    projectId: string,
+    mergeRequestIid: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}`,
+      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/commits`,
       options
     );
   }
@@ -713,15 +779,41 @@ export class GitLabClient {
     );
   }
 
-  getMergeRequestApprovalState(
+  async getMergeRequestApprovalState(
     projectId: string,
     mergeRequestIid: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/approval_state`,
-      options
+    const config = this.resolveRequestConfig(options);
+    const url = new URL(
+      `projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/approval_state`,
+      `${config.apiUrl}/`
     );
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      if (value !== undefined && value !== null) {
+        url.searchParams.set(key, String(value));
+      }
+    }
+
+    const response = await this.fetchRawResponse(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        ...(options.headers ?? {})
+      },
+      token: config.token,
+      authHeader: config.authHeader
+    });
+
+    if (response.status === 404) {
+      const approvals = await this.get(
+        `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/approvals`,
+        options
+      );
+      return normalizeMergeRequestApprovalsFallback(approvals);
+    }
+
+    return normalizeMergeRequestApprovalState(await this.parseApiResponse(response));
   }
 
   getMergeRequestConflicts(
@@ -2561,6 +2653,35 @@ export class GitLabClient {
     return body;
   }
 
+  private async parseApiResponse(response: Response): Promise<unknown> {
+    let body: unknown;
+    try {
+      body = await this.parseResponseBody(response);
+    } catch (error) {
+      if (response.ok) {
+        throw error;
+      }
+
+      throw new GitLabApiError(
+        `GitLab API request failed: ${response.status} ${response.statusText}`,
+        response.status,
+        {
+          message: error instanceof Error ? error.message : "Failed to read GitLab error response"
+        }
+      );
+    }
+
+    if (!response.ok) {
+      throw new GitLabApiError(
+        `GitLab API request failed: ${response.status} ${response.statusText}`,
+        response.status,
+        body
+      );
+    }
+
+    return body;
+  }
+
   private async parseResponseBody(response: Response): Promise<unknown> {
     assertContentLengthWithinLimit(response, this.maxResponseBodyBytes, "Response body");
     const text = await readResponseTextWithLimit(
@@ -2733,6 +2854,95 @@ function encodeSlashPath(pathValue: string): string {
     .filter((segment) => segment.length > 0)
     .map((segment) => encode(segment))
     .join("/");
+}
+
+function normalizeMergeRequestApprovalState(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const approvedBy = uniqueApprovalUsers(
+    extractApprovalRules(value.rules).flatMap((rule) => extractApprovalUsers(rule.approved_by))
+  );
+
+  return {
+    ...value,
+    approved_by: approvedBy,
+    approved_by_usernames: approvedBy
+      .map((user) => user.username)
+      .filter((username): username is string => typeof username === "string"),
+    source_endpoint: "approval_state"
+  };
+}
+
+function normalizeMergeRequestApprovalsFallback(value: unknown): unknown {
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const approvedBy = uniqueApprovalUsers(
+    extractApprovalEntries(value.approved_by).flatMap((entry) => [entry.user])
+  );
+
+  return {
+    approved: typeof value.approved === "boolean" ? value.approved : undefined,
+    user_has_approved:
+      typeof value.user_has_approved === "boolean" ? value.user_has_approved : undefined,
+    user_can_approve:
+      typeof value.user_can_approve === "boolean" ? value.user_can_approve : undefined,
+    approved_by: approvedBy,
+    approved_by_usernames: approvedBy
+      .map((user) => user.username)
+      .filter((username): username is string => typeof username === "string"),
+    source_endpoint: "approvals"
+  };
+}
+
+function extractApprovalRules(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function extractApprovalUsers(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function extractApprovalEntries(value: unknown): Array<{ user: Record<string, unknown> }> {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is { user: Record<string, unknown> } => isRecord(item) && isRecord(item.user)
+  );
+}
+
+function uniqueApprovalUsers(
+  users: Array<Record<string, unknown>>
+): Array<Record<string, unknown>> {
+  const seen = new Set<string>();
+  const unique: Array<Record<string, unknown>> = [];
+
+  for (const user of users) {
+    const id = user.id;
+    const username = user.username;
+    const key =
+      typeof id === "string" || typeof id === "number"
+        ? `id:${id}`
+        : typeof username === "string"
+          ? `username:${username}`
+          : undefined;
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(user);
+  }
+
+  return unique;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeApiUrl(rawUrl: string): string {
