@@ -425,6 +425,55 @@ describe("http app MCP OAuth", () => {
     expect(mcpResponse.status).toBe(401);
     expect(mcpResponse.headers.get("www-authenticate")).toContain("Bearer");
   });
+
+  it("advertises and serves prefixed OAuth endpoints when MCP_SERVER_URL has a path", async () => {
+    const context = buildContext();
+    context.env.GITLAB_MCP_OAUTH = true;
+    context.env.MCP_SERVER_URL = "https://mcp.example.com/gitlab-mcp";
+    context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+    running = await startServerForContext(context);
+
+    const authServer = await fetch(`${running.baseUrl}/.well-known/oauth-authorization-server`);
+    const authBody = (await authServer.json()) as {
+      authorization_endpoint?: string;
+      token_endpoint?: string;
+      registration_endpoint?: string;
+      revocation_endpoint?: string;
+    };
+    expect(authServer.status).toBe(200);
+    expect(authBody.authorization_endpoint).toBe("https://mcp.example.com/gitlab-mcp/authorize");
+    expect(authBody.token_endpoint).toBe("https://mcp.example.com/gitlab-mcp/token");
+    expect(authBody.registration_endpoint).toBe("https://mcp.example.com/gitlab-mcp/register");
+    expect(authBody.revocation_endpoint).toBe("https://mcp.example.com/gitlab-mcp/revoke");
+
+    const pathSpecificAuthServer = await fetch(
+      `${running.baseUrl}/.well-known/oauth-authorization-server/gitlab-mcp`
+    );
+    expect(pathSpecificAuthServer.status).toBe(200);
+    await expect(pathSpecificAuthServer.json()).resolves.toMatchObject(authBody);
+
+    const prefixedAuthServer = await fetch(
+      `${running.baseUrl}/gitlab-mcp/.well-known/oauth-authorization-server`
+    );
+    expect(prefixedAuthServer.status).toBe(200);
+    await expect(prefixedAuthServer.json()).resolves.toMatchObject(authBody);
+
+    const protectedResource = await fetch(
+      `${running.baseUrl}/.well-known/oauth-protected-resource/gitlab-mcp`
+    );
+    const protectedBody = (await protectedResource.json()) as {
+      authorization_servers?: string[];
+      resource?: string;
+    };
+    expect(protectedResource.status).toBe(200);
+    expect(protectedBody.resource).toBe("https://mcp.example.com/gitlab-mcp");
+    expect(protectedBody.authorization_servers).toContain("https://mcp.example.com/gitlab-mcp");
+
+    const authorize = await fetch(
+      `${running.baseUrl}/gitlab-mcp/authorize?client_id=client-1&redirect_uri=https%3A%2F%2Fclient.example.com%2Fcallback`
+    );
+    expect(authorize.status).toBe(400);
+  });
 });
 
 describe("http app stateless mode", () => {

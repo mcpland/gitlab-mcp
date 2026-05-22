@@ -7,12 +7,19 @@ import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { metadataHandler } from "@modelcontextprotocol/sdk/server/auth/handlers/metadata.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
+import type { OAuthServerProvider } from "@modelcontextprotocol/sdk/server/auth/provider.js";
 import {
+  createOAuthMetadata,
   getOAuthProtectedResourceMetadataUrl,
   mcpAuthRouter
 } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type {
+  OAuthMetadata,
+  OAuthProtectedResourceMetadata
+} from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { Express } from "express";
 import express from "express";
 
@@ -83,6 +90,106 @@ export interface SetupMcpHttpAppResult {
   shutdown: (httpServer: HttpServer, gcInterval: ReturnType<typeof setInterval>) => Promise<void>;
 }
 
+interface InstallMcpOAuthRoutesOptions {
+  provider: OAuthServerProvider;
+  issuerUrl: URL;
+  scopesSupported: string[];
+  resourceName: string;
+  resourceServerUrl: URL;
+}
+
+function installMcpOAuthRoutes(app: Express, options: InstallMcpOAuthRoutesOptions): void {
+  const pathPrefix = getUrlPathPrefix(options.issuerUrl);
+  const routerOptions = {
+    provider: options.provider,
+    issuerUrl: options.issuerUrl,
+    baseUrl: options.issuerUrl,
+    scopesSupported: options.scopesSupported,
+    resourceName: options.resourceName,
+    resourceServerUrl: options.resourceServerUrl
+  };
+
+  if (pathPrefix) {
+    const oauthMetadata = createPathAwareOAuthMetadata(options);
+    const protectedResourceMetadata = createPathAwareProtectedResourceMetadata(
+      options,
+      oauthMetadata
+    );
+
+    for (const route of getPrefixedOAuthMetadataRoutes(
+      "/.well-known/oauth-authorization-server",
+      pathPrefix
+    )) {
+      app.use(route, metadataHandler(oauthMetadata));
+    }
+
+    for (const route of getPrefixedOAuthMetadataRoutes(
+      "/.well-known/oauth-protected-resource",
+      pathPrefix
+    )) {
+      app.use(route, metadataHandler(protectedResourceMetadata));
+    }
+  }
+
+  app.use(mcpAuthRouter(routerOptions));
+
+  if (pathPrefix) {
+    app.use(pathPrefix, mcpAuthRouter(routerOptions));
+  }
+}
+
+function createPathAwareOAuthMetadata(options: InstallMcpOAuthRoutesOptions): OAuthMetadata {
+  const metadata = createOAuthMetadata({
+    provider: options.provider,
+    issuerUrl: options.issuerUrl,
+    baseUrl: options.issuerUrl,
+    scopesSupported: options.scopesSupported
+  });
+
+  return {
+    ...metadata,
+    authorization_endpoint: buildUrlWithPathPrefix(options.issuerUrl, "authorize"),
+    token_endpoint: buildUrlWithPathPrefix(options.issuerUrl, "token"),
+    registration_endpoint: metadata.registration_endpoint
+      ? buildUrlWithPathPrefix(options.issuerUrl, "register")
+      : undefined,
+    revocation_endpoint: metadata.revocation_endpoint
+      ? buildUrlWithPathPrefix(options.issuerUrl, "revoke")
+      : undefined
+  };
+}
+
+function createPathAwareProtectedResourceMetadata(
+  options: InstallMcpOAuthRoutesOptions,
+  oauthMetadata: OAuthMetadata
+): OAuthProtectedResourceMetadata {
+  return {
+    resource: options.resourceServerUrl.href,
+    authorization_servers: [oauthMetadata.issuer],
+    scopes_supported: options.scopesSupported,
+    resource_name: options.resourceName
+  };
+}
+
+function buildUrlWithPathPrefix(baseUrl: URL, routeName: string): string {
+  const url = new URL(baseUrl.href);
+  const pathPrefix = getUrlPathPrefix(baseUrl);
+  url.pathname = `${pathPrefix}/${routeName}`;
+  url.search = "";
+  url.hash = "";
+  return url.href;
+}
+
+function getUrlPathPrefix(url: URL): string {
+  return url.pathname.replace(/\/+$/, "");
+}
+
+function getPrefixedOAuthMetadataRoutes(metadataRoute: string, pathPrefix: string): string[] {
+  return Array.from(
+    new Set([metadataRoute, `${metadataRoute}${pathPrefix}`, `${pathPrefix}${metadataRoute}`])
+  );
+}
+
 export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResult {
   const { context, env: appEnv, logger: appLogger } = deps;
 
@@ -138,16 +245,13 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       : undefined;
 
   if (appEnv.GITLAB_MCP_OAUTH && oauthProvider && oauthIssuerUrl) {
-    app.use(
-      mcpAuthRouter({
-        provider: oauthProvider,
-        issuerUrl: oauthIssuerUrl,
-        baseUrl: oauthIssuerUrl,
-        scopesSupported: oauthScopes,
-        resourceName: appEnv.MCP_SERVER_NAME,
-        resourceServerUrl: oauthIssuerUrl
-      })
-    );
+    installMcpOAuthRoutes(app, {
+      provider: oauthProvider,
+      issuerUrl: oauthIssuerUrl,
+      scopesSupported: oauthScopes,
+      resourceName: appEnv.MCP_SERVER_NAME,
+      resourceServerUrl: oauthIssuerUrl
+    });
   }
 
   /* ---- /healthz ---- */
