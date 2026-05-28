@@ -2974,7 +2974,7 @@ function normalizeApiUrl(rawUrl: string): string {
 function buildGraphqlEndpoint(apiUrl: string): URL {
   const url = new URL(apiUrl);
   const prefix = url.pathname.replace(/\/api\/v4\/?$/, "");
-  return new URL(`${prefix || "/"}/api/graphql`, url.origin);
+  return new URL(`${prefix}/api/graphql`, url.origin);
 }
 
 function extractFileName(contentDisposition: string): string | undefined {
