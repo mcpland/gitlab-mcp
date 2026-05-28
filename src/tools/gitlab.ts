@@ -2967,9 +2967,11 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         ref: optionalRefLikeSchema
       },
       handler: async (args, context) =>
-        context.gitlab.validateCiLint(
-          resolveProjectId(args, context, true),
-          toQuery(omit(args, ["project_id"]))
+        withCiLintHttpDiagnostics(() =>
+          context.gitlab.validateCiLint(
+            resolveProjectId(args, context, true),
+            toQuery(omit(args, ["project_id"]))
+          )
         )
     },
     {
@@ -2986,9 +2988,11 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         include_jobs: optionalBoolean
       },
       handler: async (args, context) =>
-        context.gitlab.validateProjectCiLint(resolveProjectId(args, context, true), {
-          query: toQuery(omit(args, ["project_id"]))
-        })
+        withCiLintHttpDiagnostics(() =>
+          context.gitlab.validateProjectCiLint(resolveProjectId(args, context, true), {
+            query: toQuery(omit(args, ["project_id"]))
+          })
+        )
     },
     {
       name: "gitlab_list_job_artifacts",
@@ -6271,6 +6275,87 @@ function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean
   }
 
   return fromArgs ?? "";
+}
+
+async function withCiLintHttpDiagnostics(operation: () => Promise<unknown>): Promise<unknown> {
+  try {
+    return await operation();
+  } catch (error) {
+    const lintResult = toCiLintHttpDiagnosticResult(error);
+    if (lintResult) {
+      return lintResult;
+    }
+
+    throw error;
+  }
+}
+
+function toCiLintHttpDiagnosticResult(error: unknown): Record<string, unknown> | undefined {
+  if (!(error instanceof GitLabApiError) || error.status !== 400) {
+    return undefined;
+  }
+
+  const details = redactSensitive(error.details);
+  const errors = extractCiLintMessages(details);
+  if (errors.length === 0 || !hasCiLintDiagnosticSignal(details, errors)) {
+    return undefined;
+  }
+
+  const result: Record<string, unknown> =
+    typeof details === "object" && details !== null && !Array.isArray(details)
+      ? { ...(details as Record<string, unknown>) }
+      : {};
+
+  return {
+    ...result,
+    valid: false,
+    errors,
+    warnings: Array.isArray(result.warnings) ? result.warnings : [],
+    status: error.status
+  };
+}
+
+function extractCiLintMessages(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => extractCiLintMessages(item));
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const messages: string[] = [];
+  for (const key of ["errors", "message", "error"]) {
+    messages.push(...extractCiLintMessages(record[key]));
+  }
+
+  return [...new Set(messages.map((item) => item.trim()).filter((item) => item.length > 0))];
+}
+
+function hasCiLintDiagnosticSignal(details: unknown, messages: string[]): boolean {
+  if (typeof details === "object" && details !== null && !Array.isArray(details)) {
+    const record = details as Record<string, unknown>;
+    if (
+      record.valid === false ||
+      record.status === "invalid" ||
+      hasNonEmptyCiLintErrorsArray(record)
+    ) {
+      return true;
+    }
+  }
+
+  return messages.some((message) =>
+    /gitlab ci configuration is invalid|jobs config|ci config|config should contain/i.test(message)
+  );
+}
+
+function hasNonEmptyCiLintErrorsArray(record: Record<string, unknown>): boolean {
+  return Array.isArray(record.errors) && extractCiLintMessages(record.errors).length > 0;
 }
 
 function toToolError(error: unknown, context?: AppContext): CallToolResult {
