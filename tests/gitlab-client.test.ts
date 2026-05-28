@@ -766,11 +766,30 @@ describe("GitLabClient", () => {
       const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
       const url = new URL(String(requestUrl));
 
-      expect(url.pathname).toContain("graphql");
+      expect(url.host).toBe("gitlab.example.com");
+      expect(url.pathname).toBe("/api/graphql");
       expect(init.method).toBe("POST");
 
       const body = JSON.parse(init.body as string);
       expect(body.query).toBe("query { currentUser { id } }");
+    });
+
+    it.each([
+      ["https://gitlab.com/api/v4", "gitlab.com", "/api/graphql"],
+      ["https://gitlab.com/api/v4/", "gitlab.com", "/api/graphql"],
+      ["https://gitlab.com", "gitlab.com", "/api/graphql"],
+      ["https://gitlab.example.com/gitlab/api/v4", "gitlab.example.com", "/gitlab/api/graphql"]
+    ])("builds graphql endpoint correctly for %s", async (apiUrl, expectedHost, expectedPath) => {
+      fetchMock.mockResolvedValue(jsonResponse({ data: {} }));
+
+      const client = new GitLabClient(apiUrl, "token");
+      await client.executeGraphql("query { currentUser { id } }", undefined);
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const url = new URL(String(requestUrl));
+
+      expect(url.host).toBe(expectedHost);
+      expect(url.pathname).toBe(expectedPath);
     });
 
     it("includes variables in GraphQL request", async () => {
