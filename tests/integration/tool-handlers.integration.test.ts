@@ -9,6 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { runWithSessionAuth } from "../../src/lib/auth-context.js";
+import { GitLabApiError } from "../../src/lib/gitlab-client.js";
 import { buildContext, createLinkedPair } from "./_helpers.js";
 
 /* ------------------------------------------------------------------ */
@@ -2355,6 +2356,158 @@ describe("Tool handlers: CI lint tools", () => {
           include_jobs: true
         })
       });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("returns a normal invalid lint result for gitlab_validate_ci_lint HTTP 400 diagnostics", async () => {
+    const lintMessage =
+      "This GitLab CI configuration is invalid: gitlab.com/myorg/devops/gitlab/components/sonarqube@main: unknown input arguments: sonar_java_version, sonar_jacoco_report_paths";
+    const validateCiLint = vi
+      .fn()
+      .mockRejectedValue(new GitLabApiError("Bad Request", 400, { message: lintMessage }));
+    const context = buildContext({ gitlabStub: { validateCiLint } });
+    context.env.GITLAB_ERROR_DETAIL_MODE = "safe";
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(context);
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_validate_ci_lint",
+        arguments: {
+          project_id: "group/project",
+          content: "include: []"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const textContent = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      );
+      const parsed = JSON.parse(textContent!.text) as {
+        valid?: boolean;
+        errors?: string[];
+        status?: number;
+      };
+      expect(parsed.valid).toBe(false);
+      expect(parsed.errors).toEqual([lintMessage]);
+      expect(parsed.status).toBe(400);
+
+      const structured = (
+        result as { structuredContent?: { result?: { valid?: boolean; errors?: string[] } } }
+      ).structuredContent?.result;
+      expect(structured?.valid).toBe(false);
+      expect(structured?.errors).toEqual([lintMessage]);
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("returns a normal invalid lint result for gitlab_validate_project_ci_lint HTTP 400 errors", async () => {
+    const lintErrors = ["jobs config should contain at least one visible job"];
+    const validateProjectCiLint = vi.fn().mockRejectedValue(
+      new GitLabApiError("Bad Request", 400, {
+        errors: lintErrors,
+        warnings: ["deprecated keyword"]
+      })
+    );
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { validateProjectCiLint } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_validate_project_ci_lint",
+        arguments: {
+          project_id: "group/project",
+          content_ref: "feature/test"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const textContent = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      );
+      const parsed = JSON.parse(textContent!.text) as {
+        valid?: boolean;
+        errors?: string[];
+        warnings?: string[];
+        status?: number;
+      };
+      expect(parsed).toMatchObject({
+        valid: false,
+        errors: lintErrors,
+        warnings: ["deprecated keyword"],
+        status: 400
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("accepts CI lint HTTP 400 errors arrays without fixed message prefixes", async () => {
+    const lintErrors = [
+      "gitlab.com/myorg/devops/gitlab/components/sonarqube@main: unknown input arguments: sonar_java_version"
+    ];
+    const validateCiLint = vi.fn().mockRejectedValue(
+      new GitLabApiError("Bad Request", 400, {
+        errors: lintErrors
+      })
+    );
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { validateCiLint } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_validate_ci_lint",
+        arguments: {
+          project_id: "group/project",
+          content: "include: []"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      const structured = (
+        result as { structuredContent?: { result?: { valid?: boolean; errors?: string[] } } }
+      ).structuredContent?.result;
+      expect(structured?.valid).toBe(false);
+      expect(structured?.errors).toEqual(lintErrors);
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("keeps non-lint GitLab 400 responses as tool errors", async () => {
+    const validateCiLint = vi
+      .fn()
+      .mockRejectedValue(new GitLabApiError("Bad Request", 400, { message: "Bad request" }));
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { validateCiLint } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_validate_ci_lint",
+        arguments: {
+          project_id: "group/project",
+          content: "include: []"
+        }
+      });
+
+      expect(result.isError).toBe(true);
+      const textContent = (result.content as Array<{ type: string; text: string }>).find(
+        (c) => c.type === "text"
+      );
+      expect(textContent?.text).toContain("GitLab API error 400");
     } finally {
       await clientTransport.close();
       await serverTransport.close();
