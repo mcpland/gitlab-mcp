@@ -1152,6 +1152,57 @@ describe("http app pre-session IP rate limiting", () => {
       expect(response.status).toBe(400);
     }
   });
+
+  it("does not let trusted-proxy source ports rotate the IP bucket", async () => {
+    const context = buildContext();
+    context.env.MAX_REQUESTS_PER_MINUTE_PER_IP = 1;
+    context.env.MCP_TRUST_PROXY = true;
+    running = await startServerForContext(context);
+
+    for (const [clientIp, expectedStatus] of [
+      ["198.51.100.7:41001", 400],
+      ["198.51.100.7:41002", 429]
+    ] as const) {
+      const response = await fetch(`${running.baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": clientIp
+        },
+        body: '{"jsonrpc":"2.0"'
+      });
+      expect(response.status).toBe(expectedStatus);
+    }
+  });
+
+  it("normalizes trusted-proxy ports for OAuth endpoint limits", async () => {
+    const context = buildContext();
+    context.env.GITLAB_MCP_OAUTH = true;
+    context.env.MCP_SERVER_URL = "https://mcp.example.com";
+    context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+    context.env.MCP_TRUST_PROXY = true;
+    running = await startServerForContext(context);
+
+    const register = (port: number) =>
+      fetch(`${running!.baseUrl}/register`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": `198.51.100.8:${String(port)}`
+        },
+        body: JSON.stringify({
+          redirect_uris: ["https://client.example.com/callback"],
+          token_endpoint_auth_method: "none",
+          grant_types: ["authorization_code"],
+          response_types: ["code"]
+        })
+      });
+
+    for (let requestNumber = 0; requestNumber < 20; requestNumber += 1) {
+      expect((await register(42_000 + requestNumber)).status).toBe(201);
+    }
+    expect((await register(43_000)).status).toBe(429);
+  });
 });
 
 describe("http app Prometheus metrics", () => {

@@ -18,7 +18,7 @@ import type {
   OAuthMetadata,
   OAuthProtectedResourceMetadata
 } from "@modelcontextprotocol/sdk/shared/auth.js";
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import express from "express";
 
 import { runWithSessionAuth, type SessionAuth } from "./lib/auth-context.js";
@@ -44,6 +44,7 @@ import {
 import { verifyMcpHttpBearerToken } from "./lib/mcp-http-bearer-auth.js";
 import { classifyHttpRoute, MetricsRegistry } from "./lib/metrics.js";
 import { resolveOauthScopes } from "./lib/oauth-scopes.js";
+import { normalizeClientIpForRateLimit } from "./lib/proxy-client-ip.js";
 import { createMcpServer } from "./server/build-server.js";
 import type { GitLabAuthHeader } from "./types/auth.js";
 import type { AppContext } from "./types/context.js";
@@ -113,13 +114,20 @@ interface InstallMcpOAuthRoutesOptions {
 
 function installMcpOAuthRoutes(app: Express, options: InstallMcpOAuthRoutesOptions): void {
   const pathPrefix = getUrlPathPrefix(options.issuerUrl);
+  const rateLimit = {
+    keyGenerator: (req: Request) => resolveClientIpRateLimitKey(req)
+  };
   const routerOptions = {
     provider: options.provider,
     issuerUrl: options.issuerUrl,
     baseUrl: options.issuerUrl,
     scopesSupported: options.scopesSupported,
     resourceName: options.resourceName,
-    resourceServerUrl: options.resourceServerUrl
+    resourceServerUrl: options.resourceServerUrl,
+    authorizationOptions: { rateLimit },
+    tokenOptions: { rateLimit },
+    revocationOptions: { rateLimit },
+    clientRegistrationOptions: { rateLimit }
   };
 
   if (pathPrefix) {
@@ -205,6 +213,10 @@ function getConfiguredServerPathPrefix(env: AppContext["env"]): string {
   return env.MCP_SERVER_URL ? getUrlPathPrefix(new URL(env.MCP_SERVER_URL)) : "";
 }
 
+function resolveClientIpRateLimitKey(req: Request): string {
+  return normalizeClientIpForRateLimit(req.ip || req.socket.remoteAddress || "unknown");
+}
+
 function isMcpRequestPath(path: string, pathPrefix: string): boolean {
   return path === "/mcp" || (pathPrefix.length > 0 && path === `${pathPrefix}/mcp`);
 }
@@ -274,8 +286,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       return;
     }
 
-    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-    const decision = ipRateLimiter.consume(clientIp);
+    const decision = ipRateLimiter.consume(resolveClientIpRateLimitKey(req));
     if (decision.allowed) {
       next();
       return;

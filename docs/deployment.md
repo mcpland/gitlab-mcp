@@ -109,7 +109,7 @@ MCP_METRICS_AUTH_TOKEN=<random-secret-at-least-32-characters>
 
 Scrape `GET /metrics` with `Authorization: Bearer <secret>`. Host validation always applies; an `Origin` header, when present, must match `MCP_ALLOWED_ORIGINS` or `MCP_SERVER_URL`. The endpoint exports normalized HTTP request/status counters, current session gauges, auth/rate-limit rejection counters, and GitLab upstream latency histograms. It never labels metrics with tokens, request URLs, project/group IDs, session IDs, or IP addresses. GitLab latency measures fetch time to response headers.
 
-When exactly one trusted reverse proxy sits in front of the server, set `MCP_TRUST_PROXY=true` so the pre-session IP limiter uses the proxy-provided client address. Leave it `false` when clients can connect directly; otherwise they can spoof `X-Forwarded-For`. `MAX_REQUESTS_PER_MINUTE_PER_IP` controls this outer limiter, while `MAX_REQUESTS_PER_MINUTE` remains the per-session inner limit.
+When exactly one trusted reverse proxy sits in front of the server, set `MCP_TRUST_PROXY=true` so the pre-session and OAuth endpoint limiters use the proxy-provided client address. Leave it `false` when clients can connect directly; otherwise they can spoof `X-Forwarded-For`. Proxy-added IPv4/IPv6 ports are stripped and IPv6 clients are grouped by `/56` to prevent address-rotation bypasses. `MAX_REQUESTS_PER_MINUTE_PER_IP` controls the outer `/mcp` limiter, while `MAX_REQUESTS_PER_MINUTE` remains the per-session inner limit.
 
 ### MCP OAuth with a Pre-registered GitLab Application
 
