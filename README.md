@@ -422,6 +422,7 @@ node dist/http.js --env-file=.env.production
 | Output          | `GITLAB_RESPONSE_MODE`                    | `json`                      | Response format: `json`, `compact-json`, `yaml`.                                                            |
 | Output          | `GITLAB_MAX_RESPONSE_BYTES`               | `200000`                    | Max response payload (1KB–2MB), oversized payloads are truncated safely.                                    |
 | Output          | `GITLAB_MAX_LOCAL_FILE_BYTES`             | `250000000`                 | Max size for files saved locally by download tools such as job artifacts.                                   |
+| Output          | `GITLAB_LOCAL_FILE_ROOTS`                 | current working directory   | Comma-separated roots allowed for stdio local uploads and artifact writes.                                  |
 | Output          | `GITLAB_DOWNLOAD_TOKEN_SECRET`            | random per process          | Secret for short-lived HTTP download proxy URLs; set this for multi-replica deployments.                    |
 | Output          | `GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS`       | `300`                       | Lifetime of generated HTTP download proxy URLs.                                                             |
 | Output          | `GITLAB_HTTP_TIMEOUT_MS`                  | `20000`                     | Upstream GitLab HTTP timeout (1s–120s).                                                                     |

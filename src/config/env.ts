@@ -91,6 +91,7 @@ const envSchema = z.object({
     .min(1024)
     .max(2_000_000_000)
     .default(250_000_000),
+  GITLAB_LOCAL_FILE_ROOTS: z.string().optional(),
   GITLAB_DOWNLOAD_TOKEN_SECRET: optionalNonEmptyString,
   GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
   GITLAB_HTTP_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
@@ -210,6 +211,7 @@ export const env = {
   MCP_ALLOWED_HOSTS: parseCsv(data.MCP_ALLOWED_HOSTS),
   MCP_ALLOWED_ORIGINS: parseCsv(data.MCP_ALLOWED_ORIGINS),
   GITLAB_ALLOWED_PROJECT_IDS: parseCsv(data.GITLAB_ALLOWED_PROJECT_IDS),
+  GITLAB_LOCAL_FILE_ROOTS: parseCsv(data.GITLAB_LOCAL_FILE_ROOTS),
   GITLAB_ALLOWED_TOOLS: parseCsv(data.GITLAB_ALLOWED_TOOLS),
   GITLAB_TOOLSETS: parseGitLabToolsets(parseCsv(data.GITLAB_TOOLSETS)),
   GITLAB_ENABLE_COMPATIBILITY_ALIASES: parseBoolean(

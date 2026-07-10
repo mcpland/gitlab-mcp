@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { getSessionAuth, type SessionAuth } from "./auth-context.js";
 import { encodeGitLabProjectId } from "./gitlab-path.js";
+import { LocalFileBoundary } from "./local-file-boundary.js";
 import { attachPaginationMetadata, extractGitLabPaginationMetadata } from "./pagination.js";
 import type { GitLabAuthHeader } from "../types/auth.js";
 
@@ -15,6 +16,7 @@ export interface GitLabClientOptions {
   maxLocalFileBytes?: number;
   maxResponseBodyBytes?: number;
   maxJobTraceBytes?: number;
+  localFileRoots?: string[];
   defaultAuthHeader?: GitLabAuthHeader;
   beforeRequest?: (
     context: GitLabBeforeRequestContext
@@ -156,6 +158,7 @@ export class GitLabClient {
   private readonly maxLocalFileBytes: number;
   private readonly maxResponseBodyBytes: number;
   private readonly maxJobTraceBytes: number;
+  private readonly localFileBoundary: LocalFileBoundary;
   private readonly beforeRequest?: GitLabClientOptions["beforeRequest"];
 
   constructor(baseApiUrl: string, defaultToken?: string, options: GitLabClientOptions = {}) {
@@ -176,6 +179,7 @@ export class GitLabClient {
       1,
       Math.floor(options.maxJobTraceBytes ?? GitLabClient.DEFAULT_MAX_JOB_TRACE_BYTES)
     );
+    this.localFileBoundary = new LocalFileBoundary(options.localFileRoots);
     this.beforeRequest = options.beforeRequest;
   }
 
@@ -2531,7 +2535,8 @@ export class GitLabClient {
     filePath: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    const content = await fs.readFile(filePath);
+    const resolvedFilePath = await this.localFileBoundary.resolveReadableFile(filePath);
+    const content = await fs.readFile(resolvedFilePath);
     const filename = path.basename(filePath);
     const form = new FormData();
     form.append("file", new Blob([content], { type: "application/octet-stream" }), filename);
@@ -2632,6 +2637,7 @@ export class GitLabClient {
     fallbackFileName: string,
     localPath?: string
   ): Promise<GitLabSavedFile> {
+    const baseDirectory = await this.localFileBoundary.resolveWritableDirectory(localPath);
     const response = await this.fetchRawResponse(url, {
       method: "GET",
       headers: options.headers,
@@ -2648,10 +2654,8 @@ export class GitLabClient {
     const contentType = response.headers.get("content-type") ?? "application/octet-stream";
     const disposition = response.headers.get("content-disposition") ?? "";
     const resolvedFileName = resolveDownloadedFileName(disposition, fallbackFileName);
-    const baseDirectory = localPath ? path.resolve(localPath) : process.cwd();
     const tempFilePath = buildTemporaryDownloadPath(baseDirectory, resolvedFileName);
 
-    await fs.mkdir(baseDirectory, { recursive: true });
     const size = await writeResponseToFileWithLimit(
       response,
       tempFilePath,

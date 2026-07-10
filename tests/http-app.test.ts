@@ -45,6 +45,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_RESPONSE_MODE: "json",
       GITLAB_MAX_RESPONSE_BYTES: 200_000,
       GITLAB_MAX_LOCAL_FILE_BYTES: 250_000_000,
+      GITLAB_LOCAL_FILE_ROOTS: [],
       GITLAB_DOWNLOAD_TOKEN_SECRET: "test-download-secret",
       GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS: 300,
       GITLAB_HTTP_TIMEOUT_MS: 20_000,

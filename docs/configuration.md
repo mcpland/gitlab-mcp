@@ -128,15 +128,18 @@ When `GITLAB_ALLOWED_PROJECT_IDS` is non-empty, it is enforced as a strict resou
 
 ## Output
 
-| Variable                             | Type                               | Default                                | Description                                                                                                                         |
-| ------------------------------------ | ---------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `GITLAB_RESPONSE_MODE`               | `json` \| `compact-json` \| `yaml` | `json`                                 | Response serialization format. `compact-json` omits indentation.                                                                    |
-| `GITLAB_MAX_RESPONSE_BYTES`          | number                             | `200000`                               | Maximum response size in bytes (1,024–2,000,000). Responses exceeding this limit are truncated with a `[truncated N bytes]` suffix. |
-| `GITLAB_MAX_LOCAL_FILE_BYTES`        | number                             | `250000000`                            | Maximum size in bytes for files saved locally by download tools such as job artifacts (1,024–2,000,000,000).                        |
-| `GITLAB_HTTP_TIMEOUT_MS`             | number                             | `20000`                                | GitLab API request timeout in milliseconds (1,000–120,000).                                                                         |
-| `GITLAB_AUTH_VALIDATION_TIMEOUT_MS`  | number                             | `5000`                                 | Timeout for pre-session upstream token validation (500–30000ms).                                                                    |
-| `GITLAB_AUTH_VALIDATION_TTL_SECONDS` | number                             | `30`                                   | Cache TTL for valid and invalid remote-token checks (1–300s). Cache keys are token digests.                                         |
-| `GITLAB_ERROR_DETAIL_MODE`           | `safe` \| `full`                   | `safe` in production, `full` otherwise | Controls error response verbosity. `safe` returns only the error message; `full` includes upstream details.                         |
+| Variable                             | Type                               | Default                                | Description                                                                                                                            |
+| ------------------------------------ | ---------------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `GITLAB_RESPONSE_MODE`               | `json` \| `compact-json` \| `yaml` | `json`                                 | Response serialization format. `compact-json` omits indentation.                                                                       |
+| `GITLAB_MAX_RESPONSE_BYTES`          | number                             | `200000`                               | Maximum response size in bytes (1,024–2,000,000). Responses exceeding this limit are truncated with a `[truncated N bytes]` suffix.    |
+| `GITLAB_MAX_LOCAL_FILE_BYTES`        | number                             | `250000000`                            | Maximum size in bytes for files saved locally by download tools such as job artifacts (1,024–2,000,000,000).                           |
+| `GITLAB_LOCAL_FILE_ROOTS`            | comma-separated paths              | current working directory              | Existing directory roots allowed for stdio local file uploads and artifact writes. Paths and symlinks are canonicalized before access. |
+| `GITLAB_HTTP_TIMEOUT_MS`             | number                             | `20000`                                | GitLab API request timeout in milliseconds (1,000–120,000).                                                                            |
+| `GITLAB_AUTH_VALIDATION_TIMEOUT_MS`  | number                             | `5000`                                 | Timeout for pre-session upstream token validation (500–30000ms).                                                                       |
+| `GITLAB_AUTH_VALIDATION_TTL_SECONDS` | number                             | `30`                                   | Cache TTL for valid and invalid remote-token checks (1–300s). Cache keys are token digests.                                            |
+| `GITLAB_ERROR_DETAIL_MODE`           | `safe` \| `full`                   | `safe` in production, `full` otherwise | Controls error response verbosity. `safe` returns only the error message; `full` includes upstream details.                            |
+
+`GITLAB_LOCAL_FILE_ROOTS` applies only to local-file operations in stdio mode. Relative roots are resolved from the server working directory. Traversal outside a configured root and symbolic-link escapes are rejected. HTTP transports continue to hide local artifact-write tools and reject `file_path` uploads.
 
 ## Network
 

@@ -36,6 +36,7 @@ const context: AppContext = {
     apiUrls: env.GITLAB_API_URLS,
     timeoutMs: env.GITLAB_HTTP_TIMEOUT_MS,
     maxLocalFileBytes: env.GITLAB_MAX_LOCAL_FILE_BYTES,
+    localFileRoots: env.GITLAB_LOCAL_FILE_ROOTS,
     defaultAuthHeader,
     beforeRequest: (requestContext) => requestRuntime.beforeRequest(requestContext)
   }),

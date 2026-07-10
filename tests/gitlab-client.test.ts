@@ -1194,6 +1194,34 @@ describe("GitLabClient", () => {
       expect(init.body).toBeInstanceOf(FormData);
     });
 
+    it("reads local upload files only from configured roots", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ markdown: "[file](/uploads/abc/file.md)" }));
+      const allowedRoot = await createTempDir("gitlab-upload-allowed-");
+      const outsideRoot = await createTempDir("gitlab-upload-outside-");
+      const allowedFile = path.join(allowedRoot, "allowed.md");
+      const outsideFile = path.join(outsideRoot, "outside.md");
+      await fs.writeFile(allowedFile, "allowed", "utf8");
+      await fs.writeFile(outsideFile, "outside", "utf8");
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        localFileRoots: [allowedRoot]
+      });
+
+      await expect(client.uploadMarkdownFile("proj", allowedFile)).resolves.toBeDefined();
+      await expect(client.uploadMarkdownFile("proj", outsideFile)).rejects.toThrow(
+        /outside GITLAB_LOCAL_FILE_ROOTS/u
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("uses the current working directory as the default local file root", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ markdown: "[file](/uploads/abc/file.md)" }));
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+
+      await client.uploadMarkdownFile("proj", path.join(process.cwd(), "package.json"));
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it("creates pipeline with variables", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ id: 1 }));
 
@@ -1421,13 +1449,17 @@ describe("GitLabClient", () => {
         })
       );
 
-      const client = new GitLabClient("https://gitlab.example.com", "token");
       const outputDir = await createTempDir("gitlab-job-artifacts-");
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        localFileRoots: [outputDir]
+      });
       const result = await client.saveJobArtifacts("proj", "456", outputDir);
 
       expect(result.fileName).toBe("artifacts-job-456.zip");
       expect(result.contentType).toBe("application/zip");
-      expect(result.filePath).toBe(path.join(outputDir, "artifacts-job-456.zip"));
+      expect(result.filePath).toBe(
+        path.join(await fs.realpath(outputDir), "artifacts-job-456.zip")
+      );
       expect(result.size).toBe(4);
       await expect(fs.readFile(result.filePath, "binary")).resolves.toBe("PK\x03\x04");
     });
@@ -1449,14 +1481,17 @@ describe("GitLabClient", () => {
         })
       );
 
+      const outputDir = await createTempDir("gitlab-job-artifacts-streamed-");
       const client = new GitLabClient("https://gitlab.example.com", "token", {
         maxAttachmentBytes: 8,
-        maxLocalFileBytes: 10
+        maxLocalFileBytes: 10,
+        localFileRoots: [outputDir]
       });
-      const outputDir = await createTempDir("gitlab-job-artifacts-streamed-");
       const result = await client.saveJobArtifacts("proj", "458", outputDir);
 
-      expect(result.filePath).toBe(path.join(outputDir, "artifacts-job-458.zip"));
+      expect(result.filePath).toBe(
+        path.join(await fs.realpath(outputDir), "artifacts-job-458.zip")
+      );
       expect(result.size).toBe(10);
       await expect(fs.readFile(result.filePath, "utf8")).resolves.toBe("1234567890");
     });
@@ -1472,12 +1507,14 @@ describe("GitLabClient", () => {
         })
       );
 
-      const client = new GitLabClient("https://gitlab.example.com", "token");
       const outputDir = await createTempDir("gitlab-artifact-safe-name-");
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        localFileRoots: [outputDir]
+      });
       const result = await client.saveJobArtifacts("proj", "457", outputDir);
 
       expect(result.fileName).toBe("outside.txt");
-      expect(result.filePath).toBe(path.join(outputDir, "outside.txt"));
+      expect(result.filePath).toBe(path.join(await fs.realpath(outputDir), "outside.txt"));
       await expect(fs.readFile(result.filePath, "utf8")).resolves.toBe("safe\n");
     });
 
@@ -1491,15 +1528,19 @@ describe("GitLabClient", () => {
         })
       );
 
-      const client = new GitLabClient("https://gitlab.example.com", "token");
       const outputDir = await createTempDir("gitlab-artifact-existing-file-");
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        localFileRoots: [outputDir]
+      });
       const existingFilePath = path.join(outputDir, "artifacts-job-457.zip");
       await fs.writeFile(existingFilePath, "existing artifact\n", "utf8");
 
       const result = await client.saveJobArtifacts("proj", "457", outputDir);
 
       expect(result.fileName).toBe("artifacts-job-457-1.zip");
-      expect(result.filePath).toBe(path.join(outputDir, "artifacts-job-457-1.zip"));
+      expect(result.filePath).toBe(
+        path.join(await fs.realpath(outputDir), "artifacts-job-457-1.zip")
+      );
       await expect(fs.readFile(existingFilePath, "utf8")).resolves.toBe("existing artifact\n");
       await expect(fs.readFile(result.filePath, "utf8")).resolves.toBe("new artifact\n");
       await expect(fs.readdir(outputDir)).resolves.toEqual([
@@ -1525,10 +1566,11 @@ describe("GitLabClient", () => {
         })
       );
 
-      const client = new GitLabClient("https://gitlab.example.com", "token", {
-        maxLocalFileBytes: 9
-      });
       const outputDir = await createTempDir("gitlab-job-artifacts-limit-");
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxLocalFileBytes: 9,
+        localFileRoots: [outputDir]
+      });
       const filePath = path.join(outputDir, "artifacts-job-459.zip");
       const error = await client
         .saveJobArtifacts("proj", "459", outputDir)
@@ -1556,10 +1598,11 @@ describe("GitLabClient", () => {
         })
       );
 
-      const client = new GitLabClient("https://gitlab.example.com", "token", {
-        maxLocalFileBytes: 9
-      });
       const outputDir = await createTempDir("gitlab-job-artifacts-existing-limit-");
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxLocalFileBytes: 9,
+        localFileRoots: [outputDir]
+      });
       const existingFilePath = path.join(outputDir, "artifacts-job-460.zip");
       await fs.writeFile(existingFilePath, "keep me\n", "utf8");
 
@@ -1626,8 +1669,10 @@ describe("GitLabClient", () => {
         })
       );
 
-      const client = new GitLabClient("https://gitlab.example.com", "token");
       const outputDir = await createTempDir("gitlab-artifact-file-");
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        localFileRoots: [outputDir]
+      });
       const result = await client.saveJobArtifactFile(
         "proj",
         "791",
@@ -1636,9 +1681,23 @@ describe("GitLabClient", () => {
       );
 
       expect(result.fileName).toBe("summary.txt");
-      expect(result.filePath).toBe(path.join(outputDir, "summary.txt"));
+      expect(result.filePath).toBe(path.join(await fs.realpath(outputDir), "summary.txt"));
       expect(result.size).toBe(Buffer.byteLength("coverage: 99%\n"));
       await expect(fs.readFile(result.filePath, "utf8")).resolves.toBe("coverage: 99%\n");
+    });
+
+    it("rejects artifact output directories that escape through a symbolic link", async () => {
+      const allowedRoot = await createTempDir("gitlab-download-allowed-");
+      const outsideRoot = await createTempDir("gitlab-download-outside-");
+      await fs.symlink(outsideRoot, path.join(allowedRoot, "escape"), "dir");
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        localFileRoots: [allowedRoot]
+      });
+
+      await expect(
+        client.saveJobArtifacts("proj", "792", path.join(allowedRoot, "escape"))
+      ).rejects.toThrow(/outside GITLAB_LOCAL_FILE_ROOTS/u);
+      expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("gets commit diff", async () => {
