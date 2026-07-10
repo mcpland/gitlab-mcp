@@ -16,6 +16,16 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 
 ---
 
+## Discovery
+
+| Tool                    | Mutating | Description                                                                                    |
+| ----------------------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `gitlab_discover_tools` | No       | Search the complete registry and report whether each matching tool is enabled for this server. |
+
+`gitlab_discover_tools` is always registered, including when `GITLAB_TOOLSETS` selects only a subset. It can search disabled tools and reports the policy, toolset, explicit-enable, project-scope, transport, or compatibility-alias gates that currently hide them. The [generated tool index](tools-index.md) is the authoritative complete inventory and records each tool's default availability.
+
+---
+
 ## Projects & Organization
 
 | Tool                           | Mutating | Description                                                                                                                                                                                  |
