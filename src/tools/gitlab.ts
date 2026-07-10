@@ -45,12 +45,78 @@ interface GitLabToolDefinition {
   title: string;
   description: string;
   capabilities: ToolCapability[];
+  scope: GitLabToolScopeMetadata;
   requiresAuth?: boolean;
   requiresFeature?: "wiki" | "milestone" | "pipeline" | "release";
   requiresLocalFileTools?: boolean;
   inputSchema?: ToolSchemaShape;
   handler: (args: ToolArgs, context: AppContext) => Promise<unknown>;
 }
+
+type GitLabToolDefinitionInput = Omit<GitLabToolDefinition, "scope">;
+
+export type GitLabToolScope = "project" | "group" | "global" | "rawGraphQL";
+
+export interface GitLabToolScopeMetadata {
+  kind: GitLabToolScope;
+  projectIdArguments?: readonly string[];
+  groupIdArguments?: readonly string[];
+  projectScopedMode: "allow" | "filter" | "deny";
+}
+
+const GROUP_SCOPED_TOOL_NAMES = new Set([
+  "gitlab_create_group",
+  "gitlab_list_group_projects",
+  "gitlab_list_group_iterations",
+  "gitlab_search_group_code",
+  "gitlab_list_group_wiki_pages",
+  "gitlab_get_group_wiki_page",
+  "gitlab_create_group_wiki_page",
+  "gitlab_update_group_wiki_page",
+  "gitlab_delete_group_wiki_page"
+]);
+
+const RAW_GRAPHQL_TOOL_NAMES = new Set([
+  "gitlab_execute_graphql_query",
+  "gitlab_execute_graphql_mutation",
+  "gitlab_execute_graphql"
+]);
+
+const GLOBAL_TOOL_PROJECT_SCOPE_MODES = new Map<string, "allow" | "filter" | "deny">([
+  ["gitlab_list_projects", "filter"],
+  ["gitlab_search_repositories", "filter"],
+  ["gitlab_search_code", "filter"],
+  ["gitlab_list_todos", "filter"],
+  ["gitlab_mark_todo_done", "filter"],
+  ["gitlab_whoami", "allow"],
+  ["gitlab_create_repository", "deny"],
+  ["gitlab_mark_all_todos_done", "deny"],
+  ["gitlab_list_namespaces", "deny"],
+  ["gitlab_get_namespace", "deny"],
+  ["gitlab_verify_namespace", "deny"],
+  ["gitlab_get_users", "deny"],
+  ["gitlab_get_user", "deny"],
+  ["gitlab_list_events", "deny"],
+  ["gitlab_fork_repository", "deny"]
+]);
+
+const PROJECT_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
+  ["gitlab_create_merge_request", ["project_id", "target_project_id"]],
+  ["gitlab_create_issue_link", ["project_id", "target_project_id"]],
+  ["gitlab_update_work_item", ["project_id", "parent_project_id"]],
+  ["gitlab_move_work_item", ["project_id", "target_project_id"]],
+  ["gitlab_list_todos", ["project_id"]],
+  ["gitlab_list_webhooks", ["project_id"]],
+  ["gitlab_list_webhook_events", ["project_id"]],
+  ["gitlab_get_webhook_event", ["project_id"]]
+]);
+
+const GROUP_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
+  ["gitlab_create_group", []],
+  ["gitlab_list_webhooks", ["group_id"]],
+  ["gitlab_list_webhook_events", ["group_id"]],
+  ["gitlab_get_webhook_event", ["group_id"]]
+]);
 
 const readCapabilities: ToolCapability[] = ["read"];
 const writeCapabilities: ToolCapability[] = ["write"];
@@ -121,12 +187,11 @@ const customFieldValueSchema = z.object({
 
 export function registerGitLabTools(server: McpServer, context: AppContext): void {
   const definitions = getGitLabToolDefinitions();
-  const disableGraphqlTools = shouldDisableGraphqlTools(
-    context.env.GITLAB_ALLOWED_PROJECT_IDS,
-    context.env.GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE
+  const scopeFilteredDefinitions = definitions.filter((definition) =>
+    isToolVisibleForProjectScope(definition, context.env.GITLAB_ALLOWED_PROJECT_IDS)
   );
   const filtered = context.policy.filterTools(
-    definitions.map((item) => ({
+    scopeFilteredDefinitions.map((item) => ({
       name: item.name,
       capabilities: item.capabilities,
       requiresFeature: item.requiresFeature
@@ -140,10 +205,6 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
     }
 
     if (definition.requiresLocalFileTools && !context.allowLocalFileTools) {
-      continue;
-    }
-
-    if (disableGraphqlTools && isGraphqlToolName(definition.name)) {
       continue;
     }
 
@@ -168,6 +229,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
           }
 
           const args = stripNullsDeep((rawArgs ?? {}) as ToolArgs);
+          assertToolCanExecuteInProjectScope(definition, args, context);
           const result = await definition.handler(args, context);
           const formatted = context.formatter.format(result);
           const structuredResult = formatted.truncated
@@ -198,7 +260,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
 }
 
 function getGitLabToolDefinitions(): GitLabToolDefinition[] {
-  return [
+  const definitions: GitLabToolDefinitionInput[] = [
     {
       name: "gitlab_get_project",
       title: "Get Project",
@@ -4542,6 +4604,12 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     }
   ];
+
+  return definitions.map((definition) => {
+    const scope = resolveToolScopeMetadata(definition.name);
+    assertScopeMetadataMatchesDefinition(definition, scope);
+    return { ...definition, scope };
+  });
 }
 
 function shouldReturnDownloadProxy(context: AppContext): boolean {
@@ -6215,37 +6283,106 @@ export function parseProjectUploadReference(
   return { secret, filename };
 }
 
-export function shouldDisableGraphqlTools(
-  allowedProjectIds: string[],
-  allowGraphqlWithProjectScope: boolean
-): boolean {
-  return allowedProjectIds.length > 0 && !allowGraphqlWithProjectScope;
+export function resolveToolScopeMetadata(name: string): GitLabToolScopeMetadata {
+  if (RAW_GRAPHQL_TOOL_NAMES.has(name)) {
+    return {
+      kind: "rawGraphQL",
+      projectScopedMode: "deny"
+    };
+  }
+
+  if (GROUP_SCOPED_TOOL_NAMES.has(name)) {
+    return {
+      kind: "group",
+      groupIdArguments: GROUP_ID_ARGUMENTS_BY_TOOL.get(name) ?? ["group_id"],
+      projectScopedMode: "deny"
+    };
+  }
+
+  const globalMode = GLOBAL_TOOL_PROJECT_SCOPE_MODES.get(name);
+  if (globalMode) {
+    return {
+      kind: "global",
+      projectIdArguments: PROJECT_ID_ARGUMENTS_BY_TOOL.get(name),
+      projectScopedMode: globalMode
+    };
+  }
+
+  return {
+    kind: "project",
+    projectIdArguments: PROJECT_ID_ARGUMENTS_BY_TOOL.get(name) ?? ["project_id"],
+    groupIdArguments: GROUP_ID_ARGUMENTS_BY_TOOL.get(name),
+    projectScopedMode: "allow"
+  };
 }
 
-function isGraphqlToolName(name: string): boolean {
-  return (
-    name === "gitlab_execute_graphql_query" ||
-    name === "gitlab_execute_graphql_mutation" ||
-    name === "gitlab_execute_graphql" ||
-    name === "gitlab_get_work_item" ||
-    name === "gitlab_list_work_items" ||
-    name === "gitlab_create_work_item" ||
-    name === "gitlab_update_work_item" ||
-    name === "gitlab_convert_work_item_type" ||
-    name === "gitlab_list_work_item_statuses" ||
-    name === "gitlab_list_custom_field_definitions" ||
-    name === "gitlab_move_work_item" ||
-    name === "gitlab_list_work_item_notes" ||
-    name === "gitlab_create_work_item_note" ||
-    name === "gitlab_list_work_item_emoji_reactions" ||
-    name === "gitlab_list_work_item_note_emoji_reactions" ||
-    name === "gitlab_create_work_item_emoji_reaction" ||
-    name === "gitlab_delete_work_item_emoji_reaction" ||
-    name === "gitlab_create_work_item_note_emoji_reaction" ||
-    name === "gitlab_delete_work_item_note_emoji_reaction" ||
-    name === "gitlab_get_timeline_events" ||
-    name === "gitlab_create_timeline_event"
-  );
+function assertScopeMetadataMatchesDefinition(
+  definition: GitLabToolDefinitionInput,
+  scope: GitLabToolScopeMetadata
+): void {
+  if (scope.kind === "project" && !scope.projectIdArguments?.includes("project_id")) {
+    throw new Error(`Project-scoped tool '${definition.name}' must declare project_id metadata`);
+  }
+
+  for (const argumentName of [
+    ...(scope.projectIdArguments ?? []),
+    ...(scope.groupIdArguments ?? [])
+  ]) {
+    if (!Object.prototype.hasOwnProperty.call(definition.inputSchema, argumentName)) {
+      throw new Error(
+        `Tool '${definition.name}' scope metadata references missing '${argumentName}' input`
+      );
+    }
+  }
+}
+
+function isToolVisibleForProjectScope(
+  definition: GitLabToolDefinition,
+  allowedProjectIds: readonly string[]
+): boolean {
+  if (allowedProjectIds.length === 0) {
+    return true;
+  }
+
+  return definition.scope.projectScopedMode !== "deny";
+}
+
+function assertToolCanExecuteInProjectScope(
+  definition: GitLabToolDefinition,
+  args: ToolArgs,
+  context: AppContext
+): void {
+  const allowedProjectIds = context.env.GITLAB_ALLOWED_PROJECT_IDS;
+  if (allowedProjectIds.length === 0) {
+    return;
+  }
+
+  if (definition.scope.projectScopedMode === "deny") {
+    throw new Error(
+      `Tool '${definition.name}' is unavailable while GITLAB_ALLOWED_PROJECT_IDS is configured because its ${definition.scope.kind} scope cannot be proven safe.`
+    );
+  }
+
+  for (const argumentName of definition.scope.groupIdArguments ?? []) {
+    if (hasValue(args[argumentName])) {
+      throw new Error(
+        `'${argumentName}' is unavailable while GITLAB_ALLOWED_PROJECT_IDS is configured; use a project-scoped form instead.`
+      );
+    }
+  }
+
+  for (const argumentName of definition.scope.projectIdArguments ?? []) {
+    const value = args[argumentName];
+    if (!hasValue(value)) {
+      continue;
+    }
+
+    if (typeof value !== "string" && typeof value !== "number") {
+      throw new Error(`'${argumentName}' must be a string or number`);
+    }
+
+    resolveExplicitProjectId(context, String(value));
+  }
 }
 
 function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean): string {

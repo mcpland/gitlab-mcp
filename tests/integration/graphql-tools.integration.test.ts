@@ -47,7 +47,7 @@ describe("GraphQL tools: Registration", () => {
     }
   });
 
-  it("GraphQL tools enabled with ALLOW_GRAPHQL_WITH_PROJECT_SCOPE", async () => {
+  it("legacy project-scope override does not expose raw GraphQL tools", async () => {
     const { client, clientTransport, serverTransport } = await createLinkedPair(
       buildContext({
         allowedProjectIds: ["123"],
@@ -58,7 +58,7 @@ describe("GraphQL tools: Registration", () => {
     try {
       const names = await listToolNames(client);
       for (const gqlTool of GRAPHQL_TOOL_NAMES) {
-        expect(names).toContain(gqlTool);
+        expect(names).not.toContain(gqlTool);
       }
     } finally {
       await clientTransport.close();

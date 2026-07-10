@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { containsGraphqlMutation, shouldDisableGraphqlTools } from "../src/tools/gitlab.js";
+import { containsGraphqlMutation, resolveToolScopeMetadata } from "../src/tools/gitlab.js";
 
 describe("containsGraphqlMutation", () => {
   it("detects mutation operations", () => {
@@ -109,28 +109,50 @@ describe("containsGraphqlMutation", () => {
   });
 });
 
-describe("shouldDisableGraphqlTools", () => {
-  it("disables graphql tools by default when project scope restrictions are active", () => {
-    expect(shouldDisableGraphqlTools(["123"], false)).toBeTruthy();
+describe("resolveToolScopeMetadata", () => {
+  it("classifies raw GraphQL as unsafe in project-scoped mode", () => {
+    expect(resolveToolScopeMetadata("gitlab_execute_graphql_query")).toEqual({
+      kind: "rawGraphQL",
+      projectScopedMode: "deny"
+    });
   });
 
-  it("keeps graphql tools enabled when explicit override is set", () => {
-    expect(shouldDisableGraphqlTools(["123"], true)).toBeFalsy();
+  it("classifies group tools separately from project tools", () => {
+    expect(resolveToolScopeMetadata("gitlab_list_group_wiki_pages")).toMatchObject({
+      kind: "group",
+      groupIdArguments: ["group_id"],
+      projectScopedMode: "deny"
+    });
+    expect(resolveToolScopeMetadata("gitlab_create_group")).toMatchObject({
+      kind: "group",
+      groupIdArguments: [],
+      projectScopedMode: "deny"
+    });
   });
 
-  it("keeps graphql tools enabled without project scope restrictions", () => {
-    expect(shouldDisableGraphqlTools([], false)).toBeFalsy();
+  it("declares source and target project arguments", () => {
+    expect(resolveToolScopeMetadata("gitlab_create_merge_request")).toMatchObject({
+      kind: "project",
+      projectIdArguments: ["project_id", "target_project_id"]
+    });
   });
 
-  it("keeps graphql tools enabled with empty project IDs and override", () => {
-    expect(shouldDisableGraphqlTools([], true)).toBeFalsy();
+  it("classifies project-bound CI lint as a project tool", () => {
+    expect(resolveToolScopeMetadata("gitlab_validate_ci_lint")).toMatchObject({
+      kind: "project",
+      projectIdArguments: ["project_id"],
+      projectScopedMode: "allow"
+    });
   });
 
-  it("disables with multiple project IDs", () => {
-    expect(shouldDisableGraphqlTools(["1", "2", "3"], false)).toBeTruthy();
-  });
-
-  it("enables with multiple project IDs and override", () => {
-    expect(shouldDisableGraphqlTools(["1", "2", "3"], true)).toBeFalsy();
+  it("marks filterable global tools without allowing unsafe global tools", () => {
+    expect(resolveToolScopeMetadata("gitlab_list_projects")).toMatchObject({
+      kind: "global",
+      projectScopedMode: "filter"
+    });
+    expect(resolveToolScopeMetadata("gitlab_list_events")).toMatchObject({
+      kind: "global",
+      projectScopedMode: "deny"
+    });
   });
 });

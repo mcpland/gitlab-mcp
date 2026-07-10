@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
+import { resolveToolScopeMetadata } from "../../src/tools/gitlab.js";
 import { buildContext, createLinkedPair } from "./_helpers.js";
 
 /* ------------------------------------------------------------------ */
@@ -146,6 +147,20 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
       for (const tool of result.tools) {
         // All tools should be either health_check or gitlab_*
         expect(tool.name === "health_check" || tool.name.startsWith("gitlab_")).toBe(true);
+      }
+    });
+
+    it("classifies every project tool with a project_id schema", async () => {
+      const result = await client.listTools();
+
+      for (const tool of result.tools.filter((item) => item.name.startsWith("gitlab_"))) {
+        const scope = resolveToolScopeMetadata(tool.name);
+        if (scope.kind !== "project" || !scope.projectIdArguments?.includes("project_id")) {
+          continue;
+        }
+
+        const properties = tool.inputSchema.properties as Record<string, unknown> | undefined;
+        expect(properties?.project_id, `${tool.name} must declare project_id`).toBeDefined();
       }
     });
   });
@@ -493,7 +508,7 @@ describe("MCP Server Integration - No auth configured", () => {
 /* ------------------------------------------------------------------ */
 
 describe("MCP Server Integration - GraphQL tool filtering", () => {
-  it("disables graphql tools when project scope is set without override", async () => {
+  it("disables raw GraphQL but keeps project-bound work-item tools", async () => {
     const context = buildContext({
       allowedProjectIds: ["group/project"],
       allowGraphqlWithProjectScope: false
@@ -505,15 +520,17 @@ describe("MCP Server Integration - GraphQL tool filtering", () => {
       const names = result.tools.map((t) => t.name);
 
       expect(names).not.toContain("gitlab_execute_graphql");
-      expect(names).not.toContain("gitlab_get_work_item");
-      expect(names).not.toContain("gitlab_create_timeline_event");
+      expect(names).not.toContain("gitlab_execute_graphql_query");
+      expect(names).not.toContain("gitlab_execute_graphql_mutation");
+      expect(names).toContain("gitlab_get_work_item");
+      expect(names).toContain("gitlab_create_timeline_event");
     } finally {
       await clientTransport.close();
       await serverTransport.close();
     }
   });
 
-  it("keeps graphql tools when project scope is set with override", async () => {
+  it("does not let the legacy override expose raw GraphQL", async () => {
     const context = buildContext({
       allowedProjectIds: ["group/project"],
       allowGraphqlWithProjectScope: true
@@ -524,9 +541,90 @@ describe("MCP Server Integration - GraphQL tool filtering", () => {
       const result = await client.listTools();
       const names = result.tools.map((t) => t.name);
 
-      expect(names).toContain("gitlab_execute_graphql");
+      expect(names).not.toContain("gitlab_execute_graphql");
+      expect(names).not.toContain("gitlab_execute_graphql_query");
+      expect(names).not.toContain("gitlab_execute_graphql_mutation");
       expect(names).toContain("gitlab_get_work_item");
       expect(names).toContain("gitlab_create_timeline_event");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+describe("MCP Server Integration - Strict project scope visibility", () => {
+  it("applies the declared project-scope mode to every registered GitLab tool", async () => {
+    const unrestrictedPair = await createLinkedPair(buildContext());
+    const scopedPair = await createLinkedPair(
+      buildContext({ allowedProjectIds: ["group/project"] })
+    );
+
+    try {
+      const unrestrictedTools = (await unrestrictedPair.client.listTools()).tools.filter((tool) =>
+        tool.name.startsWith("gitlab_")
+      );
+      const scopedNames = new Set(
+        (await scopedPair.client.listTools()).tools.map((tool) => tool.name)
+      );
+
+      for (const tool of unrestrictedTools) {
+        const scope = resolveToolScopeMetadata(tool.name);
+
+        if (scope.projectScopedMode === "deny") {
+          expect(scopedNames, `${tool.name} should be hidden`).not.toContain(tool.name);
+        } else {
+          expect(scopedNames, `${tool.name} should remain visible`).toContain(tool.name);
+        }
+      }
+    } finally {
+      await unrestrictedPair.clientTransport.close();
+      await unrestrictedPair.serverTransport.close();
+      await scopedPair.clientTransport.close();
+      await scopedPair.serverTransport.close();
+    }
+  });
+
+  it("keeps only project tools and explicitly safe or filterable global tools", async () => {
+    const context = buildContext({ allowedProjectIds: ["group/project"] });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(context);
+
+    try {
+      const { tools } = await client.listTools();
+      const names = tools.map((tool) => tool.name);
+
+      for (const name of [
+        "gitlab_get_project",
+        "gitlab_list_projects",
+        "gitlab_search_repositories",
+        "gitlab_search_code",
+        "gitlab_list_todos",
+        "gitlab_mark_todo_done",
+        "gitlab_whoami",
+        "gitlab_validate_ci_lint",
+        "gitlab_list_webhooks",
+        "gitlab_get_work_item"
+      ]) {
+        expect(names, `${name} should remain visible`).toContain(name);
+      }
+
+      for (const name of [
+        "gitlab_create_repository",
+        "gitlab_create_group",
+        "gitlab_fork_repository",
+        "gitlab_list_group_projects",
+        "gitlab_list_group_iterations",
+        "gitlab_search_group_code",
+        "gitlab_list_group_wiki_pages",
+        "gitlab_create_group_wiki_page",
+        "gitlab_mark_all_todos_done",
+        "gitlab_list_namespaces",
+        "gitlab_get_users",
+        "gitlab_list_events",
+        "gitlab_execute_graphql"
+      ]) {
+        expect(names, `${name} should be hidden`).not.toContain(name);
+      }
     } finally {
       await clientTransport.close();
       await serverTransport.close();
