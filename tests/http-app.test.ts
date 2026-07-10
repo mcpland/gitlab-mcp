@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer, request as httpRequest } from "node:http";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +36,12 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_PERSONAL_ACCESS_TOKEN: "test-token",
       GITLAB_USE_OAUTH: false,
       GITLAB_MCP_OAUTH: false,
+      GITLAB_OAUTH_APP_ID: "test-gitlab-oauth-app",
+      GITLAB_OAUTH_APP_SECRET: undefined,
+      GITLAB_MCP_OAUTH_STATE_SECRET: Buffer.alloc(32, 7).toString("base64url"),
+      GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS: undefined,
+      GITLAB_MCP_OAUTH_CLIENT_TTL_SECONDS: 2_592_000,
+      GITLAB_MCP_OAUTH_CODE_TTL_SECONDS: 600,
       GITLAB_OAUTH_AUTO_OPEN_BROWSER: false,
       GITLAB_OAUTH_SCOPES: "api",
       GITLAB_OAUTH_ALLOWED_GROUPS: [],
@@ -563,7 +570,14 @@ describe("http app MCP OAuth", () => {
     const gitLabServer = createServer((req, res) => {
       if (req.url === "/oauth/token/info") {
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ resource_owner_id: 42, scopes: ["api"] }));
+        res.end(
+          JSON.stringify({
+            resource_owner_id: 42,
+            scopes: ["api"],
+            expires_in_seconds: 7_200,
+            application: { uid: "test-gitlab-oauth-app" }
+          })
+        );
         return;
       }
       if (req.url?.startsWith("/api/v4/groups?")) {
@@ -713,6 +727,157 @@ describe("http app MCP OAuth", () => {
     expect(prefixedMcpResponse.headers.get("www-authenticate")).toContain("Bearer");
   });
 
+  it("completes local DCR and fixed-callback OAuth flow on a prefixed issuer", async () => {
+    let tokenExchangeCount = 0;
+    let tokenRequestBody = "";
+    const gitLabServer = createServer((req, res) => {
+      if (req.url === "/oauth/token/info" && req.method === "GET") {
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            scopes: ["api"],
+            expires_in_seconds: 7_200,
+            application: { uid: "test-gitlab-oauth-app" }
+          })
+        );
+        return;
+      }
+      if (req.url !== "/oauth/token" || req.method !== "POST") {
+        res.statusCode = 404;
+        res.end("not found");
+        return;
+      }
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        tokenExchangeCount += 1;
+        tokenRequestBody = Buffer.concat(chunks).toString("utf8");
+        if (tokenExchangeCount > 1) {
+          res.statusCode = 400;
+          res.end("authorization code already used");
+          return;
+        }
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            access_token: "gitlab-access-token",
+            refresh_token: "gitlab-refresh-token",
+            token_type: "Bearer",
+            expires_in: 7_200,
+            scope: "api"
+          })
+        );
+      });
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab OAuth server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_MCP_OAUTH = true;
+      context.env.MCP_SERVER_URL = "https://mcp.example.com/gitlab-mcp";
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      running = await startServerForContext(context);
+
+      const clientRedirectUri = "https://client.example.com/oauth/callback";
+      const registration = await fetch(`${running.baseUrl}/gitlab-mcp/register`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          redirect_uris: [clientRedirectUri],
+          token_endpoint_auth_method: "none",
+          grant_types: ["authorization_code", "refresh_token"],
+          response_types: ["code"],
+          client_name: "HTTP integration client"
+        })
+      });
+      expect(registration.status).toBe(201);
+      const registered = (await registration.json()) as { client_id: string };
+      expect(registered.client_id).toMatch(/^v1\.client\./);
+
+      const codeVerifier = "p".repeat(43);
+      const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+      const authorizeUrl = new URL(`${running.baseUrl}/gitlab-mcp/authorize`);
+      authorizeUrl.search = new URLSearchParams({
+        client_id: registered.client_id,
+        redirect_uri: clientRedirectUri,
+        response_type: "code",
+        code_challenge: codeChallenge,
+        code_challenge_method: "S256",
+        scope: "api",
+        state: "client-state"
+      }).toString();
+      const authorize = await fetch(authorizeUrl, { redirect: "manual" });
+      expect(authorize.status).toBe(302);
+      const gitLabAuthorize = new URL(authorize.headers.get("location")!);
+      expect(gitLabAuthorize.searchParams.get("client_id")).toBe("test-gitlab-oauth-app");
+      expect(gitLabAuthorize.searchParams.get("redirect_uri")).toBe(
+        "https://mcp.example.com/gitlab-mcp/callback"
+      );
+
+      const duplicateState = await fetch(
+        `${running.baseUrl}/gitlab-mcp/callback?code=x&state=one&state=two`,
+        { redirect: "manual" }
+      );
+      expect(duplicateState.status).toBe(400);
+
+      const callback = await fetch(
+        `${running.baseUrl}/gitlab-mcp/callback?${new URLSearchParams({
+          code: "single-use-gitlab-code",
+          state: gitLabAuthorize.searchParams.get("state")!
+        }).toString()}`,
+        { redirect: "manual" }
+      );
+      expect(callback.status).toBe(302);
+      const clientCallback = new URL(callback.headers.get("location")!);
+      expect(clientCallback.origin).toBe("https://client.example.com");
+      expect(clientCallback.searchParams.get("state")).toBe("client-state");
+      const proxyCode = clientCallback.searchParams.get("code");
+      expect(proxyCode).toMatch(/^v1\.code\./);
+
+      const tokenBody = new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: registered.client_id,
+        code: proxyCode!,
+        code_verifier: codeVerifier,
+        redirect_uri: clientRedirectUri
+      });
+      const token = await fetch(`${running.baseUrl}/gitlab-mcp/token`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: tokenBody
+      });
+      expect(token.status).toBe(200);
+      const tokens = (await token.json()) as { access_token: string; refresh_token: string };
+      expect(tokens.access_token).toBe("gitlab-access-token");
+      expect(tokens.refresh_token).toMatch(/^v1\.refresh\./);
+      const upstreamParams = new URLSearchParams(tokenRequestBody);
+      expect(upstreamParams.get("code")).toBe("single-use-gitlab-code");
+      expect(upstreamParams.get("redirect_uri")).toBe(
+        "https://mcp.example.com/gitlab-mcp/callback"
+      );
+      expect(upstreamParams.get("code_verifier")).not.toBe(codeVerifier);
+
+      const replay = await fetch(`${running.baseUrl}/gitlab-mcp/token`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: tokenBody
+      });
+      expect(replay.status).toBe(400);
+      await expect(replay.json()).resolves.toMatchObject({ error: "invalid_grant" });
+      expect(tokenExchangeCount).toBe(2);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("validates direct PAT bypass before MCP OAuth session creation", async () => {
     const gitLabServer = createServer((req, res) => {
       const valid = req.url === "/api/v4/user" && req.headers["private-token"] === "valid-pat";
@@ -772,6 +937,41 @@ describe("http app MCP OAuth", () => {
         gitLabServer.close((error) => (error ? reject(error) : resolve()));
       });
     }
+  });
+
+  it("disables PAT and job-token bypass when an OAuth group allowlist is configured", async () => {
+    const context = buildContext();
+    context.env.GITLAB_MCP_OAUTH = true;
+    context.env.GITLAB_OAUTH_ALLOWED_GROUPS = ["my-org"];
+    context.env.MCP_SERVER_URL = "https://mcp.example.com";
+    context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+    running = await startServerForContext(context);
+
+    for (const [headerName, headerValue] of [
+      ["private-token", "otherwise-valid-pat"],
+      ["job-token", "otherwise-valid-job-token"]
+    ] as const) {
+      const response = await fetch(`${running.baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          [headerName]: headerValue
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-03-26",
+            capabilities: {},
+            clientInfo: { name: "group-bypass-test", version: "0.0.1" }
+          }
+        })
+      });
+      expect(response.status).toBe(401);
+    }
+    expect(running.pendingSessions.size).toBe(0);
   });
 });
 

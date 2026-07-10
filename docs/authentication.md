@@ -101,7 +101,7 @@ To restrict OAuth users by GitLab membership, configure group full paths:
 GITLAB_OAUTH_ALLOWED_GROUPS=my-org,my-org-security
 ```
 
-Membership is checked with the user's OAuth token against `GET /api/v4/groups` using at least Guest access. Matching is case-insensitive and a configured parent path includes subgroups. The same fail-closed authorizer protects local PKCE OAuth tokens and HTTP MCP OAuth bearer tokens. Successful and rejected decisions are cached by token digest for 60 seconds by default; the cache is bounded by `GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES`. The OAuth scope must permit the Groups API (`api` or `read_api`); API errors, malformed pagination, and insufficient scope deny access.
+Membership is checked with the user's OAuth token against `GET /api/v4/groups` using at least Guest access. Matching is case-insensitive and a configured parent path includes subgroups. The same fail-closed authorizer protects local PKCE OAuth tokens and HTTP MCP OAuth bearer tokens, including initial token issuance and refresh. Successful and rejected decisions are cached by token digest for 60 seconds by default; the cache is bounded by `GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES`. The OAuth scope must permit the Groups API (`api` or `read_api`); API errors, malformed pagination, and insufficient scope deny access. In MCP OAuth mode, configuring this allowlist also disables the direct `Private-Token` and `Job-Token` bypass because job tokens cannot prove a user-group membership.
 
 ### How It Works
 
@@ -284,17 +284,25 @@ For clients that support MCP OAuth, enable GitLab-backed discovery/proxy endpoin
 ```bash
 GITLAB_MCP_OAUTH=true
 MCP_SERVER_URL=https://mcp.example.com
+GITLAB_OAUTH_APP_ID=<pre-registered-gitlab-application-id>
+GITLAB_MCP_OAUTH_STATE_SECRET=<base64-encoded-32-byte-secret>
 ```
 
 Public MCP OAuth issuers must use HTTPS. Plain HTTP is accepted only for loopback development URLs (`localhost`, `127.0.0.1`, or `[::1]`). `MCP_HTTP_AUTH_TOKEN` cannot be enabled with MCP OAuth because both authenticate through `Authorization: Bearer`; use one of these modes.
 
-The HTTP server then exposes OAuth metadata and authorize/token/register/revoke endpoints backed by the configured GitLab instance. `/mcp` accepts validated `Authorization: Bearer <oauth_token>` requests, while `Private-Token` and `Job-Token` headers remain supported as direct bypass headers.
+Create a normal GitLab OAuth application before starting the server. Register the single fixed callback `<MCP_SERVER_URL without trailing slash>/callback` (for a prefixed issuer, for example `https://mcp.example.com/gitlab-mcp/callback`) and permit the configured `GITLAB_OAUTH_SCOPES`. Set `GITLAB_OAUTH_APP_SECRET` only for a confidential application. The proxy intentionally does not call GitLab `/oauth/register`: GitLab dynamically registered applications cannot obtain the `api` or `read_api` scope needed by this server.
+
+The HTTP server exposes OAuth metadata plus local authorize/token/register/revoke and fixed callback endpoints. DCR returns an encrypted virtual client ID. The proxy uses its pre-registered GitLab app and a separate PKCE challenge, then binds the resulting proxy code to the virtual client, exact redirect URI, and client PKCE verifier. The encrypted proxy code contains the still-single-use GitLab authorization code, so GitLab enforces replay rejection when `/token` performs the exchange. Returned refresh tokens are encrypted and bound to the same virtual client.
+
+`/mcp` accepts only tokens whose GitLab token-info response identifies the configured application and contains every configured scope. `Private-Token` and `Job-Token` headers remain supported as validated direct bypass headers only when `GITLAB_OAUTH_ALLOWED_GROUPS` is empty.
 
 The direct `Private-Token` / `Job-Token` OAuth bypass is allowed only after the same upstream GitLab validation succeeds; malformed, expired, or cross-instance credentials receive HTTP 401 before MCP request handling.
 
+`GITLAB_MCP_OAUTH_STATE_SECRET` is required even for one replica. It makes DCR and in-flight OAuth operations survive process restarts and allows any replica with the same key to handle the next step. Multi-replica rotation must use two rollouts: first set `old=current, new=previous` on every replica; then set `new=current, old=previous` on every replica. This overlap lets old and new pods read each other's values during the second rollout. Wait a full virtual-client TTL after that rollout completes before removing the old key. All replicas must use identical steady-state key settings. No shared writable OAuth store is used.
+
 ### Stateless HTTP Mode
 
-Set `OAUTH_STATELESS_MODE=true` for multi-replica HTTP deployments where MCP session affinity is not available. The server creates a fresh Streamable HTTP transport for each request and does not store MCP sessions in memory. In `REMOTE_AUTHORIZATION` or `GITLAB_MCP_OAUTH` mode, clients must send the auth header on every request.
+Set `OAUTH_STATELESS_MODE=true` for multi-replica HTTP deployments where MCP session affinity is not available. The server creates a fresh Streamable HTTP transport for each request and does not store MCP sessions in memory. In `REMOTE_AUTHORIZATION` or `GITLAB_MCP_OAUTH` mode, clients must send the auth header on every request. MCP OAuth DCR/callback state is independently stateless whenever MCP OAuth is enabled; the shared state secret is mandatory, so the server never silently falls back to a per-process OAuth client cache.
 
 ---
 

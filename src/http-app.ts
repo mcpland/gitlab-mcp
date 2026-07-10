@@ -8,7 +8,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { metadataHandler } from "@modelcontextprotocol/sdk/server/auth/handlers/metadata.js";
 import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
-import type { OAuthServerProvider } from "@modelcontextprotocol/sdk/server/auth/provider.js";
 import {
   createOAuthMetadata,
   getOAuthProtectedResourceMetadataUrl,
@@ -38,7 +37,10 @@ import {
   isRequestHostAllowed,
   isRequestOriginAllowed
 } from "./lib/http-request-policy.js";
-import { createGitLabMcpOAuthProvider } from "./lib/mcp-oauth-provider.js";
+import {
+  createGitLabMcpOAuthProvider,
+  type GitLabMcpOAuthProvider
+} from "./lib/mcp-oauth-provider.js";
 import { verifyMcpHttpBearerToken } from "./lib/mcp-http-bearer-auth.js";
 import { classifyHttpRoute, MetricsRegistry } from "./lib/metrics.js";
 import { resolveOauthScopes } from "./lib/oauth-scopes.js";
@@ -102,7 +104,7 @@ export interface SetupMcpHttpAppResult {
 }
 
 interface InstallMcpOAuthRoutesOptions {
-  provider: OAuthServerProvider;
+  provider: GitLabMcpOAuthProvider;
   issuerUrl: URL;
   scopesSupported: string[];
   resourceName: string;
@@ -141,6 +143,10 @@ function installMcpOAuthRoutes(app: Express, options: InstallMcpOAuthRoutesOptio
       app.use(route, metadataHandler(protectedResourceMetadata));
     }
   }
+
+  app.get(options.provider.callbackUrl.pathname, (req, res, next) => {
+    void options.provider.handleCallback(req, res).catch(next);
+  });
 
   app.use(mcpAuthRouter(routerOptions));
 
@@ -374,18 +380,29 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   const oauthIssuerUrl = appEnv.GITLAB_MCP_OAUTH
     ? new URL(appEnv.MCP_SERVER_URL ?? `http://${appEnv.HTTP_HOST}:${String(appEnv.HTTP_PORT)}`)
     : undefined;
-  const oauthProvider = appEnv.GITLAB_MCP_OAUTH
-    ? createGitLabMcpOAuthProvider(appEnv.GITLAB_API_URL, {
-        allowedGroups: appEnv.GITLAB_OAUTH_ALLOWED_GROUPS,
-        groupCacheTtlMs: appEnv.GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS * 1_000,
-        groupCacheMaxEntries: appEnv.GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES,
-        timeoutMs: appEnv.GITLAB_HTTP_TIMEOUT_MS
-      })
-    : undefined;
   const oauthScopes = resolveOauthScopes(
     appEnv.GITLAB_OAUTH_SCOPES,
     appEnv.GITLAB_PERMISSION_MODE === "readonly"
   );
+  const oauthProvider =
+    appEnv.GITLAB_MCP_OAUTH && oauthIssuerUrl
+      ? createGitLabMcpOAuthProvider(appEnv.GITLAB_API_URL, {
+          applicationId: appEnv.GITLAB_OAUTH_APP_ID!,
+          applicationSecret: appEnv.GITLAB_OAUTH_APP_SECRET,
+          callbackUrl: buildUrlWithPathPrefix(oauthIssuerUrl, "callback"),
+          stateSecret: appEnv.GITLAB_MCP_OAUTH_STATE_SECRET!,
+          previousStateSecret: appEnv.GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS,
+          scopes: oauthScopes,
+          resourceServerUrl: oauthIssuerUrl.href,
+          resourceName: appEnv.MCP_SERVER_NAME,
+          clientTtlSeconds: appEnv.GITLAB_MCP_OAUTH_CLIENT_TTL_SECONDS,
+          codeTtlSeconds: appEnv.GITLAB_MCP_OAUTH_CODE_TTL_SECONDS,
+          allowedGroups: appEnv.GITLAB_OAUTH_ALLOWED_GROUPS,
+          groupCacheTtlMs: appEnv.GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS * 1_000,
+          groupCacheMaxEntries: appEnv.GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES,
+          timeoutMs: appEnv.GITLAB_HTTP_TIMEOUT_MS
+        })
+      : undefined;
   const oauthBearerAuth =
     appEnv.GITLAB_MCP_OAUTH && oauthProvider && oauthIssuerUrl
       ? requireBearerAuth({
@@ -627,6 +644,11 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     }
 
     if (req.header("private-token")?.trim() || req.header("job-token")?.trim()) {
+      if (appEnv.GITLAB_OAUTH_ALLOWED_GROUPS.length > 0) {
+        sendInvalidGitLabAuthResponse(res);
+        metrics?.incrementAuthFailure("mcp_oauth");
+        return;
+      }
       try {
         const auth = parseRequestAuth(req);
         if (auth?.token && auth.header && (await validateRequestAuth(auth))) {

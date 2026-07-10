@@ -147,7 +147,7 @@ export function classifyHttpRoute(path: string, pathPrefix: string): HttpRouteLa
   if (normalizedPath === "/metrics") return "metrics";
   if (
     normalizedPath.startsWith("/.well-known/oauth-") ||
-    ["/authorize", "/token", "/register", "/revoke"].includes(normalizedPath)
+    ["/authorize", "/callback", "/token", "/register", "/revoke"].includes(normalizedPath)
   ) {
     return "oauth";
   }

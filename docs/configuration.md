@@ -64,6 +64,23 @@ The client will normalize each entry and rotate across them for load distributio
 | `GITLAB_OAUTH_TOKEN_PATH`              | string       | `~/.gitlab-mcp-oauth-token.json`    | File path for persisting OAuth tokens. Stored with `chmod 600`.                                                                                         |
 | `GITLAB_OAUTH_AUTO_OPEN_BROWSER`       | boolean      | `true`                              | Automatically open the browser for authorization.                                                                                                       |
 
+### MCP OAuth Proxy (HTTP Mode)
+
+| Variable                                 | Type        | Default   | Description                                                                                                                                                         |
+| ---------------------------------------- | ----------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GITLAB_MCP_OAUTH`                       | boolean     | `false`   | Expose MCP OAuth discovery, local DCR, authorize, fixed callback, token, and revoke endpoints.                                                                      |
+| `MCP_SERVER_URL`                         | URL         | —         | Required public issuer. Non-loopback issuers must use HTTPS. Its path prefix is preserved on every OAuth endpoint.                                                  |
+| `GITLAB_OAUTH_APP_ID`                    | string      | —         | Required ID of a pre-registered GitLab OAuth application. GitLab DCR is not used because dynamically registered GitLab apps cannot request the required API scopes. |
+| `GITLAB_OAUTH_APP_SECRET`                | string      | —         | Optional secret for a confidential pre-registered GitLab OAuth application.                                                                                         |
+| `GITLAB_MCP_OAUTH_STATE_SECRET`          | base64(url) | —         | Required 32–64 byte shared master key. HKDF-derived AES-256-GCM keys protect virtual clients, state, proxy codes, and wrapped refresh tokens.                       |
+| `GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS` | base64(url) | —         | Optional previous master key accepted during rotation. New values always use the current key.                                                                       |
+| `GITLAB_MCP_OAUTH_CLIENT_TTL_SECONDS`    | number      | `2592000` | Virtual DCR client lifetime (600–31536000 seconds).                                                                                                                 |
+| `GITLAB_MCP_OAUTH_CODE_TTL_SECONDS`      | number      | `600`     | Authorization state and proxy-code lifetime (60–3600 seconds).                                                                                                      |
+
+The GitLab application callback must exactly equal `<MCP_SERVER_URL without trailing slash>/callback`; for example, `https://mcp.example.com/gitlab-mcp/callback`. Configure the application with the scopes selected by `GITLAB_OAUTH_SCOPES` (`api` by default, or `read_api` when the effective permission mode is `readonly`). Generate the state secret with `openssl rand -base64 32` and treat it like a credential.
+
+Virtual DCR registrations and in-flight authorization values are self-contained authenticated ciphertext, so no writable client-store file is required. Multi-replica deployments must configure the same current and previous secrets on every replica. Rotate keys in two rollout phases: first deploy `old=current, new=previous` everywhere (so no pod mints with the new key), then deploy `new=current, old=previous` everywhere. Only after the second rollout has completed and a full `GITLAB_MCP_OAUTH_CLIENT_TTL_SECONDS` has elapsed may the old key be removed. Redirect URIs are limited to five bounded values and may use HTTPS, loopback HTTP, or a native-app custom scheme; file, FTP, data, JavaScript, WebSocket, and other non-callback schemes are rejected.
+
 ### External Token Script
 
 | Variable                         | Type   | Default | Description                                                                                                                                                                |
@@ -205,6 +222,8 @@ The server enforces these cross-field constraints at startup:
 
 - `GITLAB_API_URL` must contain at least one valid URL
 - `GITLAB_USE_OAUTH=true` requires `GITLAB_OAUTH_CLIENT_ID`
+- `GITLAB_MCP_OAUTH=true` requires `GITLAB_OAUTH_APP_ID`, `GITLAB_MCP_OAUTH_STATE_SECRET`, and `MCP_SERVER_URL`
+- MCP OAuth state secrets must decode to 32–64 bytes; the previous rotation key must differ from the current key
 - `GITLAB_OAUTH_ALLOWED_GROUPS` requires local OAuth or MCP OAuth and contains group full paths, not display names or URLs
 - non-loopback `MCP_SERVER_URL` values must use HTTPS when `GITLAB_MCP_OAUTH=true`; HTTP is accepted only for `localhost`, `127.0.0.1`, and `[::1]`
 - `MCP_HTTP_AUTH_TOKEN` cannot be combined with `GITLAB_MCP_OAUTH=true` because both consume `Authorization: Bearer`

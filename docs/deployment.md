@@ -109,6 +109,20 @@ Scrape `GET /metrics` with `Authorization: Bearer <secret>`. Host validation alw
 
 When exactly one trusted reverse proxy sits in front of the server, set `MCP_TRUST_PROXY=true` so the pre-session IP limiter uses the proxy-provided client address. Leave it `false` when clients can connect directly; otherwise they can spoof `X-Forwarded-For`. `MAX_REQUESTS_PER_MINUTE_PER_IP` controls this outer limiter, while `MAX_REQUESTS_PER_MINUTE` remains the per-session inner limit.
 
+### MCP OAuth with a Pre-registered GitLab Application
+
+Create one GitLab OAuth application with callback `https://your-server.example.com/callback` (or `<MCP_SERVER_URL path>/callback`) and the required `api`/`read_api` scope, then configure:
+
+```bash
+GITLAB_MCP_OAUTH=true
+MCP_SERVER_URL=https://your-server.example.com
+GITLAB_OAUTH_APP_ID=<application-id>
+GITLAB_OAUTH_APP_SECRET=<optional-confidential-app-secret>
+GITLAB_MCP_OAUTH_STATE_SECRET=<output-of-openssl-rand-base64-32>
+```
+
+The proxy performs DCR locally and never calls GitLab dynamic registration. Client registrations, callback state, authorization codes, and refresh tokens are authenticated ciphertext rather than per-process records. For multiple replicas, give every replica the same keys. Rotate in two rollouts: first `old=current, new=previous` on all pods, then `new=current, old=previous` on all pods; wait the 30-day default client TTL after rollout two before removing the old key. `OAUTH_STATELESS_MODE=true` separately removes MCP transport session affinity.
+
 Clients connect with their credentials:
 
 ```json

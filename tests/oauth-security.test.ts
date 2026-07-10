@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assertMcpOAuthProxyConfiguration,
   assertOAuthGroupConfiguration,
   assertSafeMcpOAuthConfiguration
 } from "../src/lib/oauth-security.js";
@@ -41,6 +42,33 @@ describe("assertSafeMcpOAuthConfiguration", () => {
         serverUrl: "https://user:password@mcp.example.com"
       })
     ).toThrow("must not include URL credentials");
+  });
+});
+
+describe("assertMcpOAuthProxyConfiguration", () => {
+  const validConfig = {
+    enabled: true,
+    applicationId: "gitlab-app",
+    stateSecret: Buffer.alloc(32, 1).toString("base64url")
+  };
+
+  it("accepts a pre-registered app and a strong shared state secret", () => {
+    expect(() => assertMcpOAuthProxyConfiguration(validConfig)).not.toThrow();
+  });
+
+  it("requires the pre-registered GitLab application ID", () => {
+    expect(() =>
+      assertMcpOAuthProxyConfiguration({ ...validConfig, applicationId: undefined })
+    ).toThrow("GITLAB_OAUTH_APP_ID");
+  });
+
+  it("requires at least 32 decoded secret bytes", () => {
+    expect(() =>
+      assertMcpOAuthProxyConfiguration({
+        ...validConfig,
+        stateSecret: Buffer.alloc(16).toString("base64url")
+      })
+    ).toThrow("32");
   });
 });
 

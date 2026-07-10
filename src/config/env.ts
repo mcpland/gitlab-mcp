@@ -9,6 +9,7 @@ import {
 } from "../lib/tool-capabilities.js";
 import { parseOAuthAllowedGroups } from "../lib/oauth-group-authorizer.js";
 import {
+  assertMcpOAuthProxyConfiguration,
   assertOAuthGroupConfiguration,
   assertSafeMcpOAuthConfiguration
 } from "../lib/oauth-security.js";
@@ -76,6 +77,17 @@ const envSchema = z.object({
   GITLAB_JOB_TOKEN: z.string().min(1).optional(),
   GITLAB_USE_OAUTH: z.enum(["true", "false"]).default("false"),
   GITLAB_MCP_OAUTH: z.enum(["true", "false"]).default("false"),
+  GITLAB_OAUTH_APP_ID: optionalNonEmptyString,
+  GITLAB_OAUTH_APP_SECRET: optionalNonEmptyString,
+  GITLAB_MCP_OAUTH_STATE_SECRET: optionalNonEmptyString,
+  GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS: optionalNonEmptyString,
+  GITLAB_MCP_OAUTH_CLIENT_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(600)
+    .max(31_536_000)
+    .default(2_592_000),
+  GITLAB_MCP_OAUTH_CODE_TTL_SECONDS: z.coerce.number().int().min(60).max(3_600).default(600),
   GITLAB_OAUTH_CLIENT_ID: z.string().optional(),
   GITLAB_OAUTH_CLIENT_SECRET: z.string().optional(),
   GITLAB_OAUTH_GITLAB_URL: z.string().optional(),
@@ -191,6 +203,13 @@ assertSafeMcpOAuthConfiguration({
   enabled: data.GITLAB_MCP_OAUTH === "true",
   serverUrl: data.MCP_SERVER_URL,
   httpAuthToken: data.MCP_HTTP_AUTH_TOKEN
+});
+
+assertMcpOAuthProxyConfiguration({
+  enabled: data.GITLAB_MCP_OAUTH === "true",
+  applicationId: data.GITLAB_OAUTH_APP_ID,
+  stateSecret: data.GITLAB_MCP_OAUTH_STATE_SECRET,
+  previousStateSecret: data.GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS
 });
 
 const oauthAllowedGroups = parseOAuthAllowedGroups(data.GITLAB_OAUTH_ALLOWED_GROUPS);

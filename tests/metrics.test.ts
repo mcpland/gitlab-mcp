@@ -45,7 +45,8 @@ describe("classifyHttpRoute", () => {
     ["/metrics/", "", "metrics"],
     ["/authorize/", "", "oauth"],
     ["/projects/secret-project", "", "other"],
-    ["/.well-known/oauth-authorization-server", "", "oauth"]
+    ["/.well-known/oauth-authorization-server", "", "oauth"],
+    ["/gitlab/callback", "/gitlab", "oauth"]
   ])("maps %s to a bounded route label", (path, prefix, expected) => {
     expect(classifyHttpRoute(path, prefix)).toBe(expected);
   });

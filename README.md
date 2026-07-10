@@ -413,7 +413,9 @@ node dist/http.js --env-file=.env.production
 | GitLab API      | `GITLAB_JOB_TOKEN`                        | —                           | Static CI job token fallback when no personal access token is configured.                                   |
 | Remote Auth     | `REMOTE_AUTHORIZATION`                    | `false`                     | Require per-request token headers in HTTP mode (disables fallback token chain).                             |
 | Remote Auth     | `ENABLE_DYNAMIC_API_URL`                  | `false`                     | Require `X-GitLab-API-URL` per request. Requires `REMOTE_AUTHORIZATION=true`.                               |
-| Remote Auth     | `GITLAB_MCP_OAUTH`                        | `false`                     | Enable MCP OAuth discovery/proxy endpoints for HTTP mode. Requires `MCP_SERVER_URL`.                        |
+| Remote Auth     | `GITLAB_MCP_OAUTH`                        | `false`                     | Enable stateless MCP OAuth. Requires a pre-registered app, public URL, and shared state secret.             |
+| Remote Auth     | `GITLAB_OAUTH_APP_ID`                     | —                           | Application ID of the pre-registered GitLab OAuth app used by MCP OAuth.                                    |
+| Remote Auth     | `GITLAB_MCP_OAUTH_STATE_SECRET`           | —                           | Shared 32–64 byte base64(url) master key for stateless OAuth values.                                        |
 | HTTP Server     | `HTTP_HOST`                               | `127.0.0.1`                 | HTTP bind host (`0.0.0.0` for external access).                                                             |
 | HTTP Server     | `HTTP_PORT`                               | `3333`                      | HTTP server port.                                                                                           |
 | HTTP Server     | `MCP_SERVER_URL`                          | —                           | Public base URL used when HTTP download tools return proxy URLs.                                            |

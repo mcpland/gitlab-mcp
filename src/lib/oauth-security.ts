@@ -1,7 +1,16 @@
+import { parseMcpOAuthKeyRing } from "./mcp-oauth-stateless.js";
+
 export interface McpOAuthSecurityConfig {
   enabled: boolean;
   serverUrl?: string;
   httpAuthToken?: string;
+}
+
+export interface McpOAuthProxyConfig {
+  enabled: boolean;
+  applicationId?: string;
+  stateSecret?: string;
+  previousStateSecret?: string;
 }
 
 export interface OAuthGroupSecurityConfig {
@@ -36,6 +45,19 @@ export function assertSafeMcpOAuthConfiguration(config: McpOAuthSecurityConfig):
   throw new Error(
     "GITLAB_MCP_OAUTH requires an HTTPS MCP_SERVER_URL unless the issuer hostname is localhost, 127.0.0.1, or [::1]"
   );
+}
+
+export function assertMcpOAuthProxyConfiguration(config: McpOAuthProxyConfig): void {
+  if (!config.enabled) {
+    return;
+  }
+  if (!config.applicationId?.trim()) {
+    throw new Error("GITLAB_MCP_OAUTH=true requires GITLAB_OAUTH_APP_ID");
+  }
+  if (!config.stateSecret) {
+    throw new Error("GITLAB_MCP_OAUTH=true requires GITLAB_MCP_OAUTH_STATE_SECRET");
+  }
+  parseMcpOAuthKeyRing(config.stateSecret, config.previousStateSecret);
 }
 
 export function assertOAuthGroupConfiguration(config: OAuthGroupSecurityConfig): void {
