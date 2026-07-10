@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createServer, request as httpRequest } from "node:http";
+import { createServer, request as httpRequest, type IncomingHttpHeaders } from "node:http";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -596,6 +596,95 @@ describe("http app download proxy", () => {
       await new Promise<void>((resolve, reject) => {
         gitLabServer.close((error) => (error ? reject(error) : resolve()));
       });
+    }
+  });
+
+  it("strips every GitLab credential type from cross-origin download redirects", async () => {
+    const redirectedHeaders: IncomingHttpHeaders[] = [];
+    const assetServer = createServer((req, res) => {
+      redirectedHeaders.push(req.headers);
+      res.statusCode = 200;
+      res.end("redirected-asset");
+    });
+    await new Promise<void>((resolve) => assetServer.listen(0, "127.0.0.1", resolve));
+    const assetAddress = assetServer.address();
+    if (!assetAddress || typeof assetAddress === "string") {
+      throw new Error("Unexpected asset test server address");
+    }
+
+    const initialHeaders: IncomingHttpHeaders[] = [];
+    const gitLabServer = createServer((req, res) => {
+      initialHeaders.push(req.headers);
+      res.statusCode = 302;
+      res.setHeader("Location", `http://127.0.0.1:${String(assetAddress.port)}/asset`);
+      res.end();
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      running = await startServerForContext(context);
+      const resource = {
+        type: "release-asset",
+        params: {
+          project_id: "group/project",
+          tag_name: "v1",
+          direct_asset_path: "bin/app.zip"
+        }
+      };
+      const authCases = [
+        { header: "private-token", token: "pat-secret" },
+        { header: "job-token", token: "job-secret" },
+        { header: "authorization", token: "oauth-secret" }
+      ] as const;
+
+      for (const auth of authCases) {
+        const token = createDownloadToken(auth, resource, {
+          secret: context.env.GITLAB_DOWNLOAD_TOKEN_SECRET,
+          ttlSeconds: context.env.GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS
+        });
+        const url = new URL(`${running.baseUrl}/downloads/release-asset`);
+        for (const [name, value] of Object.entries(resource.params)) {
+          url.searchParams.set(name, value);
+        }
+        url.searchParams.set("_token", token);
+
+        const response = await fetch(url, {
+          headers: { Cookie: "client-cookie=must-not-be-proxied" }
+        });
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe("redirected-asset");
+      }
+
+      expect(initialHeaders).toHaveLength(3);
+      expect(initialHeaders[0]?.["private-token"]).toBe("pat-secret");
+      expect(initialHeaders[1]?.["job-token"]).toBe("job-secret");
+      expect(initialHeaders[2]?.authorization).toBe("Bearer oauth-secret");
+      expect(redirectedHeaders).toHaveLength(3);
+      for (const headers of [...initialHeaders, ...redirectedHeaders]) {
+        expect(headers.cookie).toBeUndefined();
+      }
+      for (const headers of redirectedHeaders) {
+        expect(headers.authorization).toBeUndefined();
+        expect(headers["private-token"]).toBeUndefined();
+        expect(headers["job-token"]).toBeUndefined();
+      }
+    } finally {
+      await Promise.all(
+        [gitLabServer, assetServer].map(
+          (server) =>
+            new Promise<void>((resolve, reject) => {
+              server.close((error) => (error ? reject(error) : resolve()));
+            })
+        )
+      );
     }
   });
 

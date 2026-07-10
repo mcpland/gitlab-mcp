@@ -289,11 +289,11 @@ describe("resolveOauthScopes", () => {
 });
 
 describe("GitLabRequestRuntime cookie warmup", () => {
-  it("preserves authorization header mode during cookie warmup", async () => {
+  it("preserves authorization header mode without following cookie warmup redirects", async () => {
     fetchMock.mockResolvedValue(
-      new Response("{}", {
-        status: 200,
-        headers: { "content-type": "application/json" }
+      new Response(null, {
+        status: 302,
+        headers: { location: "https://storage.example.com/redirected" }
       })
     );
 
@@ -315,6 +315,7 @@ describe("GitLabRequestRuntime cookie warmup", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [warmupUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
     expect(String(warmupUrl)).toBe("https://gitlab.example.com/api/v4/user");
+    expect(init.redirect).toBe("manual");
     const headers = new Headers(init.headers);
     expect(headers.get("Authorization")).toBe("Bearer oauth-token");
     expect(headers.has("PRIVATE-TOKEN")).toBe(false);
@@ -428,6 +429,10 @@ describe("GitLabRequestRuntime OAuth retry", () => {
     await expect(client.listProjects()).resolves.toEqual([{ id: 1, name: "project" }]);
     expect(seenAuthorizations).toEqual(["Bearer old-oauth-token", "Bearer new-oauth-token"]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    const tokenRequest = fetchMock.mock.calls.find(([input]) =>
+      String(input).endsWith("/oauth/token")
+    ) as [URL | string, RequestInit] | undefined;
+    expect(tokenRequest?.[1].redirect).toBe("error");
     expect(
       onRequestCompleted.mock.calls.map(([metric]) => ({
         method: metric.method,
@@ -477,6 +482,42 @@ describe("GitLabRequestRuntime OAuth retry", () => {
       statusCode: 401,
       durationMs: expect.any(Number)
     });
+  });
+
+  it("does not restore OAuth authorization after redirect safety strips it", async () => {
+    const oauthTokenPath = await writeOAuthTokenFile({
+      access_token: "old-oauth-token",
+      token_type: "Bearer",
+      refresh_token: "refresh-token",
+      expires_in: 3600,
+      created_at: Date.now()
+    });
+    fetchMock.mockResolvedValue(jsonResponse({ message: "unauthorized target" }, 401));
+    const runtime = new GitLabRequestRuntime(
+      buildEnv({
+        GITLAB_USE_OAUTH: true,
+        GITLAB_OAUTH_CLIENT_ID: "oauth-client-id",
+        GITLAB_OAUTH_GITLAB_URL: "https://gitlab.example.com",
+        GITLAB_OAUTH_TOKEN_PATH: oauthTokenPath
+      }),
+      buildLogger()
+    );
+
+    const override = await runtime.beforeRequest({
+      url: new URL("https://gitlab.example.com/api/v4/projects/1/releases/v1/downloads/app"),
+      method: "GET",
+      headers: new Headers()
+    });
+    const response = await override.fetchImpl!("https://cdn.example.com/app", {
+      method: "GET",
+      headers: new Headers(),
+      redirect: "manual"
+    });
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+    expect(new Headers(init.headers).has("Authorization")).toBe(false);
   });
 });
 

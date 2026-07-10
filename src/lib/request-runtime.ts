@@ -116,6 +116,10 @@ export class GitLabRequestRuntime {
         authSource === "oauth" && token
           ? this.withOAuthRetry(this.fetchImpl, token, context.reportRequestMetric)
           : this.fetchImpl,
+      crossOriginFetchImpl:
+        authSource === "oauth" && context.reportRequestMetric
+          ? observeFetchAttempts(fetch, context.reportRequestMetric)
+          : fetch,
       requestMetricsHandled:
         authSource === "oauth" && Boolean(token) && Boolean(context.reportRequestMetric)
     };
@@ -175,7 +179,13 @@ export class GitLabRequestRuntime {
       : baseFetch;
     return (async (input, init) => {
       const response = await fetchAttempt(input, init);
-      if (response.status !== 401 || !this.oauthManager || isNonReplayableBody(init?.body)) {
+      const requestHeaders = new Headers(init?.headers);
+      if (
+        response.status !== 401 ||
+        !requestHeaders.has("Authorization") ||
+        !this.oauthManager ||
+        isNonReplayableBody(init?.body)
+      ) {
         return response;
       }
 
@@ -331,7 +341,7 @@ export class GitLabRequestRuntime {
       const response = await this.fetchImpl(warmupUrl, {
         method: "GET",
         headers: warmupHeaders,
-        redirect: "follow",
+        redirect: "error",
         signal: AbortSignal.timeout(Math.min(this.env.GITLAB_HTTP_TIMEOUT_MS, 12_000))
       });
 

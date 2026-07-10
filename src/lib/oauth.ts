@@ -228,7 +228,8 @@ export class GitLabOAuthManager {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded"
       },
-      body: body.toString()
+      body: body.toString(),
+      redirect: "error"
     });
 
     if (!response.ok) {

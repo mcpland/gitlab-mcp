@@ -89,6 +89,19 @@ describe("GitLabClient", () => {
   });
 
   describe("authentication", () => {
+    it("disables automatic redirects for ordinary API requests", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+      const client = new GitLabClient("https://gitlab.example.com", "token-123");
+
+      await client.listProjects();
+      await client.getRepositoryTree("group/project");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      for (const [, init] of fetchMock.mock.calls as Array<[URL | string, RequestInit]>) {
+        expect(init.redirect).toBe("error");
+      }
+    });
+
     it("sends private token header when token is provided", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ id: 1, name: "demo" }));
 
@@ -2396,6 +2409,54 @@ describe("GitLabClient", () => {
         contentType: "application/gzip",
         base64: Buffer.from(bytes).toString("base64")
       });
+      const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      expect(init.redirect).toBe("manual");
+    });
+
+    it("strips credentials when a release download redirects across origins", async () => {
+      fetchMock.mockImplementation(async (input: URL | string) => {
+        const url = new URL(String(input));
+        if (url.origin === "https://gitlab.example.com") {
+          return new Response(null, {
+            status: 302,
+            headers: { Location: "https://cdn.example.com/asset.tar.gz" }
+          });
+        }
+
+        return new Response("asset-bytes", {
+          status: 200,
+          headers: { "content-type": "application/gzip" }
+        });
+      });
+      const client = new GitLabClient("https://gitlab.example.com", "pat-secret");
+
+      const result = await client.downloadReleaseAsset("proj", "v1.0", "asset.tar.gz", {
+        headers: {
+          Authorization: "Bearer oauth-secret",
+          "JOB-TOKEN": "job-secret",
+          Cookie: "_gitlab_session=cookie-secret",
+          "X-Request-Id": "safe-metadata"
+        }
+      });
+
+      expect(result.base64).toBe(Buffer.from("asset-bytes").toString("base64"));
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const firstHeaders = new Headers(
+        (fetchMock.mock.calls[0] as [URL | string, RequestInit])[1].headers
+      );
+      expect(firstHeaders.get("authorization")).toBe("Bearer oauth-secret");
+      expect(firstHeaders.get("private-token")).toBe("pat-secret");
+      expect(firstHeaders.get("job-token")).toBe("job-secret");
+      expect(firstHeaders.get("cookie")).toBe("_gitlab_session=cookie-secret");
+
+      const [, redirectedInit] = fetchMock.mock.calls[1] as [URL | string, RequestInit];
+      const redirectedHeaders = new Headers(redirectedInit.headers);
+      expect(redirectedInit.redirect).toBe("manual");
+      expect(redirectedHeaders.get("authorization")).toBeNull();
+      expect(redirectedHeaders.get("private-token")).toBeNull();
+      expect(redirectedHeaders.get("job-token")).toBeNull();
+      expect(redirectedHeaders.get("cookie")).toBeNull();
+      expect(redirectedHeaders.get("x-request-id")).toBe("safe-metadata");
     });
 
     it("lists tags with filters", async () => {

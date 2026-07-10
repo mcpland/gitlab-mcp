@@ -49,6 +49,7 @@ import { verifyMcpHttpBearerToken } from "./lib/mcp-http-bearer-auth.js";
 import { classifyHttpRoute, MetricsRegistry } from "./lib/metrics.js";
 import { resolveOauthScopes } from "./lib/oauth-scopes.js";
 import { normalizeClientIpForRateLimit } from "./lib/proxy-client-ip.js";
+import { fetchDownloadWithSafeRedirects } from "./lib/safe-redirect-fetch.js";
 import { createMcpServer } from "./server/build-server.js";
 import type { GitLabAuthHeader } from "./types/auth.js";
 import type { AppContext } from "./types/context.js";
@@ -531,19 +532,34 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       ) {
         throw new DownloadClientError("Download path escaped its expected GitLab API endpoint");
       }
-      const startedAt = performance.now();
-      let gitLabResponse: Response;
-      try {
-        gitLabResponse = await fetch(url, {
+      const observedFetch: typeof fetch = async (input, init) => {
+        const startedAt = performance.now();
+        try {
+          const response = await fetch(input, init);
+          metrics?.observeGitLabRequest(
+            init?.method ?? "GET",
+            response.status,
+            performance.now() - startedAt
+          );
+          return response;
+        } catch (error) {
+          metrics?.observeGitLabRequest(
+            init?.method ?? "GET",
+            "network_error",
+            performance.now() - startedAt
+          );
+          throw error;
+        }
+      };
+      const gitLabResponse = await fetchDownloadWithSafeRedirects(
+        url,
+        {
           method: "GET",
           headers: toGitLabDownloadHeaders(auth),
           signal: AbortSignal.timeout(appEnv.GITLAB_HTTP_TIMEOUT_MS)
-        });
-        metrics?.observeGitLabRequest("GET", gitLabResponse.status, performance.now() - startedAt);
-      } catch (error) {
-        metrics?.observeGitLabRequest("GET", "network_error", performance.now() - startedAt);
-        throw error;
-      }
+        },
+        { fetchImpl: observedFetch }
+      );
 
       if (!gitLabResponse.ok) {
         res.status(gitLabResponse.status).json({

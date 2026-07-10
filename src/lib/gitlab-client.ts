@@ -12,6 +12,7 @@ import {
 } from "./gitlab-path.js";
 import { LocalFileBoundary } from "./local-file-boundary.js";
 import { attachPaginationMetadata, extractGitLabPaginationMetadata } from "./pagination.js";
+import { fetchDownloadWithSafeRedirects } from "./safe-redirect-fetch.js";
 import type { GitLabAuthHeader } from "../types/auth.js";
 
 export interface GitLabClientOptions {
@@ -75,6 +76,7 @@ export interface GitLabBeforeRequestResult {
   token?: string;
   authHeader?: GitLabAuthHeader;
   fetchImpl?: typeof fetch;
+  crossOriginFetchImpl?: typeof fetch;
   requestMetricsHandled?: boolean;
 }
 
@@ -2759,7 +2761,8 @@ export class GitLabClient {
       method: "GET",
       headers: options.headers,
       token: options.token,
-      authHeader: options.authHeader
+      authHeader: options.authHeader,
+      followDownloadRedirects: true
     });
 
     if (!response.ok) {
@@ -2796,7 +2799,8 @@ export class GitLabClient {
       method: "GET",
       headers: options.headers,
       token: options.token,
-      authHeader: options.authHeader
+      authHeader: options.authHeader,
+      followDownloadRedirects: true
     });
 
     if (!response.ok) {
@@ -2841,7 +2845,8 @@ export class GitLabClient {
       method: "GET",
       headers: options.headers,
       token: options.token,
-      authHeader: options.authHeader
+      authHeader: options.authHeader,
+      followDownloadRedirects: true
     });
 
     if (!response.ok) {
@@ -2880,6 +2885,7 @@ export class GitLabClient {
       body?: BodyInit;
       token?: string;
       authHeader?: GitLabAuthHeader;
+      followDownloadRedirects?: boolean;
     }
   ): Promise<Response> {
     let headers = new Headers(options.headers);
@@ -2887,6 +2893,7 @@ export class GitLabClient {
     let token = options.token;
     let authHeader = options.authHeader;
     let fetchImpl: typeof fetch = fetch;
+    let crossOriginFetchImpl: typeof fetch = fetch;
     let requestMetricsHandled = false;
 
     if (this.beforeRequest) {
@@ -2916,6 +2923,9 @@ export class GitLabClient {
       }
       if (override?.fetchImpl) {
         fetchImpl = override.fetchImpl;
+        crossOriginFetchImpl = override.crossOriginFetchImpl ?? override.fetchImpl;
+      } else if (override?.crossOriginFetchImpl) {
+        crossOriginFetchImpl = override.crossOriginFetchImpl;
       }
       requestMetricsHandled = override?.requestMetricsHandled === true;
     }
@@ -2926,11 +2936,25 @@ export class GitLabClient {
       method: options.method,
       body: requestBody,
       headers,
-      signal: AbortSignal.timeout(this.timeoutMs)
+      signal: AbortSignal.timeout(this.timeoutMs),
+      redirect: options.followDownloadRedirects ? "manual" : "error"
     };
-    return requestMetricsHandled
-      ? fetchImpl(url, requestInit)
-      : this.fetchWithMetrics(fetchImpl, url, requestInit);
+    const observedFetch: typeof fetch = requestMetricsHandled
+      ? fetchImpl
+      : (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+          this.fetchWithMetrics(fetchImpl, input, init);
+    if (!options.followDownloadRedirects) {
+      return observedFetch(url, requestInit);
+    }
+
+    const observedCrossOriginFetch: typeof fetch = requestMetricsHandled
+      ? crossOriginFetchImpl
+      : (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
+          this.fetchWithMetrics(crossOriginFetchImpl, input, init);
+    return fetchDownloadWithSafeRedirects(url, requestInit, {
+      fetchImpl: observedFetch,
+      crossOriginFetchImpl: observedCrossOriginFetch
+    });
   }
 
   private async toDownloadError(response: Response, label: string): Promise<GitLabApiError> {
@@ -3091,7 +3115,8 @@ export class GitLabClient {
         method: options.method,
         body: options.body,
         headers: options.headers,
-        signal: AbortSignal.timeout(this.timeoutMs)
+        signal: AbortSignal.timeout(this.timeoutMs),
+        redirect: "error"
       };
       const response = options.requestMetricsHandled
         ? await fetchImpl(url, requestInit)
@@ -3122,21 +3147,21 @@ export class GitLabClient {
 
   private async fetchWithMetrics(
     fetchImpl: typeof fetch,
-    url: URL,
-    init: RequestInit
+    url: string | URL | Request,
+    init?: RequestInit
   ): Promise<Response> {
     const startedAt = performance.now();
     try {
       const response = await fetchImpl(url, init);
       this.reportRequestMetric({
-        method: init.method ?? "GET",
+        method: init?.method ?? (url instanceof Request ? url.method : "GET"),
         statusCode: response.status,
         durationMs: performance.now() - startedAt
       });
       return response;
     } catch (error) {
       this.reportRequestMetric({
-        method: init.method ?? "GET",
+        method: init?.method ?? (url instanceof Request ? url.method : "GET"),
         statusCode: "network_error",
         durationMs: performance.now() - startedAt
       });
