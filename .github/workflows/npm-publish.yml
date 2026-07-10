@@ -24,7 +24,45 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
+      - name: Verify release tag matches package version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          package_version="$(node -p "require('./package.json').version")"
+          expected_tag="v${package_version}"
+          if [[ "$RELEASE_TAG" != "$expected_tag" ]]; then
+            printf 'Expected release tag %s but received %s\n' "$expected_tag" "$RELEASE_TAG" >&2
+            exit 1
+          fi
       - run: pnpm install --frozen-lockfile
+      - run: pnpm docs:check
+      - run: pnpm audit --prod --audit-level=high
       - run: pnpm build
       - run: pnpm test
+      - name: Verify packed consumer install and HTTP binary
+        shell: bash
+        run: |
+          pnpm build
+          tarball="$(npm pack --silent --pack-destination "$RUNNER_TEMP")"
+          consumer="$RUNNER_TEMP/gitlab-mcp-consumer"
+          mkdir -p "$consumer"
+          cd "$consumer"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts "$RUNNER_TEMP/$tarball"
+          test -x node_modules/.bin/gitlab-mcp
+          test -x node_modules/.bin/gitlab-mcp-http
+          GITLAB_PERSONAL_ACCESS_TOKEN=consumer-smoke \
+            HTTP_PORT=3344 \
+            node_modules/.bin/gitlab-mcp-http >server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for _ in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:3344/healthz >/dev/null; then
+              exit 0
+            fi
+            sleep 0.25
+          done
+          cat server.log
+          exit 1
       - run: npm publish --access public --provenance
