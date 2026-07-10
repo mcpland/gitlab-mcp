@@ -1399,6 +1399,37 @@ describe("Tool handler: gitlab_list_issues", () => {
       await serverTransport.close();
     }
   });
+
+  it("drops conflicting ID filters when non-empty username filters are present", async () => {
+    const listIssues = vi.fn().mockResolvedValue([]);
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listIssues } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_issues",
+        arguments: {
+          project_id: "group/project",
+          author_id: 1,
+          author_username: "alice",
+          assignee_id: 2,
+          assignee_username: ["bob"]
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listIssues).toHaveBeenCalledWith("group/project", {
+        query: {
+          author_username: "alice",
+          assignee_username: "bob"
+        }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
