@@ -880,6 +880,36 @@ describe("GitLabClient", () => {
       expect(deleteInit.method).toBe("DELETE");
     });
 
+    it("lists protected branches with search and pagination", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([{ name: "release/*" }]));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.listProtectedBranches("group/project", {
+        query: { search: "release", page: 2, per_page: 50 }
+      });
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toContain("/projects/group%2Fproject/protected_branches");
+      expect(url.searchParams.get("search")).toBe("release");
+      expect(url.searchParams.get("page")).toBe("2");
+      expect(url.searchParams.get("per_page")).toBe("50");
+      expect(init.method).toBe("GET");
+    });
+
+    it("gets a protected wildcard branch with an encoded path", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ name: "release/*" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.getProtectedBranch("group/project", "release/*");
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      expect(String(requestUrl)).toContain(
+        "/projects/group%2Fproject/protected_branches/release%2F*"
+      );
+      expect(init.method).toBe("GET");
+    });
+
     it("preserves legacy repository tree array responses", async () => {
       fetchMock.mockResolvedValue(jsonResponse([{ name: "src", type: "tree" }]));
 

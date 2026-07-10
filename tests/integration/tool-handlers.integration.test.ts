@@ -664,6 +664,89 @@ describe("Tool handlers: branch tools", () => {
     }
   });
 
+  it("passes search and pagination to gitlab_list_protected_branches", async () => {
+    const listProtectedBranches = vi.fn().mockResolvedValue([{ name: "release/*" }]);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listProtectedBranches } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_protected_branches",
+        arguments: {
+          project_id: "group/project",
+          search: "release",
+          page: 2,
+          per_page: 50
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listProtectedBranches).toHaveBeenCalledWith("group/project", {
+        query: { search: "release", page: 2, per_page: 50 }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("passes wildcard rule to gitlab_get_protected_branch", async () => {
+    const getProtectedBranch = vi.fn().mockResolvedValue({ name: "release/*" });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getProtectedBranch } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_protected_branch",
+        arguments: { project_id: "group/project", branch: "release/*" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getProtectedBranch).toHaveBeenCalledWith("group/project", "release/*");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects protected-branch reads outside the configured project scope", async () => {
+    const listProtectedBranches = vi.fn();
+    const getProtectedBranch = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["group/allowed"],
+        gitlabStub: { listProtectedBranches, getProtectedBranch }
+      })
+    );
+
+    try {
+      for (const call of [
+        {
+          name: "gitlab_list_protected_branches",
+          arguments: { project_id: "group/forbidden" }
+        },
+        {
+          name: "gitlab_get_protected_branch",
+          arguments: { project_id: "group/forbidden", branch: "main" }
+        }
+      ]) {
+        const result = await client.callTool(call);
+        expect(result.isError, call.name).toBe(true);
+      }
+
+      expect(listProtectedBranches).not.toHaveBeenCalled();
+      expect(getProtectedBranch).not.toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
   it("passes branch name to gitlab_delete_branch", async () => {
     const deleteBranch = vi.fn().mockResolvedValue({ ok: true });
 

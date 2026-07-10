@@ -6,6 +6,10 @@ const REF_LIKE_PATTERN = new RegExp(
   String.raw`^(?!/)(?!.*//)(?!.*(?:^|/)\.)(?!.*/$)(?!.*\.$)(?!.*\.lock$)(?!.*(?:\.\.|@\{))[^\u0000-\u001F\u007F ~^:?*\[\\]+$`,
   "u"
 );
+const PROTECTED_BRANCH_NAME_PATTERN = new RegExp(
+  String.raw`^(?!/)(?!.*//)(?!.*(?:^|/)\.)(?!.*/$)(?!.*\.$)(?!.*\.lock$)(?!.*(?:\.\.|@\{))[^\u0000-\u001F\u007F ~^:?\[\\]+$`,
+  "u"
+);
 const SLUG_PATTERN = new RegExp(
   String.raw`^(?!/)(?!.*//)(?!.*(?:^|/)\.\.?(?:/|$))(?!.*[?#])[^\u0000-\u001F\u007F]+$`,
   "u"
@@ -34,6 +38,15 @@ export const refLikeSchema = z
   .regex(REF_LIKE_PATTERN, "must be a valid Git ref-like name");
 
 export const optionalRefLikeSchema = nullableOptional(refLikeSchema);
+
+export const protectedBranchNameSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(
+    PROTECTED_BRANCH_NAME_PATTERN,
+    "must be a valid protected branch name or wildcard pattern"
+  );
 
 export const slugSchema = z
   .string()

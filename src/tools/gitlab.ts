@@ -30,6 +30,7 @@ import {
   optionalProjectIdSchema,
   optionalRefLikeSchema,
   optionalUrlOrPathSchema,
+  protectedBranchNameSchema,
   projectIdSchema,
   refLikeSchema,
   slugSchema
@@ -808,6 +809,36 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       },
       handler: async (args, context) =>
         context.gitlab.getBranch(resolveProjectId(args, context, true), getString(args, "branch"))
+    },
+    {
+      name: "gitlab_list_protected_branches",
+      title: "List Protected Branches",
+      description: "List protected branch rules for a project.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        search: optionalString,
+        ...paginationShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.listProtectedBranches(resolveProjectId(args, context, true), {
+          query: toQuery(omit(args, ["project_id"]))
+        })
+    },
+    {
+      name: "gitlab_get_protected_branch",
+      title: "Get Protected Branch",
+      description: "Get one protected branch or wildcard rule.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        branch: protectedBranchNameSchema
+      },
+      handler: async (args, context) =>
+        context.gitlab.getProtectedBranch(
+          resolveProjectId(args, context, true),
+          getString(args, "branch")
+        )
     },
     {
       name: "gitlab_delete_branch",

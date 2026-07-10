@@ -491,6 +491,18 @@ export class GitLabClient {
     );
   }
 
+  listProtectedBranches(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/protected_branches`, options);
+  }
+
+  getProtectedBranch(
+    projectId: string,
+    branch: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(`/projects/${encode(projectId)}/protected_branches/${encode(branch)}`, options);
+  }
+
   deleteBranch(
     projectId: string,
     branch: string,

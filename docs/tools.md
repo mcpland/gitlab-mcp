@@ -69,19 +69,21 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 
 ## Repository & Files
 
-| Tool                           | Mutating | Description                                                                                                                                                                                        |
-| ------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gitlab_get_repository_tree`   | No       | List files and directories. Supports `path`, `ref`, `recursive`, and pagination. Keyset responses include `next_page_token` when GitLab returns one.                                               |
-| `gitlab_get_file_contents`     | No       | Get file by path and ref. Params: `file_path` (required), `ref` (defaults to project's default branch). Set `decode_base64` to return UTF-8 text for GitLab base64 file payloads.                  |
-| `gitlab_get_file_blame`        | No       | Get git blame for a file. Params: `file_path`, `ref` (required). Supports paired `range_start` and `range_end`.                                                                                    |
-| `gitlab_create_or_update_file` | **Yes**  | Create or update a single file. Params: `file_path`, `branch`, `content`, `commit_message` (all required). Supports `encoding`, `author_email`, `author_name`, `start_branch`, `last_commit_id`.   |
-| `gitlab_push_files`            | **Yes**  | Create a commit with multiple file actions. Params: `branch`, `commit_message` (required), `actions` array (each with `action`, `file_path`, `content`, etc.). Also accepts legacy `files` format. |
-| `gitlab_create_branch`         | **Yes**  | Create a new branch. Params: `branch` (required), `ref` (defaults to default branch).                                                                                                              |
-| `gitlab_list_branches`         | No       | List repository branches. Supports `search`, `regex`, `sort`, and pagination.                                                                                                                      |
-| `gitlab_get_branch`            | No       | Get details for one branch. Params: `branch` (required).                                                                                                                                           |
-| `gitlab_delete_branch`         | **Yes**  | Delete a repository branch. Params: `branch` (required).                                                                                                                                           |
-| `gitlab_get_branch_diffs`      | No       | Compare two branches/refs and return diffs. Params: `from`, `to` (required), `straight`, `excluded_file_patterns`.                                                                                 |
-| `gitlab_search_code_blobs`     | No       | Search code in a project. Params: `search` (required), `ref`. Also supports `filename`, `path`, `extension`.                                                                                       |
+| Tool                             | Mutating | Description                                                                                                                                                                                        |
+| -------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_get_repository_tree`     | No       | List files and directories. Supports `path`, `ref`, `recursive`, and pagination. Keyset responses include `next_page_token` when GitLab returns one.                                               |
+| `gitlab_get_file_contents`       | No       | Get file by path and ref. Params: `file_path` (required), `ref` (defaults to project's default branch). Set `decode_base64` to return UTF-8 text for GitLab base64 file payloads.                  |
+| `gitlab_get_file_blame`          | No       | Get git blame for a file. Params: `file_path`, `ref` (required). Supports paired `range_start` and `range_end`.                                                                                    |
+| `gitlab_create_or_update_file`   | **Yes**  | Create or update a single file. Params: `file_path`, `branch`, `content`, `commit_message` (all required). Supports `encoding`, `author_email`, `author_name`, `start_branch`, `last_commit_id`.   |
+| `gitlab_push_files`              | **Yes**  | Create a commit with multiple file actions. Params: `branch`, `commit_message` (required), `actions` array (each with `action`, `file_path`, `content`, etc.). Also accepts legacy `files` format. |
+| `gitlab_create_branch`           | **Yes**  | Create a new branch. Params: `branch` (required), `ref` (defaults to default branch).                                                                                                              |
+| `gitlab_list_branches`           | No       | List repository branches. Supports `search`, `regex`, `sort`, and pagination.                                                                                                                      |
+| `gitlab_get_branch`              | No       | Get details for one branch. Params: `branch` (required).                                                                                                                                           |
+| `gitlab_list_protected_branches` | No       | List protected branch rules. Supports `search` and pagination.                                                                                                                                     |
+| `gitlab_get_protected_branch`    | No       | Get one protected branch or wildcard rule. Params: `branch` (required).                                                                                                                            |
+| `gitlab_delete_branch`           | **Yes**  | Delete a repository branch. Params: `branch` (required).                                                                                                                                           |
+| `gitlab_get_branch_diffs`        | No       | Compare two branches/refs and return diffs. Params: `from`, `to` (required), `straight`, `excluded_file_patterns`.                                                                                 |
+| `gitlab_search_code_blobs`       | No       | Search code in a project. Params: `search` (required), `ref`. Also supports `filename`, `path`, `extension`.                                                                                       |
 
 ---
 
