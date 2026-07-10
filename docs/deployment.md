@@ -177,7 +177,8 @@ Status is `"degraded"` when session count reaches `MAX_SESSIONS`.
 
 ```bash
 cp .env.example .env
-# Edit .env with your settings
+# For the multi-user example, set REMOTE_AUTHORIZATION=true and leave
+# GITLAB_PERSONAL_ACCESS_TOKEN/GITLAB_JOB_TOKEN empty. Clients supply their token.
 ```
 
 2. Start the service:
@@ -186,7 +187,14 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-The HTTP server will be available at `http://127.0.0.1:3333`.
+The Compose service forces `HTTP_HOST=0.0.0.0` and `HTTP_PORT=3333` inside the
+container, supplies `MCP_ALLOWED_HOSTS=127.0.0.1` when it is not set in `.env`,
+and publishes only `127.0.0.1:3333` on the host. The HTTP server will be available
+at `http://127.0.0.1:3333`.
+
+For a public reverse proxy, keep the container port bound to host loopback and set
+`MCP_ALLOWED_HOSTS` to the public hostname (or set `MCP_SERVER_URL`); do not publish
+the port on every host interface.
 
 ### Using Dockerfile Directly
 
@@ -194,22 +202,31 @@ The HTTP server will be available at `http://127.0.0.1:3333`.
 # Build
 docker build -t gitlab-mcp .
 
-# Run with environment variables
+# Run with per-request GitLab credentials
 docker run -d \
   --name gitlab-mcp \
-  -p 3333:3333 \
+  -p 127.0.0.1:3333:3333 \
+  -e HTTP_HOST=0.0.0.0 \
+  -e MCP_ALLOWED_HOSTS=127.0.0.1 \
+  -e REMOTE_AUTHORIZATION=true \
   -e GITLAB_API_URL=https://gitlab.com/api/v4 \
-  -e GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxx \
   -e NODE_ENV=production \
   gitlab-mcp
 
-# Or with .env file
+# Or with an env file containing the same HTTP_HOST, MCP_ALLOWED_HOSTS,
+# REMOTE_AUTHORIZATION, and GitLab API settings
 docker run -d \
   --name gitlab-mcp \
-  -p 3333:3333 \
+  -p 127.0.0.1:3333:3333 \
   --env-file .env \
   gitlab-mcp
 ```
+
+In remote-authorization mode, clients send their GitLab credential in
+`Authorization: Bearer <token>`, `Private-Token`, or `Job-Token`. If the env file
+instead contains a server-side GitLab credential, also set an independent 32+
+character `MCP_HTTP_AUTH_TOKEN`; clients authenticate to MCP with that bearer and
+must not send the server-held GitLab credential.
 
 ### Docker Image Details
 

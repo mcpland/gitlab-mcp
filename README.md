@@ -201,6 +201,7 @@ Start server:
 ```bash
 REMOTE_AUTHORIZATION=true \
 HTTP_HOST=0.0.0.0 \
+MCP_ALLOWED_HOSTS=127.0.0.1 \
 HTTP_PORT=3333 \
 node dist/http.js
 ```
@@ -226,6 +227,7 @@ Dynamic per-request API URL:
 REMOTE_AUTHORIZATION=true \
 ENABLE_DYNAMIC_API_URL=true \
 HTTP_HOST=0.0.0.0 \
+MCP_ALLOWED_HOSTS=127.0.0.1 \
 HTTP_PORT=3333 \
 node dist/http.js
 ```
@@ -250,13 +252,18 @@ Remote auth behavior matrix:
 | `REMOTE_AUTHORIZATION=true` + `ENABLE_DYNAMIC_API_URL=true` | `Authorization`, `Private-Token`, or `Job-Token`, and `X-GitLab-API-URL: https://host/api/v4` | disabled             |
 
 When `HTTP_HOST` is not `127.0.0.1`, `localhost`, or `::1`, HTTP startup rejects
-server-side `GITLAB_PERSONAL_ACCESS_TOKEN` or `GITLAB_JOB_TOKEN` unless
-`REMOTE_AUTHORIZATION=true`.
+server-side `GITLAB_PERSONAL_ACCESS_TOKEN` or `GITLAB_JOB_TOKEN` unless inbound
+requests are protected by `MCP_HTTP_AUTH_TOKEN`, `REMOTE_AUTHORIZATION=true`, or
+`GITLAB_MCP_OAUTH=true`.
 
 ### Docker
 
 For containerized deployments, PAT or remote auth is recommended.
 OAuth interactive callback flow is usually less convenient in containers.
+The Compose service listens on `0.0.0.0` inside the container but publishes only
+`127.0.0.1:3333` on the host by default. For the remote-authorization example,
+set `REMOTE_AUTHORIZATION=true` in `.env`, leave server-side GitLab credentials
+empty, and send each client's GitLab token as shown above.
 
 ```bash
 docker compose up --build -d
@@ -269,11 +276,18 @@ docker build -t gitlab-mcp .
 
 docker run -d \
   --name gitlab-mcp \
-  -p 3333:3333 \
+  -p 127.0.0.1:3333:3333 \
+  -e HTTP_HOST=0.0.0.0 \
+  -e MCP_ALLOWED_HOSTS=127.0.0.1 \
+  -e REMOTE_AUTHORIZATION=true \
   -e GITLAB_API_URL=https://gitlab.com/api/v4 \
-  -e GITLAB_PERSONAL_ACCESS_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
   gitlab-mcp
 ```
+
+Clients must send their GitLab credential in `Authorization: Bearer <token>`,
+`Private-Token`, or `Job-Token`. To keep a GitLab token in the container instead,
+set a separate 32+ character `MCP_HTTP_AUTH_TOKEN` and require clients to send that
+value as the bearer token; never expose a server-held GitLab token as the MCP bearer.
 
 ### Compatibility notes
 
