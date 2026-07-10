@@ -1691,6 +1691,24 @@ describe("Tool handler: gitlab_verify_namespace", () => {
       await pair.serverTransport.close();
     }
   });
+
+  it("treats an empty parent_id as omitted", async () => {
+    const verifyNamespace = vi.fn().mockResolvedValue({ exists: true });
+    const pair = await createLinkedPair(buildContext({ gitlabStub: { verifyNamespace } }));
+
+    try {
+      const result = await pair.client.callTool({
+        name: "gitlab_verify_namespace",
+        arguments: { path: "platform", parent_id: "" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(verifyNamespace).toHaveBeenCalledWith("platform", undefined);
+    } finally {
+      await pair.clientTransport.close();
+      await pair.serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */

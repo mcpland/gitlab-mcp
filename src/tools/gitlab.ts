@@ -166,6 +166,12 @@ const writeGraphqlCapabilities: ToolCapability[] = ["write", "graphql"];
 
 const optionalString = nullableOptional(z.string());
 const optionalNumber = nullableOptional(z.number());
+const optionalPositiveIntegerFromEmptyString = z
+  .preprocess(
+    (value) => (value === "" || value === null ? undefined : value),
+    z.coerce.number().int().positive().optional()
+  )
+  .optional();
 const optionalBoolean = nullableOptional(z.boolean());
 const optionalStringArray = nullableOptional(z.array(z.string()));
 const optionalNumberArray = nullableOptional(z.array(z.number()));
@@ -4556,7 +4562,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       capabilities: readCapabilities,
       inputSchema: {
         path: z.string().min(1),
-        parent_id: nullableOptional(z.number().int().positive())
+        parent_id: optionalPositiveIntegerFromEmptyString
       },
       handler: async (args, context) => {
         const parentId = getOptionalNumber(args, "parent_id");
