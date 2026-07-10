@@ -1,25 +1,31 @@
-export function stripNullsDeep<T>(value: T): T {
-  if (value === null) {
-    return undefined as T;
-  }
+const PRESERVED_TOP_LEVEL_NULL_FIELDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  gitlab_create_label: new Set(["priority"]),
+  gitlab_update_label: new Set(["priority"])
+};
 
-  if (Array.isArray(value)) {
-    return value.map((item) => stripNullsDeep(item)).filter((item) => item !== undefined) as T;
-  }
+/**
+ * Remove null/undefined values injected for omitted top-level MCP arguments.
+ * Nested values are intentional payload data and must be preserved (for
+ * example GraphQL variables and merge-request diff position line numbers).
+ */
+export function sanitizeToolArguments(
+  toolName: string,
+  args: Record<string, unknown>
+): Record<string, unknown> {
+  const preservedNullFields = PRESERVED_TOP_LEVEL_NULL_FIELDS[toolName] ?? new Set<string>();
+  const output: Record<string, unknown> = {};
 
-  if (typeof value === "object" && value !== undefined) {
-    const input = value as Record<string, unknown>;
-    const output: Record<string, unknown> = {};
-
-    for (const [key, item] of Object.entries(input)) {
-      const normalized = stripNullsDeep(item);
-      if (normalized !== undefined) {
-        output[key] = normalized;
-      }
+  for (const [key, value] of Object.entries(args)) {
+    if (value === undefined) {
+      continue;
     }
 
-    return output as T;
+    if (value === null && !preservedNullFields.has(key)) {
+      continue;
+    }
+
+    output[key] = value;
   }
 
-  return value;
+  return output;
 }
