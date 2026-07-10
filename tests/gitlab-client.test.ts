@@ -664,6 +664,27 @@ describe("GitLabClient", () => {
       expect(membersUrl.searchParams.has("skip_users")).toBe(false);
     });
 
+    it("selects the project member endpoint from includeInheritance", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.listProjectMembers("group/project");
+      await client.listProjectMembers("group/project", { includeInheritance: false });
+      await client.listProjectMembers("group/project", {
+        includeInheritance: true,
+        query: { page: 2 }
+      });
+
+      const urls = fetchMock.mock.calls.map(([requestUrl]) => new URL(String(requestUrl)));
+      expect(urls.map((url) => url.pathname)).toEqual([
+        "/api/v4/projects/group%2Fproject/members",
+        "/api/v4/projects/group%2Fproject/members",
+        "/api/v4/projects/group%2Fproject/members/all"
+      ]);
+      expect(urls.every((url) => !url.searchParams.has("include_inheritance"))).toBe(true);
+      expect(urls[2]?.searchParams.get("page")).toBe("2");
+    });
+
     it("supports global issue listing endpoint", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
 

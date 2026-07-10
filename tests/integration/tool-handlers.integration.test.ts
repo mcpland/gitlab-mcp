@@ -191,6 +191,38 @@ describe("Tool handler: gitlab_list_project_members", () => {
       await serverTransport.close();
     }
   });
+
+  it("forwards inheritance as endpoint selection instead of a query field", async () => {
+    const listProjectMembers = vi.fn().mockResolvedValue([]);
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listProjectMembers } })
+    );
+
+    try {
+      for (const includeInheritance of [true, false]) {
+        const result = await client.callTool({
+          name: "gitlab_list_project_members",
+          arguments: {
+            project_id: "group/project",
+            include_inheritance: includeInheritance
+          }
+        });
+        expect(result.isError, String(includeInheritance)).toBeFalsy();
+      }
+
+      expect(listProjectMembers).toHaveBeenNthCalledWith(1, "group/project", {
+        query: {},
+        includeInheritance: true
+      });
+      expect(listProjectMembers).toHaveBeenNthCalledWith(2, "group/project", {
+        query: {},
+        includeInheritance: false
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -4013,9 +4045,11 @@ describe("resolveProjectId with GITLAB_ALLOWED_PROJECT_IDS", () => {
   });
 
   it("matches encoded project paths by canonical allowlist identity", async () => {
-    const getProject = vi.fn().mockImplementation((projectId: string) =>
-      Promise.resolve({ id: 1, path_with_namespace: projectId })
-    );
+    const getProject = vi
+      .fn()
+      .mockImplementation((projectId: string) =>
+        Promise.resolve({ id: 1, path_with_namespace: projectId })
+      );
     const { client, clientTransport, serverTransport } = await createLinkedPair(
       buildContext({
         allowedProjectIds: ["group/allowed-project"],

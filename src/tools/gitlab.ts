@@ -597,7 +597,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_list_project_members",
       title: "List Project Members",
-      description: "List members of a project.",
+      description:
+        "List direct project members by default; set include_inheritance=true to include inherited members.",
       capabilities: readCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
@@ -611,12 +612,14 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         const projectId = resolveProjectId(args, context, true);
         const userIds = getOptionalNumberArray(args, "user_ids");
         const skipUsers = getOptionalNumberArray(args, "skip_users");
+        const includeInheritance = getOptionalBoolean(args, "include_inheritance");
         return context.gitlab.listProjectMembers(projectId, {
           query: {
-            ...toQuery(omit(args, ["project_id", "user_ids", "skip_users"])),
+            ...toQuery(omit(args, ["project_id", "user_ids", "skip_users", "include_inheritance"])),
             ...(userIds ? { user_ids: userIds } : {}),
             ...(skipUsers ? { skip_users: skipUsers } : {})
-          }
+          },
+          ...(includeInheritance !== undefined ? { includeInheritance } : {})
         });
       }
     },

@@ -54,6 +54,10 @@ export interface GitLabJobTraceOptions extends GitLabRequestOptions {
   offset?: number;
 }
 
+export interface GitLabProjectMemberListOptions extends GitLabRequestOptions {
+  includeInheritance?: boolean;
+}
+
 export interface GitLabBeforeRequestContext {
   url: URL;
   method: string;
@@ -282,8 +286,13 @@ export class GitLabClient {
     });
   }
 
-  listProjectMembers(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/members/all`, options);
+  listProjectMembers(
+    projectId: string,
+    options: GitLabProjectMemberListOptions = {}
+  ): Promise<unknown> {
+    const { includeInheritance = false, ...requestOptions } = options;
+    const membersPath = includeInheritance ? "members/all" : "members";
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/${membersPath}`, requestOptions);
   }
 
   listProjectVariables(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
