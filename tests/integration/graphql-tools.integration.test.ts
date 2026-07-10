@@ -94,6 +94,8 @@ describe("GraphQL tools: Registration", () => {
       expect(names).toContain("gitlab_update_project");
       expect(names).toContain("gitlab_execute_graphql_mutation");
       expect(names).not.toContain("gitlab_delete_issue");
+      expect(names).not.toContain("gitlab_delete_work_item_emoji_reaction");
+      expect(names).not.toContain("gitlab_delete_work_item_note_emoji_reaction");
 
       const discovery = await client.callTool({
         name: "gitlab_discover_tools",

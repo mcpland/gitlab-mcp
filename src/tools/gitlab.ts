@@ -173,6 +173,7 @@ const adminGraphqlCapabilities: ToolCapability[] = ["admin", "graphql"];
 const adminDeleteCapabilities: ToolCapability[] = ["admin", "delete"];
 const readGraphqlCapabilities: ToolCapability[] = ["read", "graphql"];
 const writeGraphqlCapabilities: ToolCapability[] = ["write", "graphql"];
+const deleteGraphqlCapabilities: ToolCapability[] = ["delete", "graphql"];
 
 const optionalString = nullableOptional(z.string());
 const optionalNumber = nullableOptional(z.number());
@@ -5205,7 +5206,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       title: "Delete Work Item Emoji Reaction",
       description:
         "Remove the current user's emoji reaction from a work item by emoji name. Requires iid and name.",
-      capabilities: writeGraphqlCapabilities,
+      capabilities: deleteGraphqlCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
         iid: workItemIidSchema,
@@ -5251,7 +5252,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       title: "Delete Work Item Note Emoji Reaction",
       description:
         "Remove the current user's emoji reaction from a work item note by GraphQL note_id and emoji name.",
-      capabilities: writeGraphqlCapabilities,
+      capabilities: deleteGraphqlCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
         iid: workItemIidSchema,
