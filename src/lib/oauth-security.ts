@@ -4,6 +4,7 @@ export interface McpOAuthSecurityConfig {
   enabled: boolean;
   serverUrl?: string;
   httpAuthToken?: string;
+  remoteAuthorization?: boolean;
 }
 
 export interface McpOAuthProxyConfig {
@@ -22,6 +23,11 @@ export interface OAuthGroupSecurityConfig {
 export function assertSafeMcpOAuthConfiguration(config: McpOAuthSecurityConfig): void {
   if (!config.enabled) {
     return;
+  }
+  if (config.remoteAuthorization) {
+    throw new Error(
+      "REMOTE_AUTHORIZATION=true cannot be combined with GITLAB_MCP_OAUTH=true; choose one per-request authentication mode"
+    );
   }
   if (!config.serverUrl) {
     throw new Error("GITLAB_MCP_OAUTH=true requires MCP_SERVER_URL");

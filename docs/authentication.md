@@ -1,6 +1,8 @@
 # Authentication Guide
 
 gitlab-mcp supports multiple authentication methods. Token behavior depends on whether remote authorization is enabled.
+`REMOTE_AUTHORIZATION=true` and `GITLAB_MCP_OAUTH=true` are alternative per-request HTTP
+authentication modes and cannot be enabled together.
 
 ## Token Resolution
 

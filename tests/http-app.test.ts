@@ -629,7 +629,7 @@ describe("http app download proxy", () => {
     }
   });
 
-  it("enforces MCP OAuth application and group policy on direct downloads", async () => {
+  it("prioritizes MCP OAuth application and group policy for direct downloads", async () => {
     let downloadRequests = 0;
     let directPatValidationRequests = 0;
     const gitLabServer = createServer((req, res) => {
@@ -678,6 +678,8 @@ describe("http app download proxy", () => {
       context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
       context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
       context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      // setupMcpHttpApp also defends embedded callers that bypass env startup validation.
+      context.env.REMOTE_AUTHORIZATION = true;
       context.env.GITLAB_MCP_OAUTH = true;
       context.env.GITLAB_OAUTH_ALLOWED_GROUPS = ["my-org"];
       context.env.MCP_SERVER_URL = "https://mcp.example.com";

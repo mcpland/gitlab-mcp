@@ -233,6 +233,7 @@ The server enforces these cross-field constraints at startup:
 - `GITLAB_OAUTH_ALLOWED_GROUPS` requires local OAuth or MCP OAuth and contains group full paths, not display names or URLs
 - non-loopback `MCP_SERVER_URL` values must use HTTPS when `GITLAB_MCP_OAUTH=true`; HTTP is accepted only for `localhost`, `127.0.0.1`, and `[::1]`
 - `MCP_HTTP_AUTH_TOKEN` cannot be combined with `GITLAB_MCP_OAUTH=true` because both consume `Authorization: Bearer`
+- `REMOTE_AUTHORIZATION=true` cannot be combined with `GITLAB_MCP_OAUTH=true`; choose one per-request HTTP authentication mode
 - `ENABLE_DYNAMIC_API_URL=true` requires `REMOTE_AUTHORIZATION=true`
 - `SSE=true` is not compatible with `REMOTE_AUTHORIZATION=true`
 - wildcard `HTTP_HOST` values (`0.0.0.0` or `::`) require `MCP_SERVER_URL` or `MCP_ALLOWED_HOSTS`

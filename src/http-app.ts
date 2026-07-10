@@ -1108,20 +1108,6 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     }
 
     const parsedAuth = parseRequestAuth(req);
-    if (appEnv.REMOTE_AUTHORIZATION) {
-      if (!parsedAuth?.token || !parsedAuth.header || !(await validateRequestAuth(parsedAuth))) {
-        metrics?.incrementAuthFailure("remote_gitlab");
-        return undefined;
-      }
-
-      return {
-        token: parsedAuth.token,
-        header: parsedAuth.header,
-        apiUrl: parsedAuth.apiUrl,
-        updatedAt: parsedAuth.updatedAt
-      };
-    }
-
     if (appEnv.GITLAB_MCP_OAUTH) {
       if (!parsedAuth?.token || !parsedAuth.header) {
         metrics?.incrementAuthFailure("mcp_oauth");
@@ -1148,6 +1134,20 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
           metrics?.incrementAuthFailure("mcp_oauth");
           return undefined;
         }
+      }
+
+      return {
+        token: parsedAuth.token,
+        header: parsedAuth.header,
+        apiUrl: parsedAuth.apiUrl,
+        updatedAt: parsedAuth.updatedAt
+      };
+    }
+
+    if (appEnv.REMOTE_AUTHORIZATION) {
+      if (!parsedAuth?.token || !parsedAuth.header || !(await validateRequestAuth(parsedAuth))) {
+        metrics?.incrementAuthFailure("remote_gitlab");
+        return undefined;
       }
 
       return {

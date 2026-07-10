@@ -210,7 +210,8 @@ if (data.GITLAB_USE_OAUTH === "true" && !data.GITLAB_OAUTH_CLIENT_ID) {
 assertSafeMcpOAuthConfiguration({
   enabled: data.GITLAB_MCP_OAUTH === "true",
   serverUrl: data.MCP_SERVER_URL,
-  httpAuthToken: data.MCP_HTTP_AUTH_TOKEN
+  httpAuthToken: data.MCP_HTTP_AUTH_TOKEN,
+  remoteAuthorization: data.REMOTE_AUTHORIZATION === "true"
 });
 
 assertMcpOAuthProxyConfiguration({

@@ -35,6 +35,16 @@ describe("assertSafeMcpOAuthConfiguration", () => {
     ).toThrow("MCP_HTTP_AUTH_TOKEN cannot be combined");
   });
 
+  it("rejects combining remote authorization with MCP OAuth", () => {
+    expect(() =>
+      assertSafeMcpOAuthConfiguration({
+        enabled: true,
+        serverUrl: "https://mcp.example.com",
+        remoteAuthorization: true
+      })
+    ).toThrow("REMOTE_AUTHORIZATION=true cannot be combined with GITLAB_MCP_OAUTH=true");
+  });
+
   it("rejects issuer URLs containing credentials", () => {
     expect(() =>
       assertSafeMcpOAuthConfiguration({

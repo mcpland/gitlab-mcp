@@ -78,4 +78,19 @@ describe("environment defaults", () => {
       )
     ).toBe("d".repeat(32));
   });
+
+  it("rejects combining remote authorization with MCP OAuth", () => {
+    expect(() =>
+      readEnvironmentValue(
+        "env.GITLAB_MCP_OAUTH",
+        [
+          "REMOTE_AUTHORIZATION=true",
+          "GITLAB_MCP_OAUTH=true",
+          "MCP_SERVER_URL=https://mcp.example.com",
+          "GITLAB_OAUTH_APP_ID=test-app",
+          `GITLAB_MCP_OAUTH_STATE_SECRET=${Buffer.alloc(32, 7).toString("base64url")}`
+        ].join("\n")
+      )
+    ).toThrow("REMOTE_AUTHORIZATION=true cannot be combined with GITLAB_MCP_OAUTH=true");
+  });
 });
