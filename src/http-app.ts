@@ -27,7 +27,11 @@ import {
   downloadTokenResourceMatches,
   type DownloadTokenResource
 } from "./lib/download-token.js";
-import { encodeGitLabProjectId, isGitLabProjectIdentityAllowed } from "./lib/gitlab-path.js";
+import {
+  encodeGitLabProjectId,
+  encodeGitLabSlashPath,
+  isGitLabProjectIdentityAllowed
+} from "./lib/gitlab-path.js";
 import { FixedWindowRateLimiter } from "./lib/fixed-window-rate-limiter.js";
 import { buildGitLabApiUrlPolicy } from "./lib/gitlab-api-url-policy.js";
 import { GitLabAuthValidator } from "./lib/gitlab-auth-validator.js";
@@ -516,9 +520,17 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         return;
       }
 
-      const gitLabPath = buildDownloadGitLabPath(resource, appEnv);
+      const gitLabTarget = buildDownloadGitLabTarget(resource, appEnv);
       const apiUrl = getDownloadApiUrl(req, auth.apiUrl);
-      const url = new URL(gitLabPath.replace(/^\//, ""), `${apiUrl.replace(/\/+$/, "")}/`);
+      const baseUrl = `${apiUrl.replace(/\/+$/, "")}/`;
+      const url = new URL(gitLabTarget.path.replace(/^\//, ""), baseUrl);
+      const expectedPrefix = new URL(gitLabTarget.expectedPathPrefix.replace(/^\//, ""), baseUrl);
+      if (
+        url.origin !== expectedPrefix.origin ||
+        !url.pathname.startsWith(expectedPrefix.pathname)
+      ) {
+        throw new DownloadClientError("Download path escaped its expected GitLab API endpoint");
+      }
       const startedAt = performance.now();
       let gitLabResponse: Response;
       try {
@@ -1442,7 +1454,10 @@ function getDownloadResourceFromRequest(req: express.Request): DownloadTokenReso
   return { type, params };
 }
 
-function buildDownloadGitLabPath(resource: DownloadTokenResource, env: AppContext["env"]): string {
+function buildDownloadGitLabTarget(
+  resource: DownloadTokenResource,
+  env: AppContext["env"]
+): { path: string; expectedPathPrefix: string } {
   const projectId = resource.params.project_id;
   if (!projectId) {
     throw new DownloadClientError("project_id is required");
@@ -1455,7 +1470,8 @@ function buildDownloadGitLabPath(resource: DownloadTokenResource, env: AppContex
       if (!jobId) {
         throw new DownloadClientError("job_id is required");
       }
-      return `/projects/${encodeGitLabProjectId(projectId)}/jobs/${encodeURIComponent(jobId)}/artifacts`;
+      const path = `/projects/${encodeGitLabProjectId(projectId)}/jobs/${encodeURIComponent(jobId)}/artifacts`;
+      return { path, expectedPathPrefix: path };
     }
 
     case "release-asset": {
@@ -1464,9 +1480,16 @@ function buildDownloadGitLabPath(resource: DownloadTokenResource, env: AppContex
       if (!tagName || !directAssetPath) {
         throw new DownloadClientError("tag_name and direct_asset_path are required");
       }
-      return `/projects/${encodeGitLabProjectId(projectId)}/releases/${encodeURIComponent(
+      const expectedPathPrefix = `/projects/${encodeGitLabProjectId(projectId)}/releases/${encodeURIComponent(
         tagName
-      )}/downloads/${encodeSlashPath(directAssetPath)}`;
+      )}/downloads/`;
+      let encodedPath: string;
+      try {
+        encodedPath = encodeGitLabSlashPath(directAssetPath, "direct_asset_path");
+      } catch (error) {
+        throw new DownloadClientError(error instanceof Error ? error.message : "Invalid path");
+      }
+      return { path: `${expectedPathPrefix}${encodedPath}`, expectedPathPrefix };
     }
 
     case "attachment": {
@@ -1475,9 +1498,11 @@ function buildDownloadGitLabPath(resource: DownloadTokenResource, env: AppContex
       if (!secret || !filename) {
         throw new DownloadClientError("secret and filename are required");
       }
-      return `/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(
+      const expectedPathPrefix = `/projects/${encodeGitLabProjectId(projectId)}/uploads/`;
+      const path = `${expectedPathPrefix}${encodeURIComponent(
         secret
       )}/${encodeURIComponent(filename)}`;
+      return { path, expectedPathPrefix };
     }
 
     default:
@@ -1527,15 +1552,6 @@ function getSingleQueryValue(value: unknown): string | undefined {
   }
 
   return undefined;
-}
-
-function encodeSlashPath(value: string): string {
-  return value
-    .replace(/^\/+/, "")
-    .split("/")
-    .filter((segment) => segment.length > 0)
-    .map((segment) => encodeURIComponent(segment))
-    .join("/");
 }
 
 class DownloadClientError extends Error {}

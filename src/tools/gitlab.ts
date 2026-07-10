@@ -17,7 +17,11 @@ import {
   type GitLabPipelineInputValue,
   type PushFileAction
 } from "../lib/gitlab-client.js";
-import { encodeGitLabProjectId, isGitLabProjectIdentityAllowed } from "../lib/gitlab-path.js";
+import {
+  encodeGitLabProjectId,
+  encodeGitLabSlashPath,
+  isGitLabProjectIdentityAllowed
+} from "../lib/gitlab-path.js";
 import {
   applySearchReplace,
   applyUnifiedDiff,
@@ -3899,12 +3903,15 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         job_id: z.string().min(1),
         artifact_path: z.string().min(1)
       },
-      handler: async (args, context) =>
-        context.gitlab.getJobArtifactFile(
+      handler: async (args, context) => {
+        const artifactPath = getString(args, "artifact_path");
+        encodeGitLabSlashPath(artifactPath, "artifact_path");
+        return context.gitlab.getJobArtifactFile(
           resolveProjectId(args, context, true),
           getString(args, "job_id"),
-          getString(args, "artifact_path")
-        )
+          artifactPath
+        );
+      }
     },
     {
       name: "gitlab_get_job_artifact_file_local",
@@ -3919,13 +3926,16 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         artifact_path: z.string().min(1),
         local_path: optionalString
       },
-      handler: async (args, context) =>
-        context.gitlab.saveJobArtifactFile(
+      handler: async (args, context) => {
+        const artifactPath = getString(args, "artifact_path");
+        encodeGitLabSlashPath(artifactPath, "artifact_path");
+        return context.gitlab.saveJobArtifactFile(
           resolveProjectId(args, context, true),
           getString(args, "job_id"),
-          getString(args, "artifact_path"),
+          artifactPath,
           getOptionalString(args, "local_path")
-        )
+        );
+      }
     },
     {
       name: "gitlab_create_pipeline",
@@ -4372,6 +4382,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         const projectId = resolveProjectId(args, context, true);
         const tagName = getString(args, "tag_name");
         const directAssetPath = getString(args, "direct_asset_path");
+        encodeGitLabSlashPath(directAssetPath, "direct_asset_path");
         if (shouldReturnDownloadProxy(context)) {
           return buildDownloadProxyResult(
             context,

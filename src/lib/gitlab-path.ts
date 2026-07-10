@@ -33,6 +33,35 @@ export function encodeGitLabNamespaceId(value: string): string {
   return encodeGitLabPathId(value, "namespace");
 }
 
+/** Encode a nested GitLab API subpath without allowing URL path traversal. */
+export function encodeGitLabSlashPath(value: string, label = "path"): string {
+  if (!value || value.trim().length === 0) {
+    throw new Error(`Invalid GitLab ${label}: path must not be empty`);
+  }
+
+  const segments = value.split("/");
+  if (segments.some((segment) => segment.length === 0)) {
+    throw new Error(`Invalid GitLab ${label}: empty path segments are not allowed`);
+  }
+
+  return segments
+    .map((segment) => {
+      const decoded = decodeSlashPathSegment(segment, label);
+      if (
+        !decoded ||
+        decoded === "." ||
+        decoded === ".." ||
+        decoded.includes("/") ||
+        decoded.includes("\\") ||
+        containsControlCharacter(decoded)
+      ) {
+        throw new Error(`Invalid GitLab ${label}: unsafe path segment`);
+      }
+      return encodeURIComponent(decoded);
+    })
+    .join("/");
+}
+
 function encodeGitLabPathId(value: string, kind: GitLabPathIdKind): string {
   const decoded = decodePathId(value, kind);
   validateDecodedPathId(decoded, kind);
@@ -73,4 +102,26 @@ function containsControlCharacter(value: string): boolean {
     const codePoint = character.codePointAt(0) ?? 0;
     return codePoint <= 0x1f || codePoint === 0x7f;
   });
+}
+
+function decodeSlashPathSegment(value: string, label: string): string {
+  let decoded = value;
+
+  for (let pass = 0; pass < MAX_PERCENT_DECODE_PASSES && decoded.includes("%"); pass += 1) {
+    if (/%(?![0-9a-fA-F]{2})/u.test(decoded)) {
+      throw new Error(`Invalid GitLab ${label}: malformed percent escape`);
+    }
+
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      throw new Error(`Invalid GitLab ${label}: malformed percent encoding`);
+    }
+  }
+
+  if (/%[0-9a-fA-F]{2}/u.test(decoded)) {
+    throw new Error(`Invalid GitLab ${label}: excessive percent encoding`);
+  }
+
+  return decoded;
 }

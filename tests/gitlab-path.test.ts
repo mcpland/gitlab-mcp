@@ -4,6 +4,7 @@ import {
   encodeGitLabGroupId,
   encodeGitLabNamespaceId,
   encodeGitLabProjectId,
+  encodeGitLabSlashPath,
   isGitLabProjectIdentityAllowed
 } from "../src/lib/gitlab-path.js";
 
@@ -79,6 +80,39 @@ describe("encodeGitLabNamespaceId", () => {
   it("rejects traversal paths", () => {
     expect(() => encodeGitLabNamespaceId("group/../secret")).toThrow(
       /Invalid GitLab namespace ID/u
+    );
+  });
+});
+
+describe("encodeGitLabSlashPath", () => {
+  it.each([
+    ["reports/summary.txt", "reports/summary.txt"],
+    ["bin/my app.tar.gz", "bin/my%20app.tar.gz"],
+    ["bin/my%20app.tar.gz", "bin/my%20app.tar.gz"]
+  ])("canonicalizes safe nested path %s", (input, expected) => {
+    expect(encodeGitLabSlashPath(input, "artifact_path")).toBe(expected);
+  });
+
+  it.each([
+    "",
+    ".",
+    "..",
+    "/secret",
+    "secret/",
+    "a//b",
+    "a/../b",
+    "a\\..\\b",
+    "%2e%2e/secret",
+    "%252e%252e/secret",
+    "%2fsecret",
+    "%252fsecret",
+    "%5csecret",
+    "%255csecret",
+    "%00secret",
+    "\u0000secret"
+  ])("rejects unsafe nested path %s", (input) => {
+    expect(() => encodeGitLabSlashPath(input, "artifact_path")).toThrow(
+      /Invalid GitLab artifact_path/u
     );
   });
 });

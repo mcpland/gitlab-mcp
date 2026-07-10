@@ -7,7 +7,8 @@ import { getSessionAuth, type SessionAuth } from "./auth-context.js";
 import {
   encodeGitLabGroupId,
   encodeGitLabNamespaceId,
-  encodeGitLabProjectId
+  encodeGitLabProjectId,
+  encodeGitLabSlashPath
 } from "./gitlab-path.js";
 import { LocalFileBoundary } from "./local-file-boundary.js";
 import { attachPaginationMetadata, extractGitLabPaginationMetadata } from "./pagination.js";
@@ -2175,10 +2176,11 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<GitLabArtifactFileContent> {
     const requestConfig = this.resolveRequestConfig(options);
-    const encodedArtifactPath = encodeSlashPath(artifactPath);
-    const url = new URL(
-      `projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/artifacts/${encodedArtifactPath}`,
-      `${requestConfig.apiUrl}/`
+    const url = buildSafeSlashPathUrl(
+      requestConfig.apiUrl,
+      `projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/artifacts/`,
+      artifactPath,
+      "artifact_path"
     );
 
     return this.downloadFileContent(
@@ -2201,10 +2203,11 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<GitLabSavedFile> {
     const requestConfig = this.resolveRequestConfig(options);
-    const encodedArtifactPath = encodeSlashPath(artifactPath);
-    const url = new URL(
-      `projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/artifacts/${encodedArtifactPath}`,
-      `${requestConfig.apiUrl}/`
+    const url = buildSafeSlashPathUrl(
+      requestConfig.apiUrl,
+      `projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/artifacts/`,
+      artifactPath,
+      "artifact_path"
     );
 
     return this.saveDownloadedFile(
@@ -2480,10 +2483,11 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<GitLabDownloadedFile> {
     const requestConfig = this.resolveRequestConfig(options);
-    const safePath = encodeSlashPath(directAssetPath);
-    const url = new URL(
-      `projects/${encodeGitLabProjectId(projectId)}/releases/${encode(tagName)}/downloads/${safePath}`,
-      `${requestConfig.apiUrl}/`
+    const url = buildSafeSlashPathUrl(
+      requestConfig.apiUrl,
+      `projects/${encodeGitLabProjectId(projectId)}/releases/${encode(tagName)}/downloads/`,
+      directAssetPath,
+      "direct_asset_path"
     );
 
     return this.downloadFile(
@@ -3337,17 +3341,21 @@ function encode(value: string): string {
   return encodeURIComponent(value);
 }
 
-function encodeSlashPath(pathValue: string): string {
-  const trimmed = pathValue.replace(/^\/+/, "").trim();
-  if (!trimmed) {
-    return "";
+function buildSafeSlashPathUrl(
+  apiUrl: string,
+  relativePrefix: string,
+  pathValue: string,
+  label: string
+): URL {
+  const baseUrl = `${apiUrl.replace(/\/+$/u, "")}/`;
+  const expectedPrefix = new URL(relativePrefix, baseUrl);
+  const url = new URL(`${relativePrefix}${encodeGitLabSlashPath(pathValue, label)}`, baseUrl);
+
+  if (url.origin !== expectedPrefix.origin || !url.pathname.startsWith(expectedPrefix.pathname)) {
+    throw new Error(`Invalid GitLab ${label}: resolved path escaped its API endpoint`);
   }
 
-  return trimmed
-    .split("/")
-    .filter((segment) => segment.length > 0)
-    .map((segment) => encode(segment))
-    .join("/");
+  return url;
 }
 
 function normalizeMergeRequestApprovalState(value: unknown): unknown {

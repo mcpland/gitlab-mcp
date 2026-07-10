@@ -2027,6 +2027,22 @@ describe("GitLabClient", () => {
       await expect(fs.readFile(result.filePath, "utf8")).resolves.toBe("coverage: 99%\n");
     });
 
+    it("rejects slash-path traversal before artifact or release requests", async () => {
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const attack = "../../../../../projects/999/repository/files/secret/raw";
+
+      await expect(client.getJobArtifactFile("group/allowed", "7", attack)).rejects.toThrow(
+        /Invalid GitLab artifact_path/u
+      );
+      await expect(client.saveJobArtifactFile("group/allowed", "7", attack)).rejects.toThrow(
+        /Invalid GitLab artifact_path/u
+      );
+      expect(() => client.downloadReleaseAsset("group/allowed", "v1", attack)).toThrow(
+        /Invalid GitLab direct_asset_path/u
+      );
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it("rejects artifact output directories that escape through a symbolic link", async () => {
       const allowedRoot = await createTempDir("gitlab-download-allowed-");
       const outsideRoot = await createTempDir("gitlab-download-outside-");

@@ -4754,6 +4754,50 @@ describe("Tool handler: pipeline deployment and artifact tools", () => {
       await serverTransport.close();
     }
   });
+
+  it("rejects slash-path traversal before strict-scope artifact and release calls", async () => {
+    const getJobArtifactFile = vi.fn();
+    const saveJobArtifactFile = vi.fn();
+    const downloadReleaseAsset = vi.fn();
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["group/allowed"],
+        gitlabStub: { getJobArtifactFile, saveJobArtifactFile, downloadReleaseAsset }
+      })
+    );
+    const attack = "../../../../../projects/999/repository/files/secret/raw";
+
+    try {
+      for (const call of [
+        {
+          name: "gitlab_get_job_artifact_file",
+          arguments: { project_id: "group/allowed", job_id: "7", artifact_path: attack }
+        },
+        {
+          name: "gitlab_get_job_artifact_file_local",
+          arguments: { project_id: "group/allowed", job_id: "7", artifact_path: attack }
+        },
+        {
+          name: "gitlab_download_release_asset",
+          arguments: {
+            project_id: "group/allowed",
+            tag_name: "v1",
+            direct_asset_path: attack
+          }
+        }
+      ]) {
+        const result = await client.callTool(call);
+        expect(result.isError, call.name).toBe(true);
+      }
+
+      expect(getJobArtifactFile).not.toHaveBeenCalled();
+      expect(saveJobArtifactFile).not.toHaveBeenCalled();
+      expect(downloadReleaseAsset).not.toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
