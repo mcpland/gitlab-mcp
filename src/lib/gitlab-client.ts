@@ -4,7 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { getSessionAuth, type SessionAuth } from "./auth-context.js";
-import { encodeGitLabProjectId } from "./gitlab-path.js";
+import { encodeGitLabGroupId, encodeGitLabProjectId } from "./gitlab-path.js";
 import { LocalFileBoundary } from "./local-file-boundary.js";
 import { attachPaginationMetadata, extractGitLabPaginationMetadata } from "./pagination.js";
 import type { GitLabAuthHeader } from "../types/auth.js";
@@ -215,7 +215,7 @@ export class GitLabClient {
     payload: GitLabProjectUpdate,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/projects/${encode(projectId)}`, {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -329,15 +329,15 @@ export class GitLabClient {
   }
 
   listGroupProjects(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/groups/${encode(groupId)}/projects`, options);
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}/projects`, options);
   }
 
   getGroup(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/groups/${encode(groupId)}`, options);
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}`, options);
   }
 
   listGroupVariables(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/groups/${encode(groupId)}/variables`, options);
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}/variables`, options);
   }
 
   getGroupVariable(
@@ -345,7 +345,7 @@ export class GitLabClient {
     key: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/groups/${encode(groupId)}/variables/${encode(key)}`, options);
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}/variables/${encode(key)}`, options);
   }
 
   createGroupVariable(
@@ -353,7 +353,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/groups/${encode(groupId)}/variables`, {
+    return this.post(`/groups/${encodeGitLabGroupId(groupId)}/variables`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -369,7 +369,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/groups/${encode(groupId)}/variables/${encode(key)}`, {
+    return this.put(`/groups/${encodeGitLabGroupId(groupId)}/variables/${encode(key)}`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -384,11 +384,11 @@ export class GitLabClient {
     key: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.delete(`/groups/${encode(groupId)}/variables/${encode(key)}`, options);
+    return this.delete(`/groups/${encodeGitLabGroupId(groupId)}/variables/${encode(key)}`, options);
   }
 
   purgeDependencyProxyCache(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.delete(`/groups/${encode(groupId)}/dependency_proxy/cache`, options);
+    return this.delete(`/groups/${encodeGitLabGroupId(groupId)}/dependency_proxy/cache`, options);
   }
 
   forkRepository(
@@ -468,7 +468,7 @@ export class GitLabClient {
     search: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/groups/${encode(groupId)}/search`, {
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}/search`, {
       ...options,
       query: {
         scope: "blobs",
@@ -669,7 +669,7 @@ export class GitLabClient {
   }
 
   listProtectedBranches(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/protected_branches`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/protected_branches`, options);
   }
 
   getProtectedBranch(
@@ -677,7 +677,10 @@ export class GitLabClient {
     branch: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/protected_branches/${encode(branch)}`, options);
+    return this.get(
+      `/projects/${encodeGitLabProjectId(projectId)}/protected_branches/${encode(branch)}`,
+      options
+    );
   }
 
   protectBranch(
@@ -692,7 +695,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/protected_branches`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/protected_branches`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -708,7 +711,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.delete(
-      `/projects/${encode(projectId)}/protected_branches/${encode(branch)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/protected_branches/${encode(branch)}`,
       options
     );
   }
@@ -718,7 +721,7 @@ export class GitLabClient {
     defaultBranch: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/projects/${encode(projectId)}`, {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}`, {
       ...options,
       body: JSON.stringify({ default_branch: defaultBranch }),
       headers: {
@@ -1884,7 +1887,7 @@ export class GitLabClient {
   }
 
   listGroupWikiPages(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/groups/${encode(groupId)}/wikis`, options);
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}/wikis`, options);
   }
 
   getGroupWikiPage(
@@ -1892,7 +1895,7 @@ export class GitLabClient {
     slug: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/groups/${encode(groupId)}/wikis/${encode(slug)}`, options);
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}/wikis/${encode(slug)}`, options);
   }
 
   createGroupWikiPage(
@@ -1900,7 +1903,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/groups/${encode(groupId)}/wikis`, {
+    return this.post(`/groups/${encodeGitLabGroupId(groupId)}/wikis`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1916,7 +1919,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/groups/${encode(groupId)}/wikis/${encode(slug)}`, {
+    return this.put(`/groups/${encodeGitLabGroupId(groupId)}/wikis/${encode(slug)}`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1931,7 +1934,7 @@ export class GitLabClient {
     slug: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.delete(`/groups/${encode(groupId)}/wikis/${encode(slug)}`, options);
+    return this.delete(`/groups/${encodeGitLabGroupId(groupId)}/wikis/${encode(slug)}`, options);
   }
 
   // pipelines
@@ -2586,7 +2589,7 @@ export class GitLabClient {
   }
 
   listGroupIterations(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/groups/${encode(groupId)}/iterations`, options);
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}/iterations`, options);
   }
 
   getNamespace(namespaceIdOrPath: string, options: GitLabRequestOptions = {}): Promise<unknown> {
@@ -3144,10 +3147,10 @@ export class GitLabClient {
 
   private webhookBasePath(scope: { projectId?: string; groupId?: string }): string {
     if (scope.projectId) {
-      return `/projects/${encode(scope.projectId)}`;
+      return `/projects/${encodeGitLabProjectId(scope.projectId)}`;
     }
     if (scope.groupId) {
-      return `/groups/${encode(scope.groupId)}`;
+      return `/groups/${encodeGitLabGroupId(scope.groupId)}`;
     }
     throw new Error("Either projectId or groupId is required");
   }

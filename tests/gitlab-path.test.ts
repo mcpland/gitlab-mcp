@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeGitLabProjectId } from "../src/lib/gitlab-path.js";
+import { encodeGitLabGroupId, encodeGitLabProjectId } from "../src/lib/gitlab-path.js";
 
 describe("encodeGitLabProjectId", () => {
   it.each([
@@ -26,4 +26,23 @@ describe("encodeGitLabProjectId", () => {
   ])("rejects unsafe project ID %s", (input) => {
     expect(() => encodeGitLabProjectId(input)).toThrow(/Invalid GitLab project ID/u);
   });
+});
+
+describe("encodeGitLabGroupId", () => {
+  it.each([
+    ["group/subgroup", "group%2Fsubgroup"],
+    ["group%2Fsubgroup", "group%2Fsubgroup"],
+    ["group%252Fsubgroup", "group%2Fsubgroup"],
+    ["12345", "12345"]
+  ])("canonicalizes %s", (input, expected) => {
+    expect(encodeGitLabGroupId(input)).toBe(expected);
+    expect(encodeGitLabGroupId(encodeGitLabGroupId(input))).toBe(expected);
+  });
+
+  it.each(["group%2Gsubgroup", "group/../secret", "/group", "group//subgroup"])(
+    "rejects unsafe group ID %s",
+    (input) => {
+      expect(() => encodeGitLabGroupId(input)).toThrow(/Invalid GitLab group ID/u);
+    }
+  );
 });

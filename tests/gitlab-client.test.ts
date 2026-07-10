@@ -562,7 +562,7 @@ describe("GitLabClient", () => {
     });
 
     it("uses DELETE for delete methods", async () => {
-      fetchMock.mockResolvedValue(jsonResponse({}));
+      fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({})));
 
       const client = new GitLabClient("https://gitlab.example.com", "token");
       await client.deleteIssue("proj", "1");
@@ -944,13 +944,76 @@ describe("GitLabClient", () => {
 
   describe("specific API methods", () => {
     it("encodes project ID in URLs", async () => {
-      fetchMock.mockResolvedValue(jsonResponse({}));
+      fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({})));
 
       const client = new GitLabClient("https://gitlab.example.com", "token");
       await client.getProject("group/subgroup/project");
 
       const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
       expect(String(requestUrl)).toContain("group%2Fsubgroup%2Fproject");
+    });
+
+    it("canonicalizes pre-encoded project paths across settings and webhook endpoints", async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({})));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const projectId = "group%2Fproject";
+      for (const request of [
+        () => client.updateProject(projectId, { description: "updated" }),
+        () => client.listProtectedBranches(projectId),
+        () => client.getProtectedBranch(projectId, "main"),
+        () => client.protectBranch(projectId, { name: "main" }),
+        () => client.unprotectBranch(projectId, "main"),
+        () => client.updateDefaultBranch(projectId, "main"),
+        () => client.listWebhooks({ projectId })
+      ]) {
+        await request();
+      }
+
+      const paths = fetchMock.mock.calls.map(
+        ([requestUrl]) => new URL(String(requestUrl)).pathname
+      );
+      expect(paths).toHaveLength(7);
+      for (const requestPath of paths) {
+        expect(requestPath).toContain("/projects/group%2Fproject");
+        expect(requestPath).not.toContain("%252F");
+      }
+    });
+
+    it("canonicalizes pre-encoded group paths across group endpoint families", async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({})));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const groupId = "group%2Fsubgroup";
+      for (const request of [
+        () => client.listGroupProjects(groupId),
+        () => client.getGroup(groupId),
+        () => client.listGroupVariables(groupId),
+        () => client.getGroupVariable(groupId, "TOKEN"),
+        () => client.createGroupVariable(groupId, { key: "TOKEN", value: "secret" }),
+        () => client.updateGroupVariable(groupId, "TOKEN", { value: "secret" }),
+        () => client.deleteGroupVariable(groupId, "TOKEN"),
+        () => client.purgeDependencyProxyCache(groupId),
+        () => client.searchGroupCodeBlobs(groupId, "needle"),
+        () => client.listGroupWikiPages(groupId),
+        () => client.getGroupWikiPage(groupId, "home"),
+        () => client.createGroupWikiPage(groupId, { title: "Home", content: "body" }),
+        () => client.updateGroupWikiPage(groupId, "home", { content: "updated" }),
+        () => client.deleteGroupWikiPage(groupId, "home"),
+        () => client.listGroupIterations(groupId),
+        () => client.listWebhooks({ groupId })
+      ]) {
+        await request();
+      }
+
+      const paths = fetchMock.mock.calls.map(
+        ([requestUrl]) => new URL(String(requestUrl)).pathname
+      );
+      expect(paths).toHaveLength(16);
+      for (const requestPath of paths) {
+        expect(requestPath).toContain("/groups/group%2Fsubgroup");
+        expect(requestPath).not.toContain("%252F");
+      }
     });
 
     it("updates a project with only the supplied allowlisted payload", async () => {

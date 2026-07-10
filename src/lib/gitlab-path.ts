@@ -1,5 +1,7 @@
-const INVALID_PROJECT_PATH_CHARACTER = /[\\?#]/u;
+const INVALID_PATH_CHARACTER = /[\\?#]/u;
 const MAX_PERCENT_DECODE_PASSES = 3;
+
+type GitLabPathIdKind = "project" | "group";
 
 /**
  * Encode a numeric project ID or namespace/project path exactly once.
@@ -7,37 +9,46 @@ const MAX_PERCENT_DECODE_PASSES = 3;
  * both forms resolve to the same canonical path segment.
  */
 export function encodeGitLabProjectId(value: string): string {
-  const decoded = decodeProjectId(value);
-  validateDecodedProjectId(decoded);
+  return encodeGitLabPathId(value, "project");
+}
+
+/** Encode a numeric group ID or nested group path exactly once. */
+export function encodeGitLabGroupId(value: string): string {
+  return encodeGitLabPathId(value, "group");
+}
+
+function encodeGitLabPathId(value: string, kind: GitLabPathIdKind): string {
+  const decoded = decodePathId(value, kind);
+  validateDecodedPathId(decoded, kind);
   return encodeURIComponent(decoded);
 }
 
-function decodeProjectId(value: string): string {
+function decodePathId(value: string, kind: GitLabPathIdKind): string {
   let decoded = value;
 
   for (let pass = 0; pass < MAX_PERCENT_DECODE_PASSES && decoded.includes("%"); pass += 1) {
     if (/%(?![0-9a-fA-F]{2})/u.test(decoded)) {
-      throw new Error("Invalid GitLab project ID: malformed percent escape");
+      throw new Error(`Invalid GitLab ${kind} ID: malformed percent escape`);
     }
 
     decoded = decodeURIComponent(decoded);
   }
 
   if (/%[0-9a-fA-F]{2}/u.test(decoded)) {
-    throw new Error("Invalid GitLab project ID: excessive percent encoding");
+    throw new Error(`Invalid GitLab ${kind} ID: excessive percent encoding`);
   }
 
   return decoded;
 }
 
-function validateDecodedProjectId(value: string): void {
-  if (!value || INVALID_PROJECT_PATH_CHARACTER.test(value) || containsControlCharacter(value)) {
-    throw new Error("Invalid GitLab project ID");
+function validateDecodedPathId(value: string, kind: GitLabPathIdKind): void {
+  if (!value || INVALID_PATH_CHARACTER.test(value) || containsControlCharacter(value)) {
+    throw new Error(`Invalid GitLab ${kind} ID`);
   }
 
   const segments = value.split("/");
   if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) {
-    throw new Error("Invalid GitLab project ID: path traversal is not allowed");
+    throw new Error(`Invalid GitLab ${kind} ID: path traversal is not allowed`);
   }
 }
 
