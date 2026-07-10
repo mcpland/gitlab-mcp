@@ -4321,13 +4321,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         context.gitlab.updateRelease(
           resolveProjectId(args, context, true),
           getString(args, "tag_name"),
-          pickPresentFields(args, [
-            "name",
-            "description",
-            "released_at",
-            "milestones",
-            "assets"
-          ])
+          pickPresentFields(args, ["name", "description", "released_at", "milestones", "assets"])
         )
     },
     {

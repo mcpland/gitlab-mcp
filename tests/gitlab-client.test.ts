@@ -1105,9 +1105,7 @@ describe("GitLabClient", () => {
       await client.updateRelease("group/project", "v1.0.0", updatePayload);
 
       const [createUrl, createInit] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
-      expect(new URL(String(createUrl)).pathname).toBe(
-        "/api/v4/projects/group%2Fproject/releases"
-      );
+      expect(new URL(String(createUrl)).pathname).toBe("/api/v4/projects/group%2Fproject/releases");
       expect(JSON.parse(String(createInit.body))).toEqual(createPayload);
 
       const [updateUrl, updateInit] = fetchMock.mock.calls[1] as [URL | string, RequestInit];
