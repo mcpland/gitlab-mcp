@@ -212,13 +212,13 @@ Host validation is always enabled. `MCP_SERVER_URL` contributes its hostname and
 
 ## Session Management (HTTP Mode)
 
-| Variable                         | Type    | Default | Description                                                                                         |
-| -------------------------------- | ------- | ------- | --------------------------------------------------------------------------------------------------- |
-| `SESSION_TIMEOUT_SECONDS`        | number  | `3600`  | Idle session TTL in seconds (1–86400). Sessions are garbage-collected every 30s.                    |
-| `MAX_SESSIONS`                   | number  | `1000`  | Maximum concurrent sessions (1–10000). Returns HTTP 503 when exceeded.                              |
-| `MAX_REQUESTS_PER_MINUTE`        | number  | `300`   | Per-session rate limit (1–10000). Returns HTTP 429 when exceeded.                                   |
-| `MAX_REQUESTS_PER_MINUTE_PER_IP` | number  | `300`   | Outer `/mcp` and download-proxy rate limit per client IP (1–10000). Returns HTTP 429 when exceeded. |
-| `MCP_TRUST_PROXY`                | boolean | `false` | Trust one reverse-proxy hop when resolving the client IP. Never enable for direct public exposure.  |
+| Variable                         | Type    | Default | Description                                                                                        |
+| -------------------------------- | ------- | ------- | -------------------------------------------------------------------------------------------------- |
+| `SESSION_TIMEOUT_SECONDS`        | number  | `3600`  | Idle session TTL in seconds (1–86400). Sessions are garbage-collected every 30s.                   |
+| `MAX_SESSIONS`                   | number  | `1000`  | Maximum concurrent sessions (1–10000). Returns HTTP 503 when exceeded.                             |
+| `MAX_REQUESTS_PER_MINUTE`        | number  | `300`   | Per Streamable HTTP, SSE, or download-credential rate limit (1–10000). Returns HTTP 429.           |
+| `MAX_REQUESTS_PER_MINUTE_PER_IP` | number  | `300`   | Outer MCP transport and download-proxy rate limit per client IP (1–10000). Returns HTTP 429.       |
+| `MCP_TRUST_PROXY`                | boolean | `false` | Trust one reverse-proxy hop when resolving the client IP. Never enable for direct public exposure. |
 
 ## Validation Rules
 

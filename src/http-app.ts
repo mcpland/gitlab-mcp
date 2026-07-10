@@ -62,10 +62,7 @@ interface SessionState {
   activeRequests: number;
   closed: boolean;
   auth?: SessionAuth;
-  rateLimit: {
-    windowStart: number;
-    count: number;
-  };
+  rateLimit: SessionRateLimitState;
 }
 
 interface SseSessionState {
@@ -74,6 +71,12 @@ interface SseSessionState {
   transport: SSEServerTransport;
   lastAccessAt: number;
   closed: boolean;
+  rateLimit: SessionRateLimitState;
+}
+
+interface SessionRateLimitState {
+  windowStart: number;
+  count: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -289,7 +292,9 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   });
   app.use((req, res, next) => {
     const isMcpRequest = isMcpRequestPath(req.path, configuredPathPrefix);
-    if (!isMcpRequest && !isDownloadRequestPath(req.path, configuredPathPrefix)) {
+    const isMcpTransportRequest = isMcpTransportPath(req.path, configuredPathPrefix);
+    const isDownloadRequest = isDownloadRequestPath(req.path, configuredPathPrefix);
+    if (!isMcpTransportRequest && !isDownloadRequest) {
       next();
       return;
     }
@@ -316,9 +321,13 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       });
       return;
     }
-    res.status(429).json({
-      error: `IP rate limit exceeded: max ${decision.limit} requests/minute`
-    });
+    if (isDownloadRequest) {
+      res.status(429).json({
+        error: `IP rate limit exceeded: max ${decision.limit} requests/minute`
+      });
+      return;
+    }
+    res.status(429).send(`IP rate limit exceeded: max ${decision.limit} requests/minute`);
   });
   app.use((req, res, next) => {
     const expectedToken = appEnv.MCP_HTTP_AUTH_TOKEN;
@@ -585,7 +594,11 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
             server,
             transport,
             lastAccessAt: Date.now(),
-            closed: false
+            closed: false,
+            rateLimit: {
+              windowStart: Date.now(),
+              count: 0
+            }
           };
           sseSessions.set(sessionId, state);
           const currentSessionId = sessionId;
@@ -630,6 +643,16 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         const session = sseSessions.get(sessionId);
         if (!session || session.closed) {
           res.status(400).send("No transport found for sessionId");
+          return;
+        }
+
+        if (!checkSessionRateLimit(session)) {
+          metrics?.incrementRateLimit("session");
+          res
+            .status(429)
+            .send(
+              `SSE session rate limit exceeded: max ${appEnv.MAX_REQUESTS_PER_MINUTE} requests/minute`
+            );
           return;
         }
 
@@ -1010,7 +1033,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     }
   }
 
-  function checkSessionRateLimit(session: SessionState): boolean {
+  function checkSessionRateLimit(session: { rateLimit: SessionRateLimitState }): boolean {
     const now = Date.now();
     const oneMinute = 60_000;
 

@@ -268,6 +268,49 @@ describe("SSE Transport - Capacity limit", () => {
   });
 });
 
+describe("SSE Transport - Session rate limit", () => {
+  it("limits messages within one SSE session", async () => {
+    const ctx = buildSseContext({ serverName: "sse-rate-limit-test" });
+    ctx.env.MAX_REQUESTS_PER_MINUTE = 1;
+    ctx.env.MAX_REQUESTS_PER_MINUTE_PER_IP = 100;
+    const rateLimitedResult = setupMcpHttpApp({
+      context: ctx,
+      env: ctx.env,
+      logger: ctx.logger
+    });
+    const server = createServer(rateLimitedResult.app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const url =
+      typeof address === "object" && address !== null ? `http://127.0.0.1:${address.port}` : "";
+    const controller = new AbortController();
+
+    try {
+      const { event } = await connectSse(url, controller);
+      const sessionUrl = `${url}${event.data!}`;
+      const sendMessage = () =>
+        fetch(sessionUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" })
+        });
+
+      expect((await sendMessage()).status).toBe(202);
+      const limited = await sendMessage();
+      expect(limited.status).toBe(429);
+      await expect(limited.text()).resolves.toContain("SSE session rate limit exceeded");
+    } finally {
+      controller.abort();
+      for (const sessionId of rateLimitedResult.sseSessions.keys()) {
+        await rateLimitedResult.closeSseSession(sessionId, "shutdown");
+      }
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+});
+
 describe("SSE Transport - Path prefix", () => {
   it("serves prefixed SSE and message endpoints", async () => {
     const ctx = buildSseContext({ serverName: "sse-prefix-test" });

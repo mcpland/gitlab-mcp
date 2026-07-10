@@ -1248,6 +1248,29 @@ describe("http app pre-session IP rate limiting", () => {
     }
     expect((await register(43_000)).status).toBe(429);
   });
+
+  it("applies the outer IP limit to legacy SSE messages", async () => {
+    const context = buildContext();
+    context.env.SSE = true;
+    context.env.MAX_REQUESTS_PER_MINUTE_PER_IP = 1;
+    context.env.MCP_TRUST_PROXY = true;
+    running = await startServerForContext(context);
+
+    for (const [clientIp, expectedStatus] of [
+      ["198.51.100.9:44001", 400],
+      ["198.51.100.9:44002", 429]
+    ] as const) {
+      const response = await fetch(`${running.baseUrl}/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": clientIp
+        },
+        body: "{}"
+      });
+      expect(response.status).toBe(expectedStatus);
+    }
+  });
 });
 
 describe("http app Prometheus metrics", () => {
