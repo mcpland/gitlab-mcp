@@ -2510,27 +2510,131 @@ describe("Tool handlers: webhook tools", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  Group wiki tools                                                   */
+/*  Project and group wiki tools                                       */
 /* ------------------------------------------------------------------ */
 
+describe("Tool handlers: project wiki tools", () => {
+  it("forwards render_html and preserves returned front matter", async () => {
+    const listWikiPages = vi
+      .fn()
+      .mockResolvedValue([{ slug: "home", front_matter: { title: "Custom home" } }]);
+    const getWikiPage = vi.fn().mockResolvedValue({
+      slug: "home",
+      content: "<p>Hello</p>",
+      front_matter: { title: "Custom home" }
+    });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listWikiPages, getWikiPage } })
+    );
+
+    try {
+      await client.callTool({
+        name: "gitlab_list_wiki_pages",
+        arguments: {
+          project_id: "group/project",
+          with_content: true,
+          render_html: true
+        }
+      });
+      const result = await client.callTool({
+        name: "gitlab_get_wiki_page",
+        arguments: { project_id: "group/project", slug: "home", render_html: true }
+      });
+
+      expect(listWikiPages).toHaveBeenCalledWith("group/project", {
+        query: { with_content: true, render_html: true }
+      });
+      expect(getWikiPage).toHaveBeenCalledWith("group/project", "home", {
+        query: { render_html: true }
+      });
+      expect(
+        (result as { structuredContent?: { result?: Record<string, unknown> } }).structuredContent
+          ?.result
+      ).toMatchObject({ front_matter: { title: "Custom home" } });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("preserves a nested page parent when updating a leaf-only title", async () => {
+    const getWikiPage = vi.fn().mockResolvedValue({
+      slug: "guides/install",
+      title: "guides/Install guide"
+    });
+    const updateWikiPage = vi.fn().mockResolvedValue({
+      slug: "guides/setup",
+      title: "guides/Setup guide"
+    });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getWikiPage, updateWikiPage } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_update_wiki_page",
+        arguments: {
+          project_id: "group/project",
+          slug: "guides/install",
+          title: "Setup guide",
+          content: "Updated"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getWikiPage).toHaveBeenCalledWith("group/project", "guides/install", {
+        query: { render_html: true }
+      });
+      expect(updateWikiPage).toHaveBeenCalledWith("group/project", "guides/install", {
+        content: "Updated",
+        title: "guides/Setup guide",
+        format: undefined
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
 describe("Tool handlers: group wiki tools", () => {
-  it("passes filters to gitlab_list_group_wiki_pages", async () => {
+  it("passes render options to group wiki reads and preserves front matter", async () => {
     const listGroupWikiPages = vi.fn().mockResolvedValue([{ slug: "home" }]);
+    const getGroupWikiPage = vi.fn().mockResolvedValue({
+      slug: "home",
+      front_matter: { title: "Custom group home" }
+    });
 
     const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ gitlabStub: { listGroupWikiPages } })
+      buildContext({ gitlabStub: { listGroupWikiPages, getGroupWikiPage } })
     );
 
     try {
       const result = await client.callTool({
         name: "gitlab_list_group_wiki_pages",
-        arguments: { group_id: "parent/group", with_content: true, page: 2 }
+        arguments: {
+          group_id: "parent/group",
+          with_content: true,
+          render_html: true,
+          page: 2
+        }
+      });
+      const pageResult = await client.callTool({
+        name: "gitlab_get_group_wiki_page",
+        arguments: { group_id: "parent/group", slug: "home", render_html: true }
       });
 
       expect(result.isError).toBeFalsy();
       expect(listGroupWikiPages).toHaveBeenCalledWith("parent/group", {
-        query: expect.objectContaining({ with_content: true, page: 2 })
+        query: expect.objectContaining({ with_content: true, render_html: true, page: 2 })
       });
+      expect(getGroupWikiPage).toHaveBeenCalledWith("parent/group", "home", {
+        query: { render_html: true }
+      });
+      expect(
+        (pageResult as { structuredContent?: { result?: Record<string, unknown> } })
+          .structuredContent?.result
+      ).toMatchObject({ front_matter: { title: "Custom group home" } });
     } finally {
       await clientTransport.close();
       await serverTransport.close();
@@ -2580,6 +2684,41 @@ describe("Tool handlers: group wiki tools", () => {
         content: "Updated"
       });
       expect(deleteGroupWikiPage).toHaveBeenCalledWith("parent/group", "home");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("preserves nested group wiki parents on leaf title updates", async () => {
+    const getGroupWikiPage = vi.fn().mockResolvedValue({
+      slug: "runbooks/deploy",
+      title: "runbooks/Deploy"
+    });
+    const updateGroupWikiPage = vi.fn().mockResolvedValue({ slug: "runbooks/release" });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getGroupWikiPage, updateGroupWikiPage } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_update_group_wiki_page",
+        arguments: {
+          group_id: "parent/group",
+          slug: "runbooks/deploy",
+          title: "Release",
+          content: "Updated"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getGroupWikiPage).toHaveBeenCalledWith("parent/group", "runbooks/deploy", {
+        query: { render_html: true }
+      });
+      expect(updateGroupWikiPage).toHaveBeenCalledWith("parent/group", "runbooks/deploy", {
+        title: "runbooks/Release",
+        content: "Updated"
+      });
     } finally {
       await clientTransport.close();
       await serverTransport.close();

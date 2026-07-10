@@ -42,6 +42,7 @@ import { createDownloadToken, type DownloadTokenResource } from "../lib/download
 import { filterDiffRecords, filterDiffResponse } from "../lib/diff-filter.js";
 import { redactSuccessfulResponse } from "../lib/redact-success.js";
 import { sanitizeToolArguments } from "../lib/sanitize.js";
+import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
 
@@ -2668,6 +2669,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: optionalProjectIdSchema,
         with_content: optionalBoolean,
+        render_html: optionalBoolean,
         ...paginationShape
       },
       handler: async (args, context) =>
@@ -2684,7 +2686,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: optionalProjectIdSchema,
         slug: slugSchema,
-        version: optionalString
+        version: optionalString,
+        render_html: optionalBoolean
       },
       handler: async (args, context) =>
         context.gitlab.getWikiPage(resolveProjectId(args, context, true), getString(args, "slug"), {
@@ -2728,21 +2731,23 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         title: optionalString,
         format: optionalString
       },
-      handler: async (args, context) =>
-        context.gitlab.updateWikiPage(
-          resolveProjectId(args, context, true),
-          getString(args, "slug"),
-          {
-            content: getString(args, "content"),
-            title: getOptionalString(args, "title"),
-            format: getOptionalString(args, "format") as
-              | "markdown"
-              | "rdoc"
-              | "asciidoc"
-              | "org"
-              | undefined
-          }
-        )
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const slug = getString(args, "slug");
+        const title = await resolveWikiUpdateTitle(slug, getOptionalString(args, "title"), () =>
+          context.gitlab.getWikiPage(projectId, slug, { query: { render_html: true } })
+        );
+        return context.gitlab.updateWikiPage(projectId, slug, {
+          content: getString(args, "content"),
+          title,
+          format: getOptionalString(args, "format") as
+            | "markdown"
+            | "rdoc"
+            | "asciidoc"
+            | "org"
+            | undefined
+        });
+      }
     },
     {
       name: "gitlab_delete_wiki_page",
@@ -2770,6 +2775,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         group_id: projectIdSchema,
         with_content: optionalBoolean,
+        render_html: optionalBoolean,
         ...paginationShape
       },
       handler: async (args, context) =>
@@ -2786,7 +2792,8 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         group_id: projectIdSchema,
         slug: slugSchema,
-        version: optionalString
+        version: optionalString,
+        render_html: optionalBoolean
       },
       handler: async (args, context) =>
         context.gitlab.getGroupWikiPage(getString(args, "group_id"), getString(args, "slug"), {
@@ -2826,15 +2833,19 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         format: optionalString
       },
       handler: async (args, context) => {
+        const groupId = getString(args, "group_id");
+        const slug = getString(args, "slug");
         const payload = toQuery(omit(args, ["group_id", "slug"]));
         if (Object.keys(payload).length === 0) {
           throw new Error("At least one of title, content, or format must be provided");
         }
-        return context.gitlab.updateGroupWikiPage(
-          getString(args, "group_id"),
-          getString(args, "slug"),
-          payload
+        payload.title = await resolveWikiUpdateTitle(slug, getOptionalString(args, "title"), () =>
+          context.gitlab.getGroupWikiPage(groupId, slug, { query: { render_html: true } })
         );
+        if (payload.title === undefined) {
+          delete payload.title;
+        }
+        return context.gitlab.updateGroupWikiPage(groupId, slug, payload);
       }
     },
     {
@@ -7228,6 +7239,37 @@ function pickRecordFields(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function resolveWikiUpdateTitle(
+  slug: string,
+  providedTitle: string | undefined,
+  getExistingPage: () => Promise<unknown>
+): Promise<string | undefined> {
+  if (!providedTitle || !slug.includes("/") || providedTitle.includes("/")) {
+    return providedTitle;
+  }
+
+  const existingPage = await getExistingPage();
+  const existingTitle = getExistingWikiTitle(existingPage);
+  return resolveNestedWikiUpdateTitle(slug, providedTitle, existingTitle);
+}
+
+function getExistingWikiTitle(page: unknown): string {
+  if (!isRecord(page)) {
+    return "";
+  }
+
+  const title = typeof page.title === "string" ? page.title : "";
+  const frontMatterTitle = isRecord(page.front_matter) ? page.front_matter.title : undefined;
+
+  if (title.includes("/")) {
+    return title;
+  }
+  if (typeof frontMatterTitle === "string" && frontMatterTitle.includes("/")) {
+    return frontMatterTitle;
+  }
+  return title || (typeof frontMatterTitle === "string" ? frontMatterTitle : "");
 }
 
 function getString(args: ToolArgs, key: string): string {

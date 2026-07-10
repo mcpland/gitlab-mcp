@@ -1705,12 +1705,35 @@ describe("GitLabClient", () => {
       expect(allInit.method).toBe("POST");
     });
 
+    it("passes wiki render options through and preserves front matter", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({
+          slug: "home",
+          content: "<p>Hello</p>",
+          front_matter: { title: "Custom home" }
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const page = await client.getWikiPage("group/project", "home", {
+        query: { render_html: true }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      expect(new URL(String(requestUrl)).searchParams.get("render_html")).toBe("true");
+      expect(page).toMatchObject({ front_matter: { title: "Custom home" } });
+    });
+
     it("uses group wiki endpoints", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ slug: "home" }));
 
       const client = new GitLabClient("https://gitlab.example.com", "token");
-      await client.listGroupWikiPages("parent/group", { query: { with_content: true } });
-      await client.getGroupWikiPage("parent/group", "home");
+      await client.listGroupWikiPages("parent/group", {
+        query: { with_content: true, render_html: true }
+      });
+      await client.getGroupWikiPage("parent/group", "home", {
+        query: { render_html: true }
+      });
       await client.createGroupWikiPage("parent/group", { title: "Home", content: "Hello" });
       await client.updateGroupWikiPage("parent/group", "home", { content: "Updated" });
       await client.deleteGroupWikiPage("parent/group", "home");
@@ -1723,7 +1746,9 @@ describe("GitLabClient", () => {
 
       expect(new URL(String(listUrl)).pathname).toBe("/api/v4/groups/parent%2Fgroup/wikis");
       expect(new URL(String(listUrl)).searchParams.get("with_content")).toBe("true");
+      expect(new URL(String(listUrl)).searchParams.get("render_html")).toBe("true");
       expect(new URL(String(getUrl)).pathname).toBe("/api/v4/groups/parent%2Fgroup/wikis/home");
+      expect(new URL(String(getUrl)).searchParams.get("render_html")).toBe("true");
       expect(createInit.method).toBe("POST");
       expect(updateInit.method).toBe("PUT");
       expect(deleteInit.method).toBe("DELETE");

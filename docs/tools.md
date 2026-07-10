@@ -253,15 +253,15 @@ Requires `USE_GITLAB_WIKI=true` (default).
 
 | Tool                            | Mutating | Description                                                                                                           |
 | ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
-| `gitlab_list_wiki_pages`        | No       | List wiki pages. Supports `with_content`.                                                                             |
-| `gitlab_get_wiki_page`          | No       | Get wiki page by slug. Supports `version`.                                                                            |
+| `gitlab_list_wiki_pages`        | No       | List wiki pages. Supports `with_content` and `render_html`; rendered responses preserve `front_matter`.               |
+| `gitlab_get_wiki_page`          | No       | Get wiki page by slug. Supports `version` and `render_html`; rendered responses preserve `front_matter`.              |
 | `gitlab_create_wiki_page`       | **Yes**  | Create a wiki page. Params: `title`, `content` (required). Supports `format` (`markdown`, `rdoc`, `asciidoc`, `org`). |
-| `gitlab_update_wiki_page`       | **Yes**  | Update wiki page by slug. Params: `slug`, `content` (required). Supports `title`, `format`.                           |
+| `gitlab_update_wiki_page`       | **Yes**  | Update wiki page by slug. Leaf-only title updates preserve the parent path for nested pages.                          |
 | `gitlab_delete_wiki_page`       | **Yes**  | Delete a wiki page permanently. Irreversible. Requires `slug`. Pre-check with `get_wiki_page` or `list_wiki_pages`.   |
-| `gitlab_list_group_wiki_pages`  | No       | List group wiki pages. Params: `group_id` (required). Supports `with_content`, pagination.                            |
-| `gitlab_get_group_wiki_page`    | No       | Get group wiki page by slug. Params: `group_id`, `slug` (required). Supports `version`.                               |
+| `gitlab_list_group_wiki_pages`  | No       | List group wiki pages. Supports `with_content`, `render_html`, and pagination.                                        |
+| `gitlab_get_group_wiki_page`    | No       | Get group wiki page by slug. Supports `version` and `render_html`; rendered responses preserve `front_matter`.        |
 | `gitlab_create_group_wiki_page` | **Yes**  | Create a group wiki page. Params: `group_id`, `title`, `content` (required). Supports `format`.                       |
-| `gitlab_update_group_wiki_page` | **Yes**  | Update a group wiki page. Params: `group_id`, `slug` (required). Supports `title`, `content`, `format`.               |
+| `gitlab_update_group_wiki_page` | **Yes**  | Update a group wiki page. Leaf-only title updates preserve the parent path for nested pages.                          |
 | `gitlab_delete_group_wiki_page` | **Yes**  | Delete a group wiki page permanently. Irreversible. Requires `group_id`, `slug`. Pre-check with group wiki get/list.  |
 
 ---
