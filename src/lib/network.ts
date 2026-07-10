@@ -26,7 +26,12 @@ export function configureNetworkRuntime(env: AppEnv, logger: Logger): void {
     });
     setGlobalDispatcher(proxyDispatcher);
     logger.info(
-      { httpProxy, httpsProxy, noProxy, rejectUnauthorized },
+      {
+        httpProxyConfigured: Boolean(httpProxy),
+        httpsProxyConfigured: Boolean(httpsProxy),
+        noProxyConfigured: Boolean(noProxy),
+        rejectUnauthorized
+      },
       "Configured global proxy dispatcher"
     );
     return;

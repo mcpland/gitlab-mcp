@@ -56,19 +56,20 @@ describe("configureNetworkRuntime", () => {
 
   it("uses EnvHttpProxyAgent and forwards NO_PROXY when a proxy is configured", async () => {
     const { configureNetworkRuntime } = await import("../src/lib/network.js");
+    const logger = buildLogger();
 
     configureNetworkRuntime(
       buildEnv({
-        HTTP_PROXY: "http://proxy.internal:8080",
-        HTTPS_PROXY: "http://proxy.internal:8080",
+        HTTP_PROXY: "http://proxy-user:proxy-password@proxy.internal:8080",
+        HTTPS_PROXY: "http://proxy-user:proxy-password@proxy.internal:8080",
         NO_PROXY: "localhost,.corp.internal,gitlab.example.com:8443"
       }),
-      buildLogger()
+      logger
     );
 
     expect(undiciMocks.EnvHttpProxyAgent).toHaveBeenCalledWith({
-      httpProxy: "http://proxy.internal:8080",
-      httpsProxy: "http://proxy.internal:8080",
+      httpProxy: "http://proxy-user:proxy-password@proxy.internal:8080",
+      httpsProxy: "http://proxy-user:proxy-password@proxy.internal:8080",
       noProxy: "localhost,.corp.internal,gitlab.example.com:8443",
       connect: {
         rejectUnauthorized: true,
@@ -83,8 +84,8 @@ describe("configureNetworkRuntime", () => {
     expect(undiciMocks.setGlobalDispatcher).toHaveBeenCalledWith({
       kind: "proxy",
       options: {
-        httpProxy: "http://proxy.internal:8080",
-        httpsProxy: "http://proxy.internal:8080",
+        httpProxy: "http://proxy-user:proxy-password@proxy.internal:8080",
+        httpsProxy: "http://proxy-user:proxy-password@proxy.internal:8080",
         noProxy: "localhost,.corp.internal,gitlab.example.com:8443",
         connect: {
           rejectUnauthorized: true,
@@ -96,6 +97,16 @@ describe("configureNetworkRuntime", () => {
         }
       }
     });
+    expect(logger.info).toHaveBeenCalledWith(
+      {
+        httpProxyConfigured: true,
+        httpsProxyConfigured: true,
+        noProxyConfigured: true,
+        rejectUnauthorized: true
+      },
+      "Configured global proxy dispatcher"
+    );
+    expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain("proxy-password");
   });
 });
 
