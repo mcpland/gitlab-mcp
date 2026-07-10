@@ -1,11 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
+import { healthToolAnnotations } from "../lib/tool-annotations.js";
+
 export function registerHealthTool(server: McpServer): void {
   server.registerTool(
     "health_check",
     {
       title: "Health Check",
-      description: "Return server liveness and current timestamp."
+      description: "Return server liveness and current timestamp.",
+      annotations: healthToolAnnotations
     },
     async () => {
       const now = new Date().toISOString();

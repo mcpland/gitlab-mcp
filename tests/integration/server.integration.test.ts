@@ -99,6 +99,37 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
       }
     });
 
+    it("publishes standard behavioral annotations for every tool", async () => {
+      const result = await client.listTools();
+
+      for (const tool of result.tools) {
+        expect(tool.annotations).toBeDefined();
+        expect(tool.annotations?.readOnlyHint).toEqual(expect.any(Boolean));
+        expect(tool.annotations?.destructiveHint).toEqual(expect.any(Boolean));
+        expect(tool.annotations?.idempotentHint).toEqual(expect.any(Boolean));
+        expect(tool.annotations?.openWorldHint).toEqual(expect.any(Boolean));
+      }
+
+      const readTool = result.tools.find((tool) => tool.name === "gitlab_get_project");
+      expect(readTool?.annotations).toMatchObject({
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true
+      });
+
+      const deleteTool = result.tools.find((tool) => tool.name === "gitlab_delete_issue");
+      expect(deleteTool?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true
+      });
+
+      const healthTool = result.tools.find((tool) => tool.name === "health_check");
+      expect(healthTool?.annotations?.openWorldHint).toBe(false);
+    });
+
     it("tool names follow naming convention", async () => {
       const result = await client.listTools();
       for (const tool of result.tools) {

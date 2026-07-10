@@ -29,6 +29,7 @@ import {
   slugSchema
 } from "../lib/tool-schema.js";
 import type { ToolCapability } from "../lib/tool-capabilities.js";
+import { annotationsForCapabilities } from "../lib/tool-annotations.js";
 import { getSessionAuth } from "../lib/auth-context.js";
 import { createDownloadToken, type DownloadTokenResource } from "../lib/download-token.js";
 import { stripNullsDeep } from "../lib/sanitize.js";
@@ -151,7 +152,8 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
       {
         title: definition.title,
         description: definition.description,
-        inputSchema: definition.inputSchema ?? {}
+        inputSchema: definition.inputSchema ?? {},
+        annotations: annotationsForCapabilities(definition.capabilities)
       },
       async (rawArgs) => {
         try {
