@@ -15,7 +15,7 @@ ENV NODE_ENV=production
 RUN corepack enable && chown node:node /app
 COPY --chown=node:node package.json pnpm-lock.yaml ./
 USER node
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile --ignore-scripts
 COPY --chown=node:node --from=build /app/dist ./dist
 COPY --chown=node:node .env.example ./.env.example
 EXPOSE 3333
