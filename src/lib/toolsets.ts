@@ -24,6 +24,12 @@ export type GitLabToolset = (typeof GITLAB_TOOLSETS)[number];
 
 const VALID_TOOLSETS = new Set<string>(GITLAB_TOOLSETS);
 
+const EXPLICIT_TOOLSETS: Readonly<Record<string, readonly GitLabToolset[]>> = {
+  gitlab_search_code_blobs: ["repository"],
+  gitlab_search_code: ["repository"],
+  gitlab_mr_discussions: ["merge-requests"]
+};
+
 const CORE_TOOLS = new Set([
   "gitlab_get_project",
   "gitlab_list_projects",
@@ -115,7 +121,7 @@ export function parseGitLabToolsets(entries: readonly string[]): GitLabToolset[]
 }
 
 export function toolsetsForTool(toolName: string): GitLabToolset[] {
-  const toolsets = new Set<GitLabToolset>();
+  const toolsets = new Set<GitLabToolset>(EXPLICIT_TOOLSETS[toolName] ?? []);
 
   if (toolName === "gitlab_discover_tools") {
     toolsets.add("core");

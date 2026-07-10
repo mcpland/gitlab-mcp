@@ -5,6 +5,7 @@ import {
   parseGitLabToolsets,
   toolsetsForTool
 } from "../src/lib/toolsets.js";
+import { getGitLabToolDefinitions } from "../src/tools/gitlab.js";
 
 describe("GitLab toolsets", () => {
   it("normalizes configured names and rejects unknown toolsets", () => {
@@ -27,6 +28,15 @@ describe("GitLab toolsets", () => {
       expect.arrayContaining(["ci-variables", "projects"])
     );
     expect(toolsetsForTool("gitlab_list_dependency_proxy_blobs")).toEqual(["dependency-proxy"]);
+    expect(toolsetsForTool("gitlab_search_code_blobs")).toContain("repository");
+    expect(toolsetsForTool("gitlab_search_code")).toContain("repository");
+    expect(toolsetsForTool("gitlab_mr_discussions")).toContain("merge-requests");
+  });
+
+  it("assigns every registered tool to at least one toolset", () => {
+    for (const definition of getGitLabToolDefinitions()) {
+      expect(toolsetsForTool(definition.name), definition.name).not.toHaveLength(0);
+    }
   });
 
   it("treats an empty selection and all as the complete registry", () => {
