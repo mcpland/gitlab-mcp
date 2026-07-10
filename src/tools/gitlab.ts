@@ -6577,6 +6577,10 @@ function assertToolCanExecuteInProjectScope(
   }
 }
 
+function hasValue(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== "";
+}
+
 function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean): string {
   const fromArgs = getOptionalString(args, "project_id");
   const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
