@@ -4521,7 +4521,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: async (args, context) =>
         context.gitlab.createLabel(
           resolveProjectId(args, context, true),
-          toQuery(omit(args, ["project_id"]))
+          pickPresentFields(args, ["name", "color", "description", "priority"])
         )
     },
     {
@@ -4539,7 +4539,14 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         priority: optionalNumber
       },
       handler: async (args, context) => {
-        const payload = toQuery(omit(args, ["project_id"])) as Record<string, unknown>;
+        const payload = pickPresentFields(args, [
+          "name",
+          "label_id",
+          "new_name",
+          "color",
+          "description",
+          "priority"
+        ]);
         if (payload.name === undefined) {
           payload.name = getOptionalString(args, "label_id");
         }

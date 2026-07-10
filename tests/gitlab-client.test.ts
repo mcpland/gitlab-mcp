@@ -1058,6 +1058,33 @@ describe("GitLabClient", () => {
   });
 
   describe("specific API methods", () => {
+    it("preserves explicit null label priority and omits absent priority", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ name: "bug" }));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.createLabel("group/project", {
+        name: "bug",
+        color: "#ff0000",
+        priority: null
+      });
+      await client.updateLabel("group/project", { name: "bug", priority: null });
+      await client.createLabel("group/project", { name: "feature", color: "#00ff00" });
+
+      const createWithNull = JSON.parse(
+        String((fetchMock.mock.calls[0] as [URL | string, RequestInit])[1].body)
+      ) as Record<string, unknown>;
+      const updateWithNull = JSON.parse(
+        String((fetchMock.mock.calls[1] as [URL | string, RequestInit])[1].body)
+      ) as Record<string, unknown>;
+      const createWithoutPriority = JSON.parse(
+        String((fetchMock.mock.calls[2] as [URL | string, RequestInit])[1].body)
+      ) as Record<string, unknown>;
+
+      expect(createWithNull).toMatchObject({ name: "bug", priority: null });
+      expect(updateWithNull).toEqual({ name: "bug", priority: null });
+      expect(createWithoutPriority).not.toHaveProperty("priority");
+    });
+
     it("preserves release arrays and nested assets in JSON request bodies", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ tag_name: "v1.0.0" }));
 

@@ -4459,6 +4459,60 @@ describe("Release mutation handlers", () => {
   });
 });
 
+describe("Label mutation handlers", () => {
+  it("preserves explicit null priority and omits absent priority", async () => {
+    const createLabel = vi.fn().mockResolvedValue({ name: "bug" });
+    const updateLabel = vi.fn().mockResolvedValue({ name: "bug" });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { createLabel, updateLabel } })
+    );
+
+    try {
+      const createdWithNull = await client.callTool({
+        name: "gitlab_create_label",
+        arguments: {
+          project_id: "group/project",
+          name: "bug",
+          color: "#ff0000",
+          priority: null
+        }
+      });
+      const updatedWithNull = await client.callTool({
+        name: "gitlab_update_label",
+        arguments: { project_id: "group/project", name: "bug", priority: null }
+      });
+      const createdWithoutPriority = await client.callTool({
+        name: "gitlab_create_label",
+        arguments: {
+          project_id: "group/project",
+          name: "feature",
+          color: "#00ff00"
+        }
+      });
+
+      expect(createdWithNull.isError).toBeFalsy();
+      expect(updatedWithNull.isError).toBeFalsy();
+      expect(createdWithoutPriority.isError).toBeFalsy();
+      expect(createLabel).toHaveBeenNthCalledWith(1, "group/project", {
+        name: "bug",
+        color: "#ff0000",
+        priority: null
+      });
+      expect(updateLabel).toHaveBeenCalledWith("group/project", {
+        name: "bug",
+        priority: null
+      });
+      expect(createLabel).toHaveBeenNthCalledWith(2, "group/project", {
+        name: "feature",
+        color: "#00ff00"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  Pipeline artifact and deployment tools                             */
 /* ------------------------------------------------------------------ */
