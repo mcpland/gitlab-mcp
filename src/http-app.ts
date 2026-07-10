@@ -1485,7 +1485,9 @@ function buildDownloadGitLabTarget(
       )}/downloads/`;
       let encodedPath: string;
       try {
-        encodedPath = encodeGitLabSlashPath(directAssetPath, "direct_asset_path");
+        encodedPath = encodeGitLabSlashPath(directAssetPath, "direct_asset_path", {
+          allowSingleLeadingSlash: true
+        });
       } catch (error) {
         throw new DownloadClientError(error instanceof Error ? error.message : "Invalid path");
       }

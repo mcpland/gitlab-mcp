@@ -4382,7 +4382,9 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         const projectId = resolveProjectId(args, context, true);
         const tagName = getString(args, "tag_name");
         const directAssetPath = getString(args, "direct_asset_path");
-        encodeGitLabSlashPath(directAssetPath, "direct_asset_path");
+        encodeGitLabSlashPath(directAssetPath, "direct_asset_path", {
+          allowSingleLeadingSlash: true
+        });
         if (shouldReturnDownloadProxy(context)) {
           return buildDownloadProxyResult(
             context,

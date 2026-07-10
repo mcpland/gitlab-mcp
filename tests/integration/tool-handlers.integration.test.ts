@@ -4755,6 +4755,34 @@ describe("Tool handler: pipeline deployment and artifact tools", () => {
     }
   });
 
+  it("accepts a single leading slash for release direct asset paths", async () => {
+    const downloadReleaseAsset = vi.fn().mockResolvedValue({
+      fileName: "app",
+      contentType: "application/octet-stream",
+      base64: "YXBw"
+    });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { downloadReleaseAsset } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_download_release_asset",
+        arguments: {
+          project_id: "group/project",
+          tag_name: "v1",
+          direct_asset_path: "/binaries/app"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(downloadReleaseAsset).toHaveBeenCalledWith("group/project", "v1", "/binaries/app");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
   it("rejects slash-path traversal before strict-scope artifact and release calls", async () => {
     const getJobArtifactFile = vi.fn();
     const saveJobArtifactFile = vi.fn();
@@ -4789,6 +4817,27 @@ describe("Tool handler: pipeline deployment and artifact tools", () => {
         const result = await client.callTool(call);
         expect(result.isError, call.name).toBe(true);
       }
+
+      for (const directAssetPath of ["/../secret", "//evil"]) {
+        const result = await client.callTool({
+          name: "gitlab_download_release_asset",
+          arguments: {
+            project_id: "group/allowed",
+            tag_name: "v1",
+            direct_asset_path: directAssetPath
+          }
+        });
+        expect(result.isError, directAssetPath).toBe(true);
+      }
+      const leadingArtifact = await client.callTool({
+        name: "gitlab_get_job_artifact_file",
+        arguments: {
+          project_id: "group/allowed",
+          job_id: "7",
+          artifact_path: "/reports/secret.txt"
+        }
+      });
+      expect(leadingArtifact.isError).toBe(true);
 
       expect(getJobArtifactFile).not.toHaveBeenCalled();
       expect(saveJobArtifactFile).not.toHaveBeenCalled();

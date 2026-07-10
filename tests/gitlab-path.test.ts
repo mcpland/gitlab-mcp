@@ -93,6 +93,22 @@ describe("encodeGitLabSlashPath", () => {
     expect(encodeGitLabSlashPath(input, "artifact_path")).toBe(expected);
   });
 
+  it("normalizes one explicitly allowed leading slash", () => {
+    expect(
+      encodeGitLabSlashPath("/binaries/app", "direct_asset_path", {
+        allowSingleLeadingSlash: true
+      })
+    ).toBe("binaries/app");
+  });
+
+  it.each(["/../secret", "//evil"])("still rejects unsafe leading-slash path %s", (input) => {
+    expect(() =>
+      encodeGitLabSlashPath(input, "direct_asset_path", {
+        allowSingleLeadingSlash: true
+      })
+    ).toThrow(/Invalid GitLab direct_asset_path/u);
+  });
+
   it.each([
     "",
     ".",

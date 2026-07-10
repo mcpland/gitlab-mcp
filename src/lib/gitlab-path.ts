@@ -34,12 +34,21 @@ export function encodeGitLabNamespaceId(value: string): string {
 }
 
 /** Encode a nested GitLab API subpath without allowing URL path traversal. */
-export function encodeGitLabSlashPath(value: string, label = "path"): string {
-  if (!value || value.trim().length === 0) {
+export function encodeGitLabSlashPath(
+  value: string,
+  label = "path",
+  options: { allowSingleLeadingSlash?: boolean } = {}
+): string {
+  const normalizedValue =
+    options.allowSingleLeadingSlash && value.startsWith("/") && !value.startsWith("//")
+      ? value.slice(1)
+      : value;
+
+  if (!normalizedValue || normalizedValue.trim().length === 0) {
     throw new Error(`Invalid GitLab ${label}: path must not be empty`);
   }
 
-  const segments = value.split("/");
+  const segments = normalizedValue.split("/");
   if (segments.some((segment) => segment.length === 0)) {
     throw new Error(`Invalid GitLab ${label}: empty path segments are not allowed`);
   }

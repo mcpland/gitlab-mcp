@@ -2037,6 +2037,9 @@ describe("GitLabClient", () => {
       await expect(client.saveJobArtifactFile("group/allowed", "7", attack)).rejects.toThrow(
         /Invalid GitLab artifact_path/u
       );
+      await expect(
+        client.getJobArtifactFile("group/allowed", "7", "/reports/secret.txt")
+      ).rejects.toThrow(/Invalid GitLab artifact_path/u);
       expect(() => client.downloadReleaseAsset("group/allowed", "v1", attack)).toThrow(
         /Invalid GitLab direct_asset_path/u
       );
@@ -2383,7 +2386,7 @@ describe("GitLabClient", () => {
       );
 
       const client = new GitLabClient("https://gitlab.example.com", "token");
-      const result = await client.downloadReleaseAsset("proj", "v1.0", "bin/my app.tar.gz");
+      const result = await client.downloadReleaseAsset("proj", "v1.0", "/bin/my app.tar.gz");
 
       const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
       const urlStr = String(requestUrl);

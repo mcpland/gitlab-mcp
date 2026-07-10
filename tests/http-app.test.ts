@@ -516,6 +516,46 @@ describe("http app download proxy", () => {
     }
   });
 
+  it("normalizes one release-asset leading slash in the HTTP proxy", async () => {
+    const requestPaths: string[] = [];
+    const gitLabServer = createServer((req, res) => {
+      requestPaths.push(req.url ?? "");
+      res.statusCode = 200;
+      res.end("release-asset");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.MCP_HTTP_AUTH_TOKEN = "m".repeat(32);
+      context.env.GITLAB_ALLOWED_PROJECT_IDS = ["group/allowed"];
+      running = await startServerForContext(context);
+
+      const url = new URL(`${running.baseUrl}/downloads/release-asset`);
+      url.searchParams.set("project_id", "group/allowed");
+      url.searchParams.set("tag_name", "v1");
+      url.searchParams.set("direct_asset_path", "/binaries/app");
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${"m".repeat(32)}` }
+      });
+
+      expect(response.status).toBe(200);
+      expect(requestPaths).toEqual([
+        "/api/v4/projects/group%2Fallowed/releases/v1/downloads/binaries/app"
+      ]);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("rejects release-asset traversal before a strict-scope upstream request", async () => {
     let upstreamRequests = 0;
     const gitLabServer = createServer((_req, res) => {
@@ -537,18 +577,20 @@ describe("http app download proxy", () => {
       context.env.GITLAB_ALLOWED_PROJECT_IDS = ["group/allowed"];
       running = await startServerForContext(context);
 
-      const url = new URL(`${running.baseUrl}/downloads/release-asset`);
-      url.searchParams.set("project_id", "group/allowed");
-      url.searchParams.set("tag_name", "v1");
-      url.searchParams.set(
-        "direct_asset_path",
-        "../../../../../projects/999/repository/files/secret/raw"
-      );
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${"m".repeat(32)}` }
-      });
-
-      expect(response.status).toBe(400);
+      for (const directAssetPath of [
+        "../../../../../projects/999/repository/files/secret/raw",
+        "/../secret",
+        "//evil"
+      ]) {
+        const url = new URL(`${running.baseUrl}/downloads/release-asset`);
+        url.searchParams.set("project_id", "group/allowed");
+        url.searchParams.set("tag_name", "v1");
+        url.searchParams.set("direct_asset_path", directAssetPath);
+        const response = await fetch(url, {
+          headers: { Authorization: `Bearer ${"m".repeat(32)}` }
+        });
+        expect(response.status, directAssetPath).toBe(400);
+      }
       expect(upstreamRequests).toBe(0);
     } finally {
       await new Promise<void>((resolve, reject) => {

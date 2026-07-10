@@ -2487,7 +2487,8 @@ export class GitLabClient {
       requestConfig.apiUrl,
       `projects/${encodeGitLabProjectId(projectId)}/releases/${encode(tagName)}/downloads/`,
       directAssetPath,
-      "direct_asset_path"
+      "direct_asset_path",
+      { allowSingleLeadingSlash: true }
     );
 
     return this.downloadFile(
@@ -3345,11 +3346,15 @@ function buildSafeSlashPathUrl(
   apiUrl: string,
   relativePrefix: string,
   pathValue: string,
-  label: string
+  label: string,
+  options: { allowSingleLeadingSlash?: boolean } = {}
 ): URL {
   const baseUrl = `${apiUrl.replace(/\/+$/u, "")}/`;
   const expectedPrefix = new URL(relativePrefix, baseUrl);
-  const url = new URL(`${relativePrefix}${encodeGitLabSlashPath(pathValue, label)}`, baseUrl);
+  const url = new URL(
+    `${relativePrefix}${encodeGitLabSlashPath(pathValue, label, options)}`,
+    baseUrl
+  );
 
   if (url.origin !== expectedPrefix.origin || !url.pathname.startsWith(expectedPrefix.pathname)) {
     throw new Error(`Invalid GitLab ${label}: resolved path escaped its API endpoint`);
