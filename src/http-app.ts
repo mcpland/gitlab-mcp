@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { Server as HttpServer } from "node:http";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -221,6 +221,13 @@ function isMcpRequestPath(path: string, pathPrefix: string): boolean {
   return path === "/mcp" || (pathPrefix.length > 0 && path === `${pathPrefix}/mcp`);
 }
 
+function isDownloadRequestPath(path: string, pathPrefix: string): boolean {
+  return (
+    path.startsWith("/downloads/") ||
+    (pathPrefix.length > 0 && path.startsWith(`${pathPrefix}/downloads/`))
+  );
+}
+
 function isMcpTransportPath(path: string, pathPrefix: string): boolean {
   const transportPaths = ["/mcp", "/sse", "/messages"];
   return transportPaths.some(
@@ -281,7 +288,8 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     windowMs: 60_000
   });
   app.use((req, res, next) => {
-    if (!isMcpRequestPath(req.path, configuredPathPrefix)) {
+    const isMcpRequest = isMcpRequestPath(req.path, configuredPathPrefix);
+    if (!isMcpRequest && !isDownloadRequestPath(req.path, configuredPathPrefix)) {
       next();
       return;
     }
@@ -297,13 +305,19 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     res.setHeader("Retry-After", String(retryAfterSeconds));
     res.setHeader("X-RateLimit-Limit", String(decision.limit));
     res.setHeader("X-RateLimit-Remaining", "0");
+    if (isMcpRequest) {
+      res.status(429).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32017,
+          message: `IP rate limit exceeded: max ${decision.limit} requests/minute`
+        },
+        id: null
+      });
+      return;
+    }
     res.status(429).json({
-      jsonrpc: "2.0",
-      error: {
-        code: -32017,
-        message: `IP rate limit exceeded: max ${decision.limit} requests/minute`
-      },
-      id: null
+      error: `IP rate limit exceeded: max ${decision.limit} requests/minute`
     });
   });
   app.use((req, res, next) => {
@@ -461,7 +475,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
   /* ---- Download proxy endpoints ---- */
 
-  const downloadRateLimits = new Map<string, { count: number; resetAt: number }>();
+  const downloadRateLimiter = new FixedWindowRateLimiter({
+    limit: appEnv.MAX_REQUESTS_PER_MINUTE,
+    windowMs: 60_000
+  });
 
   const downloadProxyHandler: express.RequestHandler = async (req, res) => {
     try {
@@ -472,8 +489,15 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         return;
       }
 
-      if (!checkDownloadRateLimit(`${auth.header}:${auth.token}`)) {
+      const downloadRateDecision = downloadRateLimiter.consume(
+        createHash("sha256").update(auth.header).update("\0").update(auth.token).digest("base64url")
+      );
+      if (!downloadRateDecision.allowed) {
         metrics?.incrementRateLimit("download");
+        res.setHeader(
+          "Retry-After",
+          String(Math.max(1, Math.ceil(downloadRateDecision.retryAfterMs / 1_000)))
+        );
         res.status(429).json({ error: "Rate limit exceeded" });
         return;
       }
@@ -1025,31 +1049,6 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       header: session.auth?.header,
       updatedAt: session.auth?.updatedAt ?? Date.now()
     };
-  }
-
-  function checkDownloadRateLimit(key: string): boolean {
-    const now = Date.now();
-    const entry = downloadRateLimits.get(key);
-    if (!entry || now >= entry.resetAt) {
-      downloadRateLimits.set(key, { count: 1, resetAt: now + 60_000 });
-      evictExpiredDownloadRateLimits(now);
-      return true;
-    }
-
-    if (entry.count >= appEnv.MAX_REQUESTS_PER_MINUTE) {
-      return false;
-    }
-
-    entry.count += 1;
-    return true;
-  }
-
-  function evictExpiredDownloadRateLimits(now: number): void {
-    for (const [key, entry] of downloadRateLimits) {
-      if (now >= entry.resetAt) {
-        downloadRateLimits.delete(key);
-      }
-    }
   }
 
   function parseDownloadAuth(

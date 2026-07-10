@@ -366,6 +366,51 @@ describe("http app pending session handling", () => {
 });
 
 describe("http app download proxy", () => {
+  it("bounds token buckets and stops token rotation at the client IP layer", async () => {
+    let upstreamRequests = 0;
+    const gitLabServer = createServer((_req, res) => {
+      upstreamRequests += 1;
+      res.statusCode = 200;
+      res.end("download");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      context.env.REMOTE_AUTHORIZATION = true;
+      context.env.MAX_REQUESTS_PER_MINUTE = 1;
+      context.env.MAX_REQUESTS_PER_MINUTE_PER_IP = 3;
+      running = await startServerForContext(context);
+
+      const url = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+      url.searchParams.set("project_id", "group/project");
+      url.searchParams.set("job_id", "40");
+      const download = (token: string) =>
+        fetch(url, {
+          headers: { "Private-Token": token }
+        });
+
+      expect((await download("rotating-token-a")).status).toBe(200);
+      const repeatedToken = await download("rotating-token-a");
+      expect(repeatedToken.status).toBe(429);
+      expect(repeatedToken.headers.get("retry-after")).toBeTruthy();
+      expect((await download("rotating-token-b")).status).toBe(200);
+      expect((await download("rotating-token-c")).status).toBe(429);
+      expect(upstreamRequests).toBe(2);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("uses the shared canonical dynamic API URL policy", async () => {
     const gitLabServer = createServer((req, res) => {
       expect(req.url).toBe("/api/v4/projects/group%2Fproject/jobs/41/artifacts");
