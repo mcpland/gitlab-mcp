@@ -49,6 +49,40 @@ describe("Tool handler: gitlab_get_project", () => {
   });
 });
 
+describe("Tool handlers: repository namespace IDs", () => {
+  it("accepts string and numeric namespace IDs for create and fork", async () => {
+    const createRepository = vi.fn().mockResolvedValue({ id: 1 });
+    const forkRepository = vi.fn().mockResolvedValue({ id: 2 });
+    const pair = await createLinkedPair(
+      buildContext({ gitlabStub: { createRepository, forkRepository } })
+    );
+
+    try {
+      const created = await pair.client.callTool({
+        name: "gitlab_create_repository",
+        arguments: { name: "created", namespace_id: "42" }
+      });
+      const forked = await pair.client.callTool({
+        name: "gitlab_fork_repository",
+        arguments: { project_id: "group/source", namespace_id: 43 }
+      });
+
+      expect(created.isError).toBeFalsy();
+      expect(forked.isError).toBeFalsy();
+      expect(createRepository).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "created", namespace_id: 42 })
+      );
+      expect(forkRepository).toHaveBeenCalledWith(
+        "group/source",
+        expect.objectContaining({ namespace_id: 43 })
+      );
+    } finally {
+      await pair.clientTransport.close();
+      await pair.serverTransport.close();
+    }
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  gitlab_get_pipeline_job_output                                     */
 /* ------------------------------------------------------------------ */

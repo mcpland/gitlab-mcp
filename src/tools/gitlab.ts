@@ -540,7 +540,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         visibility: z.enum(["private", "internal", "public"]).optional(),
         initialize_with_readme: optionalBoolean,
         path: optionalString,
-        namespace_id: optionalProjectIdSchema,
+        namespace_id: optionalPositiveIntegerFromEmptyString,
         default_branch: optionalRefLikeSchema
       },
       handler: async (args, context) =>
@@ -554,7 +554,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
             | undefined,
           initialize_with_readme: getOptionalBoolean(args, "initialize_with_readme"),
           path: getOptionalString(args, "path"),
-          namespace_id: getOptionalString(args, "namespace_id"),
+          namespace_id: getOptionalNumber(args, "namespace_id"),
           default_branch: getOptionalString(args, "default_branch")
         })
     },
@@ -1426,7 +1426,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: optionalProjectIdSchema,
         namespace: optionalString,
-        namespace_id: optionalProjectIdSchema,
+        namespace_id: optionalPositiveIntegerFromEmptyString,
         path: optionalString,
         name: optionalDisplayNameSchema,
         description: optionalString,
@@ -1436,7 +1436,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: async (args, context) =>
         context.gitlab.forkRepository(resolveProjectId(args, context, true), {
           namespace: getOptionalString(args, "namespace"),
-          namespace_id: getOptionalString(args, "namespace_id"),
+          namespace_id: getOptionalNumber(args, "namespace_id"),
           path: getOptionalString(args, "path"),
           name: getOptionalString(args, "name"),
           description: getOptionalString(args, "description"),
