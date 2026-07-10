@@ -747,6 +747,165 @@ describe("Tool handlers: branch tools", () => {
     }
   });
 
+  it("protects a branch without dropping explicit false and zero values", async () => {
+    const protectBranch = vi.fn().mockResolvedValue({ name: "release/*" });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { protectBranch } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_protect_branch",
+        arguments: {
+          project_id: "group/project",
+          branch: "release/*",
+          push_access_level: 0,
+          merge_access_level: 30,
+          unprotect_access_level: 40,
+          allow_force_push: false,
+          code_owner_approval_required: false
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(protectBranch).toHaveBeenCalledWith("group/project", {
+        name: "release/*",
+        push_access_level: 0,
+        merge_access_level: 30,
+        unprotect_access_level: 40,
+        allow_force_push: false,
+        code_owner_approval_required: false
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects invalid protected-branch access levels before the API call", async () => {
+    const protectBranch = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { protectBranch } })
+    );
+
+    try {
+      const invalidPush = await client.callTool({
+        name: "gitlab_protect_branch",
+        arguments: { project_id: "group/project", branch: "main", push_access_level: 20 }
+      });
+      const invalidUnprotect = await client.callTool({
+        name: "gitlab_protect_branch",
+        arguments: { project_id: "group/project", branch: "main", unprotect_access_level: 0 }
+      });
+
+      expect(invalidPush.isError).toBe(true);
+      expect(invalidUnprotect.isError).toBe(true);
+      expect(protectBranch).not.toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("unprotects a branch and returns a minimal status", async () => {
+    const unprotectBranch = vi.fn().mockResolvedValue("");
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { unprotectBranch } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_unprotect_branch",
+        arguments: { project_id: "group/project", branch: "release/*" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(unprotectBranch).toHaveBeenCalledWith("group/project", "release/*");
+      expect(result.structuredContent).toMatchObject({
+        result: {
+          status: "unprotected",
+          project_id: "group/project",
+          branch: "release/*"
+        }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("updates the default branch and returns a minimal status", async () => {
+    const updateDefaultBranch = vi.fn().mockResolvedValue({ runners_token: "not-returned" });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { updateDefaultBranch } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_update_default_branch",
+        arguments: { project_id: "group/project", default_branch: "stable" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(updateDefaultBranch).toHaveBeenCalledWith("group/project", "stable");
+      expect(result.structuredContent).toMatchObject({
+        result: {
+          status: "updated",
+          project_id: "group/project",
+          default_branch: "stable"
+        }
+      });
+      expect(JSON.stringify(result.structuredContent)).not.toContain("not-returned");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects protected-branch administration outside project scope", async () => {
+    const protectBranch = vi.fn();
+    const unprotectBranch = vi.fn();
+    const updateDefaultBranch = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["group/allowed"],
+        gitlabStub: { protectBranch, unprotectBranch, updateDefaultBranch }
+      })
+    );
+
+    try {
+      for (const call of [
+        {
+          name: "gitlab_protect_branch",
+          arguments: { project_id: "group/forbidden", branch: "main" }
+        },
+        {
+          name: "gitlab_unprotect_branch",
+          arguments: { project_id: "group/forbidden", branch: "main" }
+        },
+        {
+          name: "gitlab_update_default_branch",
+          arguments: { project_id: "group/forbidden", default_branch: "main" }
+        }
+      ]) {
+        const result = await client.callTool(call);
+        expect(result.isError, call.name).toBe(true);
+      }
+
+      expect(protectBranch).not.toHaveBeenCalled();
+      expect(unprotectBranch).not.toHaveBeenCalled();
+      expect(updateDefaultBranch).not.toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
   it("passes branch name to gitlab_delete_branch", async () => {
     const deleteBranch = vi.fn().mockResolvedValue({ ok: true });
 

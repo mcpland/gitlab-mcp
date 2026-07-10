@@ -160,6 +160,17 @@ const paginationShape = {
   page: optionalNumber,
   per_page: optionalNumber
 } satisfies ToolSchemaShape;
+const protectedBranchAccessLevelSchema = z.union([
+  z.literal(0),
+  z.literal(30),
+  z.literal(40),
+  z.literal(60)
+]);
+const protectedBranchUnprotectAccessLevelSchema = z.union([
+  z.literal(30),
+  z.literal(40),
+  z.literal(60)
+]);
 const emojiNameSchema = z.string().min(1);
 const awardEmojiIdSchema = z.string().min(1);
 const workItemTypes = [
@@ -839,6 +850,64 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           resolveProjectId(args, context, true),
           getString(args, "branch")
         )
+    },
+    {
+      name: "gitlab_protect_branch",
+      title: "Protect Branch",
+      description:
+        "Protect a branch or wildcard rule and configure role-based push, merge, and unprotect access.",
+      capabilities: adminCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        branch: protectedBranchNameSchema,
+        push_access_level: nullableOptional(protectedBranchAccessLevelSchema),
+        merge_access_level: nullableOptional(protectedBranchAccessLevelSchema),
+        unprotect_access_level: nullableOptional(protectedBranchUnprotectAccessLevelSchema),
+        allow_force_push: optionalBoolean,
+        code_owner_approval_required: optionalBoolean
+      },
+      handler: async (args, context) =>
+        context.gitlab.protectBranch(resolveProjectId(args, context, true), {
+          name: getString(args, "branch"),
+          push_access_level: getOptionalNumber(args, "push_access_level"),
+          merge_access_level: getOptionalNumber(args, "merge_access_level"),
+          unprotect_access_level: getOptionalNumber(args, "unprotect_access_level"),
+          allow_force_push: getOptionalBoolean(args, "allow_force_push"),
+          code_owner_approval_required: getOptionalBoolean(args, "code_owner_approval_required")
+        })
+    },
+    {
+      name: "gitlab_unprotect_branch",
+      title: "Unprotect Branch",
+      description:
+        "Remove protection from a branch or wildcard rule. This immediately permits actions previously blocked. Requires branch. Recommended pre-check: gitlab_get_protected_branch.",
+      capabilities: deleteCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        branch: protectedBranchNameSchema
+      },
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const branch = getString(args, "branch");
+        await context.gitlab.unprotectBranch(projectId, branch);
+        return { status: "unprotected", project_id: projectId, branch };
+      }
+    },
+    {
+      name: "gitlab_update_default_branch",
+      title: "Update Default Branch",
+      description: "Change a project's default branch to an existing branch.",
+      capabilities: adminCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        default_branch: refLikeSchema
+      },
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const defaultBranch = getString(args, "default_branch");
+        await context.gitlab.updateDefaultBranch(projectId, defaultBranch);
+        return { status: "updated", project_id: projectId, default_branch: defaultBranch };
+      }
     },
     {
       name: "gitlab_delete_branch",

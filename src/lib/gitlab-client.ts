@@ -503,6 +503,54 @@ export class GitLabClient {
     return this.get(`/projects/${encode(projectId)}/protected_branches/${encode(branch)}`, options);
   }
 
+  protectBranch(
+    projectId: string,
+    payload: {
+      name: string;
+      push_access_level?: number;
+      merge_access_level?: number;
+      unprotect_access_level?: number;
+      allow_force_push?: boolean;
+      code_owner_approval_required?: boolean;
+    },
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`/projects/${encode(projectId)}/protected_branches`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  unprotectBranch(
+    projectId: string,
+    branch: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(
+      `/projects/${encode(projectId)}/protected_branches/${encode(branch)}`,
+      options
+    );
+  }
+
+  updateDefaultBranch(
+    projectId: string,
+    defaultBranch: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.put(`/projects/${encode(projectId)}`, {
+      ...options,
+      body: JSON.stringify({ default_branch: defaultBranch }),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
   deleteBranch(
     projectId: string,
     branch: string,

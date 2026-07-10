@@ -910,6 +910,58 @@ describe("GitLabClient", () => {
       expect(init.method).toBe("GET");
     });
 
+    it("protects a branch with explicit access settings", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ name: "release/*" }, 201));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.protectBranch("group/project", {
+        name: "release/*",
+        push_access_level: 0,
+        merge_access_level: 30,
+        unprotect_access_level: 40,
+        allow_force_push: false,
+        code_owner_approval_required: true
+      });
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      expect(String(requestUrl)).toContain("/projects/group%2Fproject/protected_branches");
+      expect(init.method).toBe("POST");
+      expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+      expect(JSON.parse(init.body as string)).toEqual({
+        name: "release/*",
+        push_access_level: 0,
+        merge_access_level: 30,
+        unprotect_access_level: 40,
+        allow_force_push: false,
+        code_owner_approval_required: true
+      });
+    });
+
+    it("unprotects an encoded wildcard branch", async () => {
+      fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.unprotectBranch("group/project", "release/*");
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      expect(String(requestUrl)).toContain(
+        "/projects/group%2Fproject/protected_branches/release%2F*"
+      );
+      expect(init.method).toBe("DELETE");
+    });
+
+    it("updates the default branch with a JSON payload", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ default_branch: "stable" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.updateDefaultBranch("group/project", "stable");
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      expect(String(requestUrl)).toContain("/projects/group%2Fproject");
+      expect(init.method).toBe("PUT");
+      expect(JSON.parse(init.body as string)).toEqual({ default_branch: "stable" });
+    });
+
     it("preserves legacy repository tree array responses", async () => {
       fetchMock.mockResolvedValue(jsonResponse([{ name: "src", type: "tree" }]));
 

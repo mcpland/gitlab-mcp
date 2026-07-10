@@ -138,6 +138,22 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
         openWorldHint: true
       });
 
+      const protectTool = result.tools.find((tool) => tool.name === "gitlab_protect_branch");
+      expect(protectTool?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      });
+
+      const unprotectTool = result.tools.find((tool) => tool.name === "gitlab_unprotect_branch");
+      expect(unprotectTool?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true
+      });
+
       const healthTool = result.tools.find((tool) => tool.name === "health_check");
       expect(healthTool?.annotations?.openWorldHint).toBe(false);
     });
