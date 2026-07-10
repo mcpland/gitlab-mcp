@@ -5,4 +5,15 @@ coverage
 .gitignore
 .vscode
 .DS_Store
+.env
+.env.*
+!.env.example
+.npmrc
+**/.npmrc
+*.pem
+**/*.pem
+*.key
+**/*.key
+.pnpm-store
+**/.pnpm-store
 zereight-gitlab-mcp
