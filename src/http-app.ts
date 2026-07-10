@@ -4,7 +4,6 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 
-import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { metadataHandler } from "@modelcontextprotocol/sdk/server/auth/handlers/metadata.js";
@@ -31,6 +30,11 @@ import {
 } from "./lib/download-token.js";
 import { encodeGitLabProjectId } from "./lib/gitlab-path.js";
 import { hasReachedSessionCapacity } from "./lib/session-capacity.js";
+import {
+  buildHttpRequestPolicy,
+  isRequestHostAllowed,
+  isRequestOriginAllowed
+} from "./lib/http-request-policy.js";
 import { createGitLabMcpOAuthProvider } from "./lib/mcp-oauth-provider.js";
 import { verifyMcpHttpBearerToken } from "./lib/mcp-http-bearer-auth.js";
 import { resolveOauthScopes } from "./lib/oauth-scopes.js";
@@ -212,7 +216,29 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   const { context, env: appEnv, logger: appLogger } = deps;
   const configuredPathPrefix = getConfiguredServerPathPrefix(appEnv);
 
-  const app = createMcpExpressApp({ host: appEnv.HTTP_HOST });
+  const requestPolicy = buildHttpRequestPolicy(appEnv);
+  const app = express();
+  app.use((req, res, next) => {
+    if (!isRequestHostAllowed(req.header("host"), requestPolicy)) {
+      res.status(403).json({
+        jsonrpc: "2.0",
+        error: { code: -32015, message: "Host header is not allowed" },
+        id: null
+      });
+      return;
+    }
+
+    if (!isRequestOriginAllowed(req.header("origin"), requestPolicy)) {
+      res.status(403).json({
+        jsonrpc: "2.0",
+        error: { code: -32016, message: "Origin header is not allowed" },
+        id: null
+      });
+      return;
+    }
+
+    next();
+  });
   app.use((req, res, next) => {
     const expectedToken = appEnv.MCP_HTTP_AUTH_TOKEN;
     if (!expectedToken || !isMcpTransportPath(req.path, configuredPathPrefix)) {

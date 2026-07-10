@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,8 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       MCP_SERVER_VERSION: "0.0.1",
       MCP_SERVER_URL: undefined,
       MCP_HTTP_AUTH_TOKEN: undefined,
+      MCP_ALLOWED_HOSTS: [],
+      MCP_ALLOWED_ORIGINS: [],
       GITLAB_API_URL: "https://gitlab.example.com/api/v4",
       GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
       GITLAB_PERSONAL_ACCESS_TOKEN: "test-token",
@@ -610,6 +612,55 @@ describe("http app independent bearer authentication", () => {
     });
     expect(message.status).toBe(400);
     await expect(message.text()).resolves.toContain("No transport");
+  });
+});
+
+describe("http app Host and Origin policy", () => {
+  it("rejects untrusted Host and Origin headers", async () => {
+    const context = buildContext();
+    context.env.MCP_ALLOWED_HOSTS = ["mcp.example.com"];
+    context.env.MCP_ALLOWED_ORIGINS = ["https://client.example.com"];
+    running = await startServerForContext(context);
+    const baseUrl = running.baseUrl;
+
+    const invalidHostStatus = await new Promise<number | undefined>((resolve, reject) => {
+      const request = httpRequest(
+        `${baseUrl}/healthz`,
+        { headers: { host: "attacker.example.com" } },
+        (response) => {
+          response.resume();
+          response.on("end", () => resolve(response.statusCode));
+        }
+      );
+      request.on("error", reject);
+      request.end();
+    });
+    expect(invalidHostStatus).toBe(403);
+
+    const invalidOrigin = await fetch(`${baseUrl}/healthz`, {
+      headers: {
+        host: "mcp.example.com",
+        origin: "https://attacker.example.com"
+      }
+    });
+    expect(invalidOrigin.status).toBe(403);
+
+    const allowed = await fetch(`${baseUrl}/healthz`, {
+      headers: {
+        host: "mcp.example.com:8443",
+        origin: "https://client.example.com"
+      }
+    });
+    expect(allowed.status).toBe(200);
+  });
+
+  it("fails closed for wildcard binds without a public host allowlist", () => {
+    const context = buildContext();
+    context.env.HTTP_HOST = "0.0.0.0";
+
+    expect(() => setupMcpHttpApp({ context, env: context.env, logger: context.logger })).toThrow(
+      "requires MCP_SERVER_URL or MCP_ALLOWED_HOSTS"
+    );
   });
 });
 

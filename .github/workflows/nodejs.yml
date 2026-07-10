@@ -110,6 +110,7 @@ jobs:
           container_id="$(docker run --detach --rm \
             --env REMOTE_AUTHORIZATION=true \
             --env HTTP_HOST=0.0.0.0 \
+            --env MCP_ALLOWED_HOSTS=127.0.0.1 \
             --publish 3333:3333 \
             gitlab-mcp:ci)"
           trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT

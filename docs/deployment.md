@@ -75,6 +75,7 @@ When the server keeps a GitLab credential and listens beyond loopback, protect M
 ```bash
 MCP_HTTP_AUTH_TOKEN=<random-secret>
 HTTP_HOST=0.0.0.0
+MCP_ALLOWED_HOSTS=your-server.example.com
 HTTP_PORT=3333
 node dist/http.js
 ```
@@ -88,9 +89,12 @@ For multi-user deployments where each client provides their own GitLab token:
 ```bash
 REMOTE_AUTHORIZATION=true
 HTTP_HOST=0.0.0.0
+MCP_ALLOWED_HOSTS=your-server.example.com
 HTTP_PORT=3333
 node dist/http.js
 ```
+
+`MCP_SERVER_URL=https://your-server.example.com` can be used instead of `MCP_ALLOWED_HOSTS`; it also seeds the browser Origin allowlist. If browser clients run on a different origin, add it explicitly with `MCP_ALLOWED_ORIGINS=https://client.example.com`. Wildcard Host or Origin entries are intentionally unsupported.
 
 Clients connect with their credentials:
 
