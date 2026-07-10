@@ -469,6 +469,7 @@ See [docs/authentication.md](docs/authentication.md) for setup guides.
 pnpm dev           # stdio mode with hot-reload
 pnpm dev:http      # HTTP mode with hot-reload
 pnpm test          # Run tests
+pnpm test:live     # Run opt-in read-only checks against a real GitLab instance
 pnpm test:watch    # Run tests in watch mode
 pnpm lint          # Lint
 pnpm typecheck     # Type check
@@ -487,6 +488,7 @@ See [docs/architecture.md](docs/architecture.md) for detailed design documentati
 - [Security Policy](SECURITY.md) — Private vulnerability reporting and deployment baseline
 - [Authentication Guide](docs/authentication.md) — Auth methods and setup
 - [Deployment Guide](docs/deployment.md) — Docker, production, and multi-instance
+- [Live Testing](docs/live-testing.md) — Manual read-only checks against a real GitLab instance
 - [Architecture](docs/architecture.md) — Internal design and patterns
 
 ## Acknowledgements

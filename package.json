@@ -40,6 +40,7 @@
     "docs:generate": "tsx scripts/generate-tool-index.ts",
     "docs:check": "tsx scripts/generate-tool-index.ts --check",
     "test": "vitest run",
+    "test:live": "tsx scripts/live-gitlab-smoke.ts",
     "test:watch": "vitest",
     "lint-staged": "lint-staged",
     "commit": "git-cz",

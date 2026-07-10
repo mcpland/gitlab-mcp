@@ -1,0 +1,56 @@
+name: Live GitLab Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_ci_catalog:
+        description: Validate the CI/CD Catalog GraphQL fields
+        required: false
+        type: boolean
+        default: false
+      test_dependency_proxy:
+        description: Validate read-only Dependency Proxy GraphQL fields
+        required: false
+        type: boolean
+        default: false
+      group_id:
+        description: Group ID or path used when Dependency Proxy validation is enabled
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: none
+
+concurrency:
+  group: live-gitlab-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.1
+          run_install: false
+      - name: Use Node.js 24
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.x"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Run read-only live smoke
+        run: pnpm test:live
+        env:
+          GITLAB_API_URL: ${{ secrets.GITLAB_LIVE_API_URL }}
+          GITLAB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITLAB_LIVE_TOKEN }}
+          GITLAB_LIVE_TEST_PROJECT_ID: ${{ secrets.GITLAB_LIVE_PROJECT_ID }}
+          GITLAB_LIVE_TEST_CI_CATALOG: ${{ inputs.test_ci_catalog }}
+          GITLAB_LIVE_TEST_DEPENDENCY_PROXY: ${{ inputs.test_dependency_proxy }}
+          GITLAB_LIVE_TEST_GROUP_ID: ${{ inputs.group_id }}
