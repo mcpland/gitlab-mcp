@@ -94,16 +94,18 @@ Dynamic API URLs are allowlisted by canonical `host:port`. Hosts from `GITLAB_AP
 
 ## Policy
 
-| Variable                                  | Type    | Default | Description                                                                                                                                             |
-| ----------------------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GITLAB_READ_ONLY_MODE`                   | boolean | `false` | Disable tools that require `write`, `delete`, or `admin` capabilities.                                                                                  |
-| `GITLAB_ALLOWED_PROJECT_IDS`              | string  | —       | Comma-separated project IDs. If set, only these projects can be accessed. Empty = no restriction.                                                       |
-| `GITLAB_ALLOWED_TOOLS`                    | string  | —       | Comma-separated tool allowlist. Accepts names with or without `gitlab_` prefix (e.g. `get_project` or `gitlab_get_project`). Empty = all tools enabled. |
-| `GITLAB_TOOLSETS`                         | string  | `core`  | Comma-separated domain presets. Empty or `all` exposes the full registry; presets such as `ci-catalog` combine as a union before other policy filters.  |
-| `GITLAB_ENABLE_COMPATIBILITY_ALIASES`     | boolean | `false` | Expose legacy duplicate names for older clients. Canonical tools remain available when aliases are hidden.                                              |
-| `GITLAB_DISABLED_CAPABILITIES`            | string  | —       | Comma-separated capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                                                       |
-| `GITLAB_DENIED_TOOLS_REGEX`               | string  | —       | Regex pattern to deny tools by name (example: `^gitlab_delete_`). Unsafe nested-quantifier, overly long, or invalid patterns fail startup.              |
-| `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | boolean | `false` | Deprecated compatibility setting. Raw GraphQL tools stay disabled whenever `GITLAB_ALLOWED_PROJECT_IDS` is set.                                         |
+| Variable                                  | Type    | Default | Description                                                                                                                                                            |
+| ----------------------------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GITLAB_READ_ONLY_MODE`                   | boolean | `false` | Disable tools that require `write`, `delete`, or `admin` capabilities.                                                                                                 |
+| `GITLAB_ALLOWED_PROJECT_IDS`              | string  | —       | Comma-separated project IDs. If set, only these projects can be accessed. Empty = no restriction.                                                                      |
+| `GITLAB_ALLOWED_TOOLS`                    | string  | —       | Comma-separated tool allowlist. Accepts names with or without `gitlab_` prefix (e.g. `get_project` or `gitlab_get_project`). Empty = all tools enabled.                |
+| `GITLAB_TOOLSETS`                         | string  | `core`  | Comma-separated domain presets. Empty or `all` exposes the full registry; presets such as `ci-catalog` combine as a union before other policy filters.                 |
+| `GITLAB_ENABLE_COMPATIBILITY_ALIASES`     | boolean | `false` | Expose legacy duplicate names for older clients. Canonical tools remain available when aliases are hidden.                                                             |
+| `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | boolean | `false` | Explicitly expose project/group CI/CD variable tools. They remain hidden from `all` and all domain presets unless enabled.                                             |
+| `GITLAB_ALLOW_CI_VARIABLE_VALUES`         | boolean | `false` | Permit list/get tools to return variable values only when the individual call also sets `include_value=true`. Write responses and errors never return supplied values. |
+| `GITLAB_DISABLED_CAPABILITIES`            | string  | —       | Comma-separated capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                                                                      |
+| `GITLAB_DENIED_TOOLS_REGEX`               | string  | —       | Regex pattern to deny tools by name (example: `^gitlab_delete_`). Unsafe nested-quantifier, overly long, or invalid patterns fail startup.                             |
+| `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | boolean | `false` | Deprecated compatibility setting. Raw GraphQL tools stay disabled whenever `GITLAB_ALLOWED_PROJECT_IDS` is set.                                                        |
 
 ### Strict Project Scope
 
@@ -114,6 +116,7 @@ When `GITLAB_ALLOWED_PROJECT_IDS` is non-empty, it is enforced as a strict resou
 - Project-form webhook operations remain available, but their group form is rejected. Group-wide wiki, search, iteration, and project-list tools are hidden.
 - Namespace/user/event-wide operations, unscoped repository creation and forking, and bulk todo mutation are hidden because their affected project cannot be proven before execution. A single todo is verified against the allowlist before it is marked done.
 - Raw GraphQL query/mutation executors are always hidden. Project-bound Work Item tools remain available because their source, target, and parent project arguments are validated.
+- Group CI/CD variable tools are hidden. Project variable tools remain project-bound and enforce the configured allowlist.
 
 `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` is retained so existing deployments still parse, but setting it to `true` does not expose raw GraphQL tools.
 

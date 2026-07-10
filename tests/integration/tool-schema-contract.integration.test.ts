@@ -20,7 +20,10 @@ describe("Tool schema contract", () => {
 
   beforeAll(async () => {
     const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ enableCompatibilityAliases: true })
+      buildContext({
+        enableCompatibilityAliases: true,
+        enableCiVariableTools: true
+      })
     );
 
     try {

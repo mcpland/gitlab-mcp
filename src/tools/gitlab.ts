@@ -70,8 +70,10 @@ export interface GitLabToolDefinition {
   scope: GitLabToolScopeMetadata;
   requiresAuth?: boolean;
   requiresFeature?: "wiki" | "milestone" | "pipeline" | "release";
+  requiresExplicitEnable?: "ciVariables";
   requiresLocalFileTools?: boolean;
   compatibilityAlias?: boolean;
+  sensitiveArguments?: readonly string[];
   inputSchema?: ToolSchemaShape;
   handler: (args: ToolArgs, context: AppContext) => Promise<unknown>;
 }
@@ -96,7 +98,12 @@ const GROUP_SCOPED_TOOL_NAMES = new Set([
   "gitlab_get_group_wiki_page",
   "gitlab_create_group_wiki_page",
   "gitlab_update_group_wiki_page",
-  "gitlab_delete_group_wiki_page"
+  "gitlab_delete_group_wiki_page",
+  "gitlab_list_group_variables",
+  "gitlab_get_group_variable",
+  "gitlab_create_group_variable",
+  "gitlab_update_group_variable",
+  "gitlab_delete_group_variable"
 ]);
 
 const RAW_GRAPHQL_TOOL_NAMES = new Set([
@@ -224,12 +231,41 @@ const customFieldValueSchema = z.object({
   selected_option_ids: optionalStringArray,
   date_value: optionalString
 });
+const ciVariableKeySchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z0-9_]+$/, "CI/CD variable keys may contain only letters, digits, and '_'");
+const ciVariableFilterSchema = z
+  .object({
+    environment_scope: z.string().min(1)
+  })
+  .optional();
+const ciVariableMutationFields: ToolSchemaShape = {
+  value: z.string(),
+  variable_type: z.enum(["env_var", "file"]).optional(),
+  protected: optionalBoolean,
+  masked: optionalBoolean,
+  raw: optionalBoolean,
+  environment_scope: z.string().min(1).optional(),
+  description: z.string().max(255).optional()
+};
+const ciVariableSensitiveArguments = ["value"] as const;
+
+function isExplicitlyEnabled(definition: GitLabToolDefinition, context: AppContext): boolean {
+  if (definition.requiresExplicitEnable === "ciVariables") {
+    return context.env.GITLAB_ENABLE_CI_VARIABLE_TOOLS;
+  }
+
+  return true;
+}
 
 export function registerGitLabTools(server: McpServer, context: AppContext): void {
   const definitions = getGitLabToolDefinitions();
   const scopeFilteredDefinitions = definitions.filter(
     (definition) =>
       isToolEnabledByToolsets(definition.name, context.env.GITLAB_TOOLSETS) &&
+      isExplicitlyEnabled(definition, context) &&
       isToolVisibleForProjectScope(definition, context.env.GITLAB_ALLOWED_PROJECT_IDS)
   );
   const filtered = context.policy.filterTools(
@@ -300,7 +336,10 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
             }
           };
         } catch (error) {
-          return toToolError(error, context);
+          return toToolError(error, context, {
+            extraKeys: definition.sensitiveArguments,
+            extraValues: getSensitiveArgumentValues(rawArgs, definition.sensitiveArguments)
+          });
         }
       }
     );
@@ -3452,6 +3491,239 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: getCiCatalogResource
     },
     {
+      name: "gitlab_list_project_variables",
+      title: "List Project CI/CD Variables",
+      description:
+        "List project CI/CD variable metadata. Values require both server opt-in and include_value=true.",
+      capabilities: readCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        page: z.coerce.number().int().positive().optional(),
+        per_page: z.coerce.number().int().min(1).max(100).optional(),
+        filter: ciVariableFilterSchema,
+        include_value: optionalBoolean
+      },
+      handler: async (args, context) => {
+        const variables = await context.gitlab.listProjectVariables(
+          resolveProjectId(args, context, true),
+          {
+            query: {
+              ...toQuery(omit(args, ["project_id", "filter", "include_value"])),
+              ...ciVariableFilterQuery(args)
+            }
+          }
+        );
+        return projectCiVariableResponse(variables, shouldIncludeCiVariableValue(args, context));
+      }
+    },
+    {
+      name: "gitlab_get_project_variable",
+      title: "Get Project CI/CD Variable",
+      description:
+        "Get project CI/CD variable metadata. The value requires both server opt-in and include_value=true.",
+      capabilities: readCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        key: ciVariableKeySchema,
+        filter: ciVariableFilterSchema,
+        include_value: optionalBoolean
+      },
+      handler: async (args, context) => {
+        const variable = await context.gitlab.getProjectVariable(
+          resolveProjectId(args, context, true),
+          getString(args, "key"),
+          { query: ciVariableFilterQuery(args) }
+        );
+        return projectCiVariableResponse(variable, shouldIncludeCiVariableValue(args, context));
+      }
+    },
+    {
+      name: "gitlab_create_project_variable",
+      title: "Create Project CI/CD Variable",
+      description:
+        "Create a project CI/CD variable. The supplied value is never returned or included in errors.",
+      capabilities: writeCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        key: ciVariableKeySchema,
+        ...ciVariableMutationFields,
+        masked_and_hidden: optionalBoolean
+      },
+      handler: async (args, context) => {
+        const variable = await context.gitlab.createProjectVariable(
+          resolveProjectId(args, context, true),
+          ciVariablePayload(args, true)
+        );
+        return projectCiVariableResponse(variable, false);
+      }
+    },
+    {
+      name: "gitlab_update_project_variable",
+      title: "Update Project CI/CD Variable",
+      description:
+        "Update a project CI/CD variable. The supplied value is never returned or included in errors.",
+      capabilities: writeCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        key: ciVariableKeySchema,
+        ...ciVariableMutationFields,
+        filter: ciVariableFilterSchema
+      },
+      handler: async (args, context) => {
+        const variable = await context.gitlab.updateProjectVariable(
+          resolveProjectId(args, context, true),
+          getString(args, "key"),
+          ciVariablePayload(args, false),
+          { query: ciVariableFilterQuery(args) }
+        );
+        return projectCiVariableResponse(variable, false);
+      }
+    },
+    {
+      name: "gitlab_delete_project_variable",
+      title: "Delete Project CI/CD Variable",
+      description: "Permanently delete a project CI/CD variable.",
+      capabilities: deleteCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        key: ciVariableKeySchema,
+        filter: ciVariableFilterSchema
+      },
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const key = getString(args, "key");
+        await context.gitlab.deleteProjectVariable(projectId, key, {
+          query: ciVariableFilterQuery(args)
+        });
+        return { status: "deleted", scope: "project", project_id: projectId, key };
+      }
+    },
+    {
+      name: "gitlab_list_group_variables",
+      title: "List Group CI/CD Variables",
+      description:
+        "List group CI/CD variable metadata. Values require both server opt-in and include_value=true.",
+      capabilities: readCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        group_id: projectIdSchema,
+        page: z.coerce.number().int().positive().optional(),
+        per_page: z.coerce.number().int().min(1).max(100).optional(),
+        filter: ciVariableFilterSchema,
+        include_value: optionalBoolean
+      },
+      handler: async (args, context) => {
+        const variables = await context.gitlab.listGroupVariables(getString(args, "group_id"), {
+          query: {
+            ...toQuery(omit(args, ["group_id", "filter", "include_value"])),
+            ...ciVariableFilterQuery(args)
+          }
+        });
+        return projectCiVariableResponse(variables, shouldIncludeCiVariableValue(args, context));
+      }
+    },
+    {
+      name: "gitlab_get_group_variable",
+      title: "Get Group CI/CD Variable",
+      description:
+        "Get group CI/CD variable metadata. The value requires both server opt-in and include_value=true.",
+      capabilities: readCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        group_id: projectIdSchema,
+        key: ciVariableKeySchema,
+        filter: ciVariableFilterSchema,
+        include_value: optionalBoolean
+      },
+      handler: async (args, context) => {
+        const variable = await context.gitlab.getGroupVariable(
+          getString(args, "group_id"),
+          getString(args, "key"),
+          { query: ciVariableFilterQuery(args) }
+        );
+        return projectCiVariableResponse(variable, shouldIncludeCiVariableValue(args, context));
+      }
+    },
+    {
+      name: "gitlab_create_group_variable",
+      title: "Create Group CI/CD Variable",
+      description:
+        "Create a group CI/CD variable. The supplied value is never returned or included in errors.",
+      capabilities: writeCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        group_id: projectIdSchema,
+        key: ciVariableKeySchema,
+        ...ciVariableMutationFields,
+        masked_and_hidden: optionalBoolean
+      },
+      handler: async (args, context) => {
+        const variable = await context.gitlab.createGroupVariable(
+          getString(args, "group_id"),
+          ciVariablePayload(args, true)
+        );
+        return projectCiVariableResponse(variable, false);
+      }
+    },
+    {
+      name: "gitlab_update_group_variable",
+      title: "Update Group CI/CD Variable",
+      description:
+        "Update a group CI/CD variable. The supplied value is never returned or included in errors.",
+      capabilities: writeCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        group_id: projectIdSchema,
+        key: ciVariableKeySchema,
+        ...ciVariableMutationFields,
+        filter: ciVariableFilterSchema
+      },
+      handler: async (args, context) => {
+        const variable = await context.gitlab.updateGroupVariable(
+          getString(args, "group_id"),
+          getString(args, "key"),
+          ciVariablePayload(args, false),
+          { query: ciVariableFilterQuery(args) }
+        );
+        return projectCiVariableResponse(variable, false);
+      }
+    },
+    {
+      name: "gitlab_delete_group_variable",
+      title: "Delete Group CI/CD Variable",
+      description: "Permanently delete a group CI/CD variable.",
+      capabilities: deleteCapabilities,
+      requiresExplicitEnable: "ciVariables",
+      sensitiveArguments: ciVariableSensitiveArguments,
+      inputSchema: {
+        group_id: projectIdSchema,
+        key: ciVariableKeySchema,
+        filter: ciVariableFilterSchema
+      },
+      handler: async (args, context) => {
+        const groupId = getString(args, "group_id");
+        const key = getString(args, "key");
+        await context.gitlab.deleteGroupVariable(groupId, key, {
+          query: ciVariableFilterQuery(args)
+        });
+        return { status: "deleted", scope: "group", group_id: groupId, key };
+      }
+    },
+    {
       name: "gitlab_list_job_artifacts",
       title: "List Job Artifacts",
       description: "List files and directories inside a job artifacts archive.",
@@ -5437,6 +5709,89 @@ function filterCiCatalogComponents(
   };
 }
 
+const CI_VARIABLE_SAFE_RESPONSE_FIELDS = [
+  "key",
+  "variable_type",
+  "protected",
+  "masked",
+  "masked_and_hidden",
+  "hidden",
+  "raw",
+  "environment_scope",
+  "description"
+] as const;
+
+function shouldIncludeCiVariableValue(args: ToolArgs, context: AppContext): boolean {
+  return (
+    context.env.GITLAB_ALLOW_CI_VARIABLE_VALUES &&
+    getOptionalBoolean(args, "include_value") === true
+  );
+}
+
+function projectCiVariableResponse(value: unknown, includeValue: boolean): unknown {
+  if (Array.isArray(value)) {
+    return copyPaginationMetadata(
+      value,
+      value.map((item) => projectCiVariableResponse(item, includeValue))
+    );
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const input = value as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const field of CI_VARIABLE_SAFE_RESPONSE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(input, field)) {
+      output[field] = input[field];
+    }
+  }
+  if (includeValue && Object.prototype.hasOwnProperty.call(input, "value")) {
+    output.value = input.value;
+  }
+
+  return output;
+}
+
+function ciVariableFilterQuery(args: ToolArgs): Record<string, string> {
+  const filter = getOptionalRecord(args, "filter");
+  if (!filter) {
+    return {};
+  }
+
+  const environmentScope = filter.environment_scope;
+  if (typeof environmentScope !== "string" || environmentScope.length === 0) {
+    throw new Error("'filter.environment_scope' must be a non-empty string");
+  }
+
+  return { "filter[environment_scope]": environmentScope };
+}
+
+function ciVariablePayload(args: ToolArgs, includeCreateOnlyFields: boolean): ToolArgs {
+  const fields = [
+    "value",
+    "variable_type",
+    "protected",
+    "masked",
+    "raw",
+    "environment_scope",
+    "description"
+  ];
+  if (includeCreateOnlyFields) {
+    fields.unshift("key");
+    fields.push("masked_and_hidden");
+  }
+
+  const payload: ToolArgs = {};
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(args, field)) {
+      payload[field] = args[field];
+    }
+  }
+  return payload;
+}
+
 function resolveExplicitProjectId(context: AppContext, projectId: string): string {
   const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
   if (allowed.length > 0 && !allowed.includes(projectId)) {
@@ -5590,6 +5945,9 @@ function getToolDisabledReasons(definition: GitLabToolDefinition, context: AppCo
   }
   if (!isToolEnabledByToolsets(definition.name, context.env.GITLAB_TOOLSETS)) {
     reasons.push("toolset");
+  }
+  if (!isExplicitlyEnabled(definition, context)) {
+    reasons.push("explicit_enable");
   }
   if (!isToolVisibleForProjectScope(definition, context.env.GITLAB_ALLOWED_PROJECT_IDS)) {
     reasons.push("project_scope");
@@ -7293,7 +7651,16 @@ function hasNonEmptyCiLintErrorsArray(record: Record<string, unknown>): boolean 
   return Array.isArray(record.errors) && extractCiLintMessages(record.errors).length > 0;
 }
 
-function toToolError(error: unknown, context?: AppContext): CallToolResult {
+interface SensitiveRedactionOptions {
+  extraKeys?: readonly string[];
+  extraValues?: readonly string[];
+}
+
+function toToolError(
+  error: unknown,
+  context?: AppContext,
+  redactionOptions: SensitiveRedactionOptions = {}
+): CallToolResult {
   const detailMode = context?.env.GITLAB_ERROR_DETAIL_MODE ?? "full";
 
   if (error instanceof GitLabApiError) {
@@ -7301,7 +7668,7 @@ function toToolError(error: unknown, context?: AppContext): CallToolResult {
       error: `GitLab API error ${error.status}`
     };
     if (detailMode === "full") {
-      payload.details = redactSensitive(error.details);
+      payload.details = redactSensitive(error.details, redactionOptions);
     }
 
     return {
@@ -7316,7 +7683,10 @@ function toToolError(error: unknown, context?: AppContext): CallToolResult {
   }
 
   if (error instanceof Error) {
-    const message = detailMode === "full" ? error.message : "Request failed";
+    const message =
+      detailMode === "full"
+        ? String(redactSensitive(error.message, redactionOptions))
+        : "Request failed";
     return {
       isError: true,
       content: [
@@ -8102,9 +8472,9 @@ function requireArrayValue<T>(items: T[], index: number, errorMessage: string): 
   return value;
 }
 
-function redactSensitive(value: unknown): unknown {
+function redactSensitive(value: unknown, options: SensitiveRedactionOptions = {}): unknown {
   if (typeof value === "string") {
-    return value
+    let output = value
       .replace(
         /\b(glpat-[a-z0-9_-]{10,}|ghp_[a-z0-9]{20,}|eyJ[a-zA-Z0-9._-]{20,})\b/g,
         "[REDACTED]"
@@ -8113,24 +8483,50 @@ function redactSensitive(value: unknown): unknown {
         /(private[-_]?token|authorization)["']?\s*[:=]\s*["']?[^"'\s,}]+/gi,
         "$1=[REDACTED]"
       );
+
+    for (const sensitiveValue of [...(options.extraValues ?? [])].sort(
+      (left, right) => right.length - left.length
+    )) {
+      if (sensitiveValue.length > 0) {
+        output = output.split(sensitiveValue).join("[REDACTED]");
+      }
+    }
+
+    return output;
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => redactSensitive(item));
+    return value.map((item) => redactSensitive(item, options));
   }
 
   if (value && typeof value === "object") {
     const input = value as Record<string, unknown>;
     const output: Record<string, unknown> = {};
+    const extraKeys = new Set((options.extraKeys ?? []).map((key) => key.toLowerCase()));
     for (const [key, item] of Object.entries(input)) {
-      if (/token|authorization|password|secret/i.test(key)) {
+      if (/token|authorization|password|secret/i.test(key) || extraKeys.has(key.toLowerCase())) {
         output[key] = "[REDACTED]";
         continue;
       }
-      output[key] = redactSensitive(item);
+      output[key] = redactSensitive(item, options);
     }
     return output;
   }
 
   return value;
+}
+
+function getSensitiveArgumentValues(
+  args: unknown,
+  sensitiveArguments: readonly string[] | undefined
+): string[] {
+  if (!sensitiveArguments || typeof args !== "object" || args === null || Array.isArray(args)) {
+    return [];
+  }
+
+  const record = args as Record<string, unknown>;
+  return sensitiveArguments.flatMap((argumentName) => {
+    const value = record[argumentName];
+    return typeof value === "string" && value.length > 0 ? [value] : [];
+  });
 }

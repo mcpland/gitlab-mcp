@@ -308,6 +308,27 @@ Requires `USE_PIPELINE=true` (default).
 
 ---
 
+## CI/CD Variables
+
+Requires `GITLAB_ENABLE_CI_VARIABLE_TOOLS=true` (default: `false`). Project and group variants support list, get, create, update, and delete. List endpoints support `page` and `per_page`; list, get, update, and delete accept `filter.environment_scope` to select an environment scope or disambiguate duplicate keys.
+
+Variable values are omitted by default. A list/get response includes `value` only when the server sets `GITLAB_ALLOW_CI_VARIABLE_VALUES=true` and that call sets `include_value=true`. Create/update responses and error details never expose supplied values. Group variants are hidden under strict project scope.
+
+| Tool                             | Mutating | Description                                                     |
+| -------------------------------- | -------- | --------------------------------------------------------------- |
+| `gitlab_list_project_variables`  | No       | List project variable metadata.                                 |
+| `gitlab_get_project_variable`    | No       | Get one project variable by key and optional environment scope. |
+| `gitlab_create_project_variable` | **Yes**  | Create a project variable.                                      |
+| `gitlab_update_project_variable` | **Yes**  | Update a project variable.                                      |
+| `gitlab_delete_project_variable` | **Yes**  | Permanently delete a project variable.                          |
+| `gitlab_list_group_variables`    | No       | List group variable metadata.                                   |
+| `gitlab_get_group_variable`      | No       | Get one group variable by key and optional environment scope.   |
+| `gitlab_create_group_variable`   | **Yes**  | Create a group variable.                                        |
+| `gitlab_update_group_variable`   | **Yes**  | Update a group variable.                                        |
+| `gitlab_delete_group_variable`   | **Yes**  | Permanently delete a group variable.                            |
+
+---
+
 ## Milestones
 
 Requires `USE_MILESTONE=true` (default).

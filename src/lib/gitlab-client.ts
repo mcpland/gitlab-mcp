@@ -271,8 +271,116 @@ export class GitLabClient {
     return this.get(`/projects/${encodeGitLabProjectId(projectId)}/members/all`, options);
   }
 
+  listProjectVariables(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/variables`, options);
+  }
+
+  getProjectVariable(
+    projectId: string,
+    key: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encodeGitLabProjectId(projectId)}/variables/${encode(key)}`,
+      options
+    );
+  }
+
+  createProjectVariable(
+    projectId: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/variables`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  updateProjectVariable(
+    projectId: string,
+    key: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}/variables/${encode(key)}`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  deleteProjectVariable(
+    projectId: string,
+    key: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(
+      `/projects/${encodeGitLabProjectId(projectId)}/variables/${encode(key)}`,
+      options
+    );
+  }
+
   listGroupProjects(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/groups/${encode(groupId)}/projects`, options);
+  }
+
+  listGroupVariables(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/groups/${encode(groupId)}/variables`, options);
+  }
+
+  getGroupVariable(
+    groupId: string,
+    key: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(`/groups/${encode(groupId)}/variables/${encode(key)}`, options);
+  }
+
+  createGroupVariable(
+    groupId: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`/groups/${encode(groupId)}/variables`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  updateGroupVariable(
+    groupId: string,
+    key: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.put(`/groups/${encode(groupId)}/variables/${encode(key)}`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  }
+
+  deleteGroupVariable(
+    groupId: string,
+    key: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(`/groups/${encode(groupId)}/variables/${encode(key)}`, options);
   }
 
   forkRepository(

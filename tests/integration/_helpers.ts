@@ -49,6 +49,8 @@ const defaultEnv: AppContext["env"] = {
   GITLAB_ALLOWED_TOOLS: [],
   GITLAB_TOOLSETS: [],
   GITLAB_ENABLE_COMPATIBILITY_ALIASES: false,
+  GITLAB_ENABLE_CI_VARIABLE_TOOLS: false,
+  GITLAB_ALLOW_CI_VARIABLE_VALUES: false,
   GITLAB_DISABLED_CAPABILITIES: [],
   GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: false,
   GITLAB_RESPONSE_MODE: "json",
@@ -115,6 +117,8 @@ export interface BuildContextOptions {
   allowedTools?: string[];
   toolsets?: AppContext["env"]["GITLAB_TOOLSETS"];
   enableCompatibilityAliases?: boolean;
+  enableCiVariableTools?: boolean;
+  allowCiVariableValues?: boolean;
   deniedToolsRegex?: RegExp;
   disabledCapabilities?: ToolCapability[];
   enabledFeatures?: typeof defaultFeatures;
@@ -142,6 +146,8 @@ export function buildContext(overrides?: BuildContextOptions): AppContext {
       GITLAB_ALLOWED_TOOLS: overrides?.allowedTools ?? [],
       GITLAB_TOOLSETS: overrides?.toolsets ?? [],
       GITLAB_ENABLE_COMPATIBILITY_ALIASES: overrides?.enableCompatibilityAliases ?? false,
+      GITLAB_ENABLE_CI_VARIABLE_TOOLS: overrides?.enableCiVariableTools ?? false,
+      GITLAB_ALLOW_CI_VARIABLE_VALUES: overrides?.allowCiVariableValues ?? false,
       GITLAB_DISABLED_CAPABILITIES: overrides?.disabledCapabilities ?? [],
       GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: overrides?.allowGraphqlWithProjectScope ?? false,
       GITLAB_MAX_RESPONSE_BYTES: overrides?.maxBytes ?? 200_000,

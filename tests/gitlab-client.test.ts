@@ -2213,6 +2213,67 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("name")).toBe("bug");
     });
 
+    it("uses encoded project/group CI variable endpoints and filter queries", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ key: "TOKEN" }));
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+
+      await client.listProjectVariables("group/project", {
+        query: { page: 2, per_page: 50 }
+      });
+      await client.getGroupVariable("group/subgroup", "TOKEN", {
+        query: { "filter[environment_scope]": "production" }
+      });
+
+      const projectListUrl = new URL(String((fetchMock.mock.calls[0] as [URL])[0]));
+      expect(projectListUrl.pathname).toContain("/projects/group%2Fproject/variables");
+      expect(projectListUrl.searchParams.get("page")).toBe("2");
+      expect(projectListUrl.searchParams.get("per_page")).toBe("50");
+
+      const groupGetUrl = new URL(String((fetchMock.mock.calls[1] as [URL])[0]));
+      expect(groupGetUrl.pathname).toContain("/groups/group%2Fsubgroup/variables/TOKEN");
+      expect(groupGetUrl.searchParams.get("filter[environment_scope]")).toBe("production");
+    });
+
+    it("sends CI variable writes as JSON and supports filtered deletion", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ key: "TOKEN" }));
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+
+      await client.createProjectVariable("group/project", {
+        key: "TOKEN",
+        value: "secret"
+      });
+      await client.updateGroupVariable(
+        "group/subgroup",
+        "TOKEN",
+        { value: "replacement" },
+        { query: { "filter[environment_scope]": "production" } }
+      );
+      await client.deleteProjectVariable("group/project", "TOKEN", {
+        query: { "filter[environment_scope]": "staging" }
+      });
+
+      const [createUrl, createInit] = fetchMock.mock.calls[0] as [URL, RequestInit];
+      expect(String(createUrl)).toContain("/projects/group%2Fproject/variables");
+      expect(createInit.method).toBe("POST");
+      expect(new Headers(createInit.headers).get("Content-Type")).toBe("application/json");
+      expect(JSON.parse(createInit.body as string)).toEqual({ key: "TOKEN", value: "secret" });
+
+      const [updateUrl, updateInit] = fetchMock.mock.calls[1] as [URL, RequestInit];
+      expect(String(updateUrl)).toContain("/groups/group%2Fsubgroup/variables/TOKEN");
+      expect(new URL(String(updateUrl)).searchParams.get("filter[environment_scope]")).toBe(
+        "production"
+      );
+      expect(updateInit.method).toBe("PUT");
+      expect(JSON.parse(updateInit.body as string)).toEqual({ value: "replacement" });
+
+      const [deleteUrl, deleteInit] = fetchMock.mock.calls[2] as [URL, RequestInit];
+      expect(String(deleteUrl)).toContain("/projects/group%2Fproject/variables/TOKEN");
+      expect(new URL(String(deleteUrl)).searchParams.get("filter[environment_scope]")).toBe(
+        "staging"
+      );
+      expect(deleteInit.method).toBe("DELETE");
+    });
+
     it("bounds job traces by line count and marks them as untrusted", async () => {
       const trace = Array.from({ length: 1_100 }, (_, index) => `line-${index}`).join("\n");
       fetchMock.mockResolvedValue(textResponse(trace));

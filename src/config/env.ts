@@ -80,6 +80,8 @@ const envSchema = z.object({
   GITLAB_ALLOWED_TOOLS: z.string().optional(),
   GITLAB_TOOLSETS: z.string().default("core"),
   GITLAB_ENABLE_COMPATIBILITY_ALIASES: z.enum(["true", "false"]).default("false"),
+  GITLAB_ENABLE_CI_VARIABLE_TOOLS: z.enum(["true", "false"]).default("false"),
+  GITLAB_ALLOW_CI_VARIABLE_VALUES: z.enum(["true", "false"]).default("false"),
   GITLAB_DISABLED_CAPABILITIES: z.string().optional(),
   GITLAB_DENIED_TOOLS_REGEX: z.string().optional(),
   GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: z.enum(["true", "false"]).default("false"),
@@ -221,6 +223,8 @@ export const env = {
     data.GITLAB_ENABLE_COMPATIBILITY_ALIASES,
     false
   ),
+  GITLAB_ENABLE_CI_VARIABLE_TOOLS: parseBoolean(data.GITLAB_ENABLE_CI_VARIABLE_TOOLS, false),
+  GITLAB_ALLOW_CI_VARIABLE_VALUES: parseBoolean(data.GITLAB_ALLOW_CI_VARIABLE_VALUES, false),
   GITLAB_DISABLED_CAPABILITIES: parseCapabilities(data.GITLAB_DISABLED_CAPABILITIES),
   GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: parseBoolean(
     data.GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE,

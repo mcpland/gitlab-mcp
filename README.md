@@ -361,6 +361,11 @@ GITLAB_TOOLSETS=core,wiki
 # Opt in only for clients that still call legacy duplicate names
 GITLAB_ENABLE_COMPATIBILITY_ALIASES=true
 
+# Sensitive variable administration is hidden until explicitly enabled
+GITLAB_ENABLE_CI_VARIABLE_TOOLS=true
+# Optional second gate; callers must also pass include_value=true
+GITLAB_ALLOW_CI_VARIABLE_VALUES=false
+
 # Block tools by regex pattern
 GITLAB_DENIED_TOOLS_REGEX=^gitlab_(delete|create)_
 
@@ -412,6 +417,8 @@ node dist/http.js --env-file=.env.production
 | Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                                           |
 | Policy          | `GITLAB_TOOLSETS`                         | `core`                      | Domain presets such as `core`, `merge-requests`, `issues`, or `pipelines`; use `all` for the full registry. |
 | Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                           |
+| Policy          | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | `false`                     | Expose project/group CI/CD variable tools.                                                                  |
+| Policy          | `GITLAB_ALLOW_CI_VARIABLE_VALUES`         | `false`                     | Allow values only when a list/get call also passes `include_value=true`.                                    |
 | Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                                              |
 | Policy          | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | `false`                     | Deprecated compatibility setting; raw GraphQL stays disabled in project-scoped mode.                        |
 | Auth Extensions | `GITLAB_USE_OAUTH`                        | `false`                     | Enable OAuth 2.0 PKCE flow.                                                                                 |
