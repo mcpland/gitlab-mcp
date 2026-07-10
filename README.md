@@ -389,6 +389,14 @@ USE_PIPELINE=false
 USE_GITLAB_WIKI=false
 ```
 
+The two sensitive tool families use two independent gates. Enabling a family does not add it to the default `core` registry; select its toolset (or `all`) as well:
+
+```bash
+GITLAB_TOOLSETS=core,ci-variables,dependency-proxy
+GITLAB_ENABLE_CI_VARIABLE_TOOLS=true
+GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS=true
+```
+
 Unsafe or invalid `GITLAB_DENIED_TOOLS_REGEX` patterns fail startup.
 
 In `modify` mode, raw GraphQL mutation tools remain available for updates, but the server parses each document and blocks mutation-root fields containing `delete`, `destroy`, `remove`, `prune`, or `purge`. Aliases and fragment expansion cannot bypass the check, and documents that cannot be verified fail closed.
@@ -431,9 +439,9 @@ node dist/http.js --env-file=.env.production
 | Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                                           |
 | Policy          | `GITLAB_TOOLSETS`                         | `core`                      | Domain presets such as `core`, `merge-requests`, `issues`, or `pipelines`; use `all` for the full registry. |
 | Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                           |
-| Policy          | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | `false`                     | Expose project/group CI/CD variable tools.                                                                  |
+| Policy          | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | `false`                     | Second gate for CI/CD variable tools; also select `ci-variables` or `all`.                                  |
 | Policy          | `GITLAB_ALLOW_CI_VARIABLE_VALUES`         | `false`                     | Allow values only when a list/get call also passes `include_value=true`.                                    |
-| Policy          | `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS`    | `false`                     | Expose group Dependency Proxy administration tools.                                                         |
+| Policy          | `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS`    | `false`                     | Second gate for Dependency Proxy tools; also select `dependency-proxy` or `all`.                            |
 | Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                                              |
 | Policy          | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | `false`                     | Deprecated compatibility setting; raw GraphQL stays disabled in project-scoped mode.                        |
 | Auth Extensions | `GITLAB_USE_OAUTH`                        | `false`                     | Enable OAuth 2.0 PKCE flow.                                                                                 |

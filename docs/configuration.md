@@ -122,14 +122,16 @@ Dynamic API URLs are allowlisted by canonical `host:port`. Hosts from `GITLAB_AP
 | `GITLAB_ALLOWED_TOOLS`                    | string  | —       | Comma-separated tool allowlist. Accepts names with or without `gitlab_` prefix (e.g. `get_project` or `gitlab_get_project`). Empty = all tools enabled.                |
 | `GITLAB_TOOLSETS`                         | string  | `core`  | Comma-separated domain presets. Empty or `all` exposes the full registry; presets such as `ci-catalog` combine as a union before other policy filters.                 |
 | `GITLAB_ENABLE_COMPATIBILITY_ALIASES`     | boolean | `false` | Expose legacy duplicate names for older clients. Canonical tools remain available when aliases are hidden.                                                             |
-| `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | boolean | `false` | Explicitly expose project/group CI/CD variable tools. They remain hidden from `all` and all domain presets unless enabled.                                             |
+| `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | boolean | `false` | Second gate for project/group CI/CD variable tools. Also select the `ci-variables` toolset (or `all`).                                                                 |
 | `GITLAB_ALLOW_CI_VARIABLE_VALUES`         | boolean | `false` | Permit list/get tools to return variable values only when the individual call also sets `include_value=true`. Write responses and errors never return supplied values. |
-| `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS`    | boolean | `false` | Explicitly expose group Dependency Proxy administration tools. These tools require the `admin` capability and are hidden under strict project scope.                   |
+| `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS`    | boolean | `false` | Second gate for group Dependency Proxy tools. Also select `dependency-proxy` (or `all`); requires `admin` and is hidden under strict project scope.                    |
 | `GITLAB_DISABLED_CAPABILITIES`            | string  | —       | Comma-separated capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                                                                      |
 | `GITLAB_DENIED_TOOLS_REGEX`               | string  | —       | Regex pattern to deny tools by name (example: `^gitlab_delete_`). Unsafe nested-quantifier, overly long, or invalid patterns fail startup.                             |
 | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | boolean | `false` | Deprecated compatibility setting. Raw GraphQL tools stay disabled whenever `GITLAB_ALLOWED_PROJECT_IDS` is set.                                                        |
 
 In `modify` mode, the raw GraphQL mutation executor remains available for non-destructive updates. Before execution, gitlab-mcp parses the document AST and rejects mutation-root field names containing `delete`, `destroy`, `remove`, `prune`, or `purge`, including fields reached through aliases, inline fragments, and fragment spreads. Documents that cannot be verified are rejected.
+
+`GITLAB_TOOLSETS` selects the candidate registry first; the two sensitive-family flags are additional gates. With the default `GITLAB_TOOLSETS=core`, setting either flag alone exposes nothing. Use `core,ci-variables`, `core,dependency-proxy`, their union, or `all` as appropriate.
 
 ### Strict Project Scope
 

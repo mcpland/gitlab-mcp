@@ -310,7 +310,7 @@ Requires `USE_PIPELINE=true` (default).
 
 ## CI/CD Variables
 
-Requires `GITLAB_ENABLE_CI_VARIABLE_TOOLS=true` (default: `false`). Project and group variants support list, get, create, update, and delete. List endpoints support `page` and `per_page`; list, get, update, and delete accept `filter.environment_scope` to select an environment scope or disambiguate duplicate keys.
+Requires both the `ci-variables` toolset (or `all`) and `GITLAB_ENABLE_CI_VARIABLE_TOOLS=true` (default: `false`). Project and group variants support list, get, create, update, and delete. List endpoints support `page` and `per_page`; list, get, update, and delete accept `filter.environment_scope` to select an environment scope or disambiguate duplicate keys.
 
 Variable values are omitted by default. A list/get response includes `value` only when the server sets `GITLAB_ALLOW_CI_VARIABLE_VALUES=true` and that call sets `include_value=true`. Create/update responses and error details never expose supplied values. Group variants are hidden under strict project scope.
 
@@ -331,7 +331,7 @@ Variable values are omitted by default. A list/get response includes `value` onl
 
 ## Dependency Proxy
 
-Requires `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS=true` (default: `false`) and the `admin` capability. These group-wide tools are all hidden when `GITLAB_ALLOWED_PROJECT_IDS` enables strict project scope. GraphQL-backed list/get/update operations also require the `graphql` capability.
+Requires both the `dependency-proxy` toolset (or `all`) and `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS=true` (default: `false`), plus the `admin` capability. These group-wide tools are all hidden when `GITLAB_ALLOWED_PROJECT_IDS` enables strict project scope. GraphQL-backed list/get/update operations also require the `graphql` capability.
 
 | Tool                                      | Mutating | Description                                                                  |
 | ----------------------------------------- | -------- | ---------------------------------------------------------------------------- |
