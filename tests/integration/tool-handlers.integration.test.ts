@@ -2837,6 +2837,95 @@ describe("resolveProjectId with GITLAB_ALLOWED_PROJECT_IDS", () => {
       await serverTransport.close();
     }
   });
+
+  it("rejects target and parent projects outside the allowed set", async () => {
+    const createMergeRequest = vi.fn();
+    const createIssueLink = vi.fn();
+    const getProject = vi.fn();
+    const executeGraphql = vi.fn();
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["group/allowed"],
+        gitlabStub: { createMergeRequest, createIssueLink, getProject, executeGraphql }
+      })
+    );
+
+    try {
+      const calls = [
+        {
+          name: "gitlab_create_merge_request",
+          arguments: {
+            project_id: "group/allowed",
+            target_project_id: "group/forbidden",
+            source_branch: "feature",
+            target_branch: "main",
+            title: "Scoped MR"
+          }
+        },
+        {
+          name: "gitlab_create_issue_link",
+          arguments: {
+            project_id: "group/allowed",
+            issue_iid: "1",
+            target_project_id: "group/forbidden",
+            target_issue_iid: "2"
+          }
+        },
+        {
+          name: "gitlab_update_work_item",
+          arguments: {
+            project_id: "group/allowed",
+            iid: 1,
+            parent_iid: 2,
+            parent_project_id: "group/forbidden"
+          }
+        }
+      ] as const;
+
+      for (const call of calls) {
+        const result = await client.callTool(call);
+        expect(result.isError, call.name).toBe(true);
+        const text = (result.content as Array<{ type: string; text: string }>)[0]?.text ?? "";
+        expect(text, call.name).toContain("not in GITLAB_ALLOWED_PROJECT_IDS");
+      }
+
+      expect(createMergeRequest).not.toHaveBeenCalled();
+      expect(createIssueLink).not.toHaveBeenCalled();
+      expect(getProject).not.toHaveBeenCalled();
+      expect(executeGraphql).not.toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects forbidden project and all group forms for webhook tools", async () => {
+    const listWebhooks = vi.fn();
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["group/allowed"],
+        gitlabStub: { listWebhooks }
+      })
+    );
+
+    try {
+      const forbiddenProject = await client.callTool({
+        name: "gitlab_list_webhooks",
+        arguments: { project_id: "group/forbidden" }
+      });
+      const groupScope = await client.callTool({
+        name: "gitlab_list_webhooks",
+        arguments: { group_id: "group" }
+      });
+
+      expect(forbiddenProject.isError).toBe(true);
+      expect(groupScope.isError).toBe(true);
+      expect(listWebhooks).not.toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */

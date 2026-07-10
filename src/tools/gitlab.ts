@@ -1059,12 +1059,15 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
+        const targetProjectId = getOptionalString(args, "target_project_id");
         return context.gitlab.createMergeRequest(projectId, {
           source_branch: getString(args, "source_branch"),
           target_branch: getString(args, "target_branch"),
           title: getString(args, "title"),
           description: getOptionalString(args, "description"),
-          target_project_id: getOptionalString(args, "target_project_id"),
+          target_project_id: targetProjectId
+            ? resolveExplicitProjectId(context, targetProjectId)
+            : undefined,
           assignee_ids: getOptionalNumberArray(args, "assignee_ids"),
           reviewer_ids: getOptionalNumberArray(args, "reviewer_ids"),
           labels: toCsvValue(args.labels),
@@ -2569,7 +2572,10 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           resolveProjectId(args, context, true),
           getString(args, "issue_iid"),
           {
-            target_project_id: getString(args, "target_project_id"),
+            target_project_id: resolveExplicitProjectId(
+              context,
+              getString(args, "target_project_id")
+            ),
             target_issue_iid: getString(args, "target_issue_iid"),
             link_type: getOptionalString(args, "link_type") as
               | "relates_to"
@@ -3905,7 +3911,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         ...paginationShape
       },
       handler: async (args, context) =>
-        context.gitlab.listWebhooks(resolveWebhookScope(args), {
+        context.gitlab.listWebhooks(resolveWebhookScope(args, context), {
           query: toQuery(omit(args, ["project_id", "group_id"]))
         })
     },
@@ -3927,7 +3933,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: async (args, context) => {
         const events = extractRecords(
           await context.gitlab.listWebhookEvents(
-            resolveWebhookScope(args),
+            resolveWebhookScope(args, context),
             getIdString(args, "hook_id"),
             {
               query: toQuery({
@@ -3957,7 +3963,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: async (args, context) => {
         const event = await findWebhookEvent(
           context,
-          resolveWebhookScope(args),
+          resolveWebhookScope(args, context),
           getIdString(args, "hook_id"),
           getIdString(args, "event_id"),
           getOptionalNumber(args, "page")
@@ -4225,7 +4231,10 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           weight: getOptionalNumber(args, "weight"),
           status: getOptionalString(args, "status"),
           parentIid: getOptionalNumber(args, "parent_iid"),
-          parentProjectId: getOptionalString(args, "parent_project_id"),
+          parentProjectId: resolveOptionalExplicitProjectId(
+            context,
+            getOptionalString(args, "parent_project_id")
+          ),
           removeParent: getOptionalBoolean(args, "remove_parent"),
           childrenToAdd: getWorkItemReferences(args, "children_to_add", context),
           childrenToRemove: getWorkItemReferences(args, "children_to_remove", context),
@@ -4847,6 +4856,13 @@ function resolveExplicitProjectId(context: AppContext, projectId: string): strin
     );
   }
   return projectId;
+}
+
+function resolveOptionalExplicitProjectId(
+  context: AppContext,
+  projectId: string | undefined
+): string | undefined {
+  return projectId ? resolveExplicitProjectId(context, projectId) : undefined;
 }
 
 async function resolveProjectPathForWorkItem(
@@ -6697,7 +6713,10 @@ function filterChangedFiles(
   });
 }
 
-function resolveWebhookScope(args: ToolArgs): { projectId?: string; groupId?: string } {
+function resolveWebhookScope(
+  args: ToolArgs,
+  context: AppContext
+): { projectId?: string; groupId?: string } {
   const projectId = getOptionalString(args, "project_id");
   const groupId = getOptionalString(args, "group_id");
 
@@ -6705,7 +6724,17 @@ function resolveWebhookScope(args: ToolArgs): { projectId?: string; groupId?: st
     throw new Error("Provide exactly one of project_id or group_id");
   }
 
-  return projectId ? { projectId } : { groupId };
+  if (projectId) {
+    return { projectId: resolveExplicitProjectId(context, projectId) };
+  }
+
+  if (context.env.GITLAB_ALLOWED_PROJECT_IDS.length > 0) {
+    throw new Error(
+      "group_id is unavailable while GITLAB_ALLOWED_PROJECT_IDS is configured; use project_id instead"
+    );
+  }
+
+  return { groupId };
 }
 
 function summarizeWebhookEvents(
