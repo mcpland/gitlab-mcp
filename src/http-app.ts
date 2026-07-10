@@ -257,6 +257,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
   const requestPolicy = buildHttpRequestPolicy(appEnv);
   const app = express();
+  app.set("case sensitive routing", true);
   app.set("trust proxy", appEnv.MCP_TRUST_PROXY ? 1 : false);
   if (metrics) {
     app.use((req, res, next) => {

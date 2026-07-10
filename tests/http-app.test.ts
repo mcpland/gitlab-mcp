@@ -1437,6 +1437,35 @@ describe("http app independent bearer authentication", () => {
     expect(message.status).toBe(400);
     await expect(message.text()).resolves.toContain("No transport");
   });
+
+  it("fails closed for case variants of transport and download routes", async () => {
+    const context = buildContext();
+    context.env.MCP_HTTP_AUTH_TOKEN = gatewayToken;
+    context.env.SSE = true;
+    context.env.MCP_SERVER_URL = "https://mcp.example.com/gitlab-mcp";
+    running = await startServerForContext(context);
+
+    const requests = [
+      fetch(`${running.baseUrl}/MCP`),
+      fetch(`${running.baseUrl}/SSE`),
+      fetch(`${running.baseUrl}/MESSAGES?sessionId=missing`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}"
+      }),
+      fetch(`${running.baseUrl}/DOWNLOADS/job-artifacts?project_id=group%2Fproject&job_id=42`),
+      fetch(`${running.baseUrl}/gitlab-mcp/MCP`),
+      fetch(`${running.baseUrl}/GITLAB-MCP/mcp`),
+      fetch(
+        `${running.baseUrl}/gitlab-mcp/DOWNLOADS/job-artifacts?project_id=group%2Fproject&job_id=42`
+      )
+    ];
+
+    for (const response of await Promise.all(requests)) {
+      expect(response.status).toBe(404);
+      await response.body?.cancel();
+    }
+  });
 });
 
 describe("http app Host and Origin policy", () => {
