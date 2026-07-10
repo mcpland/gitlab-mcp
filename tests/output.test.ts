@@ -1,3 +1,4 @@
+import { parse as parseYaml } from "yaml";
 import { describe, expect, it } from "vitest";
 
 import { OutputFormatter } from "../src/lib/output.js";
@@ -105,7 +106,7 @@ describe("OutputFormatter", () => {
       const result = formatter.format({ key: "this is a very long value that exceeds the limit" });
 
       expect(result.truncated).toBe(true);
-      expect(result.text).toContain("[truncated");
+      expect(JSON.parse(result.text)).toMatchObject({ truncated: true });
       expect(result.bytes).toBeGreaterThan(20);
     });
 
@@ -114,7 +115,7 @@ describe("OutputFormatter", () => {
       const result = formatter.format({ small: "data" });
 
       expect(result.truncated).toBe(false);
-      expect(result.text).not.toContain("[truncated");
+      expect(JSON.parse(result.text)).toEqual({ small: "data" });
     });
 
     it("reports correct original byte count even when truncated", () => {
@@ -146,7 +147,30 @@ describe("OutputFormatter", () => {
       const result = formatter.format({ emoji: "Hello 🌍🌍🌍🌍🌍" });
 
       expect(result.truncated).toBe(true);
-      expect(result.text).toContain("[truncated");
+      expect(() => JSON.parse(result.text)).not.toThrow();
+      expect(result.text).not.toContain("�");
+    });
+
+    it("keeps compact JSON truncation parseable and within the configured limit", () => {
+      const formatter = new OutputFormatter({ responseMode: "compact-json", maxBytes: 120 });
+      const result = formatter.format({ value: "x".repeat(1_000) });
+
+      expect(JSON.parse(result.text)).toMatchObject({
+        truncated: true,
+        originalBytes: result.bytes
+      });
+      expect(Buffer.byteLength(result.text, "utf8")).toBeLessThanOrEqual(120);
+    });
+
+    it("keeps YAML truncation parseable and within the configured limit", () => {
+      const formatter = new OutputFormatter({ responseMode: "yaml", maxBytes: 120 });
+      const result = formatter.format({ value: "x".repeat(1_000) });
+
+      expect(parseYaml(result.text)).toMatchObject({
+        truncated: true,
+        originalBytes: result.bytes
+      });
+      expect(Buffer.byteLength(result.text, "utf8")).toBeLessThanOrEqual(120);
     });
   });
 
