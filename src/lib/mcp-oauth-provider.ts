@@ -282,6 +282,7 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
     try {
       response = await this.fetchImplementation(`${this.gitLabBaseUrl}/oauth/token/info`, {
         headers: { Authorization: `Bearer ${token}` },
+        redirect: "error",
         signal: AbortSignal.timeout(this.timeoutMs)
       });
     } catch {
@@ -431,6 +432,7 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: params.toString(),
+        redirect: "error",
         signal: AbortSignal.timeout(this.timeoutMs)
       });
     } catch {
@@ -504,6 +506,7 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: params.toString(),
+        redirect: "error",
         signal: AbortSignal.timeout(this.timeoutMs)
       });
       await response.body?.cancel();

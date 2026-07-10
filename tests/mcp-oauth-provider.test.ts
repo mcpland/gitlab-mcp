@@ -269,6 +269,11 @@ describe("createGitLabMcpOAuthProvider", () => {
     );
     const requestInit = tokenCall?.[1];
     const body = new URLSearchParams(String(requestInit?.body));
+    expect(requestInit?.redirect).toBe("error");
+    const tokenInfoCall = fetchMock.mock.calls.find(([input]) =>
+      String(input).endsWith("/oauth/token/info")
+    );
+    expect(tokenInfoCall?.[1]?.redirect).toBe("error");
     expect(body.get("client_id")).toBe(APPLICATION_ID);
     expect(body.get("client_secret")).toBe("gitlab-application-secret");
     expect(body.get("redirect_uri")).toBe(CALLBACK_URL);
@@ -447,7 +452,9 @@ describe("createGitLabMcpOAuthProvider", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const body = new URLSearchParams(String(fetchMock.mock.calls[0]?.[1]?.body));
+    const revokeInit = fetchMock.mock.calls[0]?.[1];
+    const body = new URLSearchParams(String(revokeInit?.body));
+    expect(revokeInit?.redirect).toBe("error");
     expect(body.get("token")).toBe("raw-access-token");
     expect(body.get("token_type_hint")).toBe("refresh_token");
   });
