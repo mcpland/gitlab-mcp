@@ -4382,6 +4382,34 @@ describe("assertAuthReady with no token", () => {
   });
 });
 
+describe("Tool handler: gitlab_list_milestones", () => {
+  it("preserves milestone IIDs as an array query", async () => {
+    const listMilestones = vi.fn().mockResolvedValue([]);
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listMilestones } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_milestones",
+        arguments: {
+          project_id: "group/project",
+          iids: [1, 2],
+          state: "active"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listMilestones).toHaveBeenCalledWith("group/project", {
+        query: { iids: [1, 2], state: "active" }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  Pipeline artifact and deployment tools                             */
 /* ------------------------------------------------------------------ */

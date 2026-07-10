@@ -565,6 +565,21 @@ describe("GitLabClient", () => {
       expect(url.searchParams.has("empty")).toBe(false);
       expect(url.searchParams.has("nil")).toBe(false);
     });
+
+    it("serializes milestone IID filters as repeated bracket parameters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.listMilestones("group/project", {
+        query: { iids: [1, 2], state: "active" }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.searchParams.getAll("iids[]")).toEqual(["1", "2"]);
+      expect(url.searchParams.has("iids")).toBe(false);
+      expect(url.searchParams.get("state")).toBe("active");
+    });
   });
 
   describe("HTTP methods", () => {

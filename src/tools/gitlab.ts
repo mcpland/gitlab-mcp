@@ -4057,10 +4057,15 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         updated_after: optionalString,
         ...paginationShape
       },
-      handler: async (args, context) =>
-        context.gitlab.listMilestones(resolveProjectId(args, context, true), {
-          query: toQuery(omit(args, ["project_id"]))
-        })
+      handler: async (args, context) => {
+        const iids = getOptionalNumberArray(args, "iids");
+        return context.gitlab.listMilestones(resolveProjectId(args, context, true), {
+          query: {
+            ...toQuery(omit(args, ["project_id", "iids"])),
+            ...(iids ? { iids } : {})
+          }
+        });
+      }
     },
     {
       name: "gitlab_get_milestone",
