@@ -354,6 +354,9 @@ GITLAB_DISABLED_CAPABILITIES=delete,graphql
 # Only expose specific tools (supports with or without gitlab_ prefix)
 GITLAB_ALLOWED_TOOLS=get_project,list_merge_requests,get_merge_request
 
+# Or select compact domain presets (multiple values form a union)
+GITLAB_TOOLSETS=core,wiki
+
 # Block tools by regex pattern
 GITLAB_DENIED_TOOLS_REGEX=^gitlab_(delete|create)_
 
@@ -403,6 +406,7 @@ node dist/http.js --env-file=.env.production
 | Policy          | `GITLAB_READ_ONLY_MODE`                   | `false`                     | Disable tools that require `write`, `delete`, or `admin` capabilities.                   |
 | Policy          | `GITLAB_ALLOWED_PROJECT_IDS`              | —                           | Restrict access to specific GitLab project IDs.                                          |
 | Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                        |
+| Policy          | `GITLAB_TOOLSETS`                         | —                           | Domain presets such as `core`, `merge-requests`, `issues`, or `pipelines`.               |
 | Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.        |
 | Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                           |
 | Policy          | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | `false`                     | Deprecated compatibility setting; raw GraphQL stays disabled in project-scoped mode.     |

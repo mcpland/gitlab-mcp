@@ -42,6 +42,7 @@ const defaultEnv: AppContext["env"] = {
   GITLAB_READ_ONLY_MODE: false,
   GITLAB_ALLOWED_PROJECT_IDS: [],
   GITLAB_ALLOWED_TOOLS: [],
+  GITLAB_TOOLSETS: [],
   GITLAB_DISABLED_CAPABILITIES: [],
   GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: false,
   GITLAB_RESPONSE_MODE: "json",
@@ -98,6 +99,7 @@ export interface BuildContextOptions {
   remoteAuthorization?: boolean;
   allowLocalFileTools?: boolean;
   allowedTools?: string[];
+  toolsets?: AppContext["env"]["GITLAB_TOOLSETS"];
   deniedToolsRegex?: RegExp;
   disabledCapabilities?: ToolCapability[];
   enabledFeatures?: typeof defaultFeatures;
@@ -123,6 +125,7 @@ export function buildContext(overrides?: BuildContextOptions): AppContext {
       REMOTE_AUTHORIZATION: overrides?.remoteAuthorization ?? defaultEnv.REMOTE_AUTHORIZATION,
       GITLAB_ALLOWED_PROJECT_IDS: overrides?.allowedProjectIds ?? [],
       GITLAB_ALLOWED_TOOLS: overrides?.allowedTools ?? [],
+      GITLAB_TOOLSETS: overrides?.toolsets ?? [],
       GITLAB_DISABLED_CAPABILITIES: overrides?.disabledCapabilities ?? [],
       GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: overrides?.allowGraphqlWithProjectScope ?? false,
       GITLAB_MAX_RESPONSE_BYTES: overrides?.maxBytes ?? 200_000,

@@ -369,6 +369,45 @@ describe("MCP Server Integration - Feature flag filtering", () => {
   });
 });
 
+describe("MCP Server Integration - Toolsets", () => {
+  it("exposes the curated core without unrelated domain tools", async () => {
+    const context = buildContext({ toolsets: ["core"] });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(context);
+
+    try {
+      const names = (await client.listTools()).tools.map((tool) => tool.name);
+
+      expect(names).toContain("health_check");
+      expect(names).toContain("gitlab_get_project");
+      expect(names).toContain("gitlab_get_merge_request_code_context");
+      expect(names).toContain("gitlab_get_issue");
+      expect(names).not.toContain("gitlab_create_group");
+      expect(names).not.toContain("gitlab_delete_wiki_page");
+      expect(names.length).toBeLessThan(50);
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("combines selected domain toolsets as a union", async () => {
+    const context = buildContext({ toolsets: ["wiki", "milestones"] });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(context);
+
+    try {
+      const names = (await client.listTools()).tools.map((tool) => tool.name);
+
+      expect(names).toContain("gitlab_get_wiki_page");
+      expect(names).toContain("gitlab_get_milestone");
+      expect(names).not.toContain("gitlab_get_issue");
+      expect(names).not.toContain("gitlab_get_pipeline");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
 describe("MCP Server Integration - Allowlist filtering", () => {
   it("only exposes tools in the allowlist (plus health_check)", async () => {
     const context = buildContext({

@@ -30,6 +30,7 @@ import {
 } from "../lib/tool-schema.js";
 import type { ToolCapability } from "../lib/tool-capabilities.js";
 import { annotationsForCapabilities } from "../lib/tool-annotations.js";
+import { isToolEnabledByToolsets } from "../lib/toolsets.js";
 import { getSessionAuth } from "../lib/auth-context.js";
 import { createDownloadToken, type DownloadTokenResource } from "../lib/download-token.js";
 import { stripNullsDeep } from "../lib/sanitize.js";
@@ -187,8 +188,10 @@ const customFieldValueSchema = z.object({
 
 export function registerGitLabTools(server: McpServer, context: AppContext): void {
   const definitions = getGitLabToolDefinitions();
-  const scopeFilteredDefinitions = definitions.filter((definition) =>
-    isToolVisibleForProjectScope(definition, context.env.GITLAB_ALLOWED_PROJECT_IDS)
+  const scopeFilteredDefinitions = definitions.filter(
+    (definition) =>
+      isToolEnabledByToolsets(definition.name, context.env.GITLAB_TOOLSETS) &&
+      isToolVisibleForProjectScope(definition, context.env.GITLAB_ALLOWED_PROJECT_IDS)
   );
   const filtered = context.policy.filterTools(
     scopeFilteredDefinitions.map((item) => ({
