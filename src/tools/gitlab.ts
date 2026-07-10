@@ -228,11 +228,11 @@ const workItemIidSchema = z.coerce.number().int().positive();
 const optionalCoercedNumber = nullableOptional(z.coerce.number());
 const optionalCoercedBoolean = nullableOptional(z.coerce.boolean());
 const workItemReferenceSchema = z.object({
-  project_id: projectIdSchema,
+  project_id: optionalProjectIdSchema,
   iid: workItemIidSchema
 });
 const linkedWorkItemReferenceSchema = z.object({
-  project_id: projectIdSchema,
+  project_id: optionalProjectIdSchema,
   iid: workItemIidSchema,
   link_type: z.enum(["RELATED", "BLOCKED_BY", "BLOCKS"]).optional()
 });
@@ -4967,8 +4967,9 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         severity: z.enum(["UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
         escalation_status: z.enum(["TRIGGERED", "ACKNOWLEDGED", "RESOLVED", "IGNORED"]).optional()
       },
-      handler: async (args, context) =>
-        updateWorkItem(context, resolveProjectId(args, context, true), getNumber(args, "iid"), {
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        return updateWorkItem(context, projectId, getNumber(args, "iid"), {
           title: getOptionalString(args, "title"),
           description: getOptionalString(args, "description"),
           addLabels: getOptionalStringArray(args, "add_labels"),
@@ -4983,22 +4984,33 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
             getOptionalString(args, "parent_project_id")
           ),
           removeParent: getOptionalBoolean(args, "remove_parent"),
-          childrenToAdd: getWorkItemReferences(args, "children_to_add", context),
-          childrenToRemove: getWorkItemReferences(args, "children_to_remove", context),
+          childrenToAdd: getWorkItemReferences(args, "children_to_add", context, projectId),
+          childrenToRemove: getWorkItemReferences(args, "children_to_remove", context, projectId),
           healthStatus: getOptionalString(args, "health_status"),
           startDate: getOptionalString(args, "start_date"),
           dueDate: getOptionalString(args, "due_date"),
           milestoneId: getOptionalString(args, "milestone_id"),
           iterationId: getOptionalString(args, "iteration_id"),
           confidential: getOptionalBoolean(args, "confidential"),
-          linkedItemsToAdd: getLinkedWorkItemReferences(args, "linked_items_to_add", context),
-          linkedItemsToRemove: getWorkItemReferences(args, "linked_items_to_remove", context),
+          linkedItemsToAdd: getLinkedWorkItemReferences(
+            args,
+            "linked_items_to_add",
+            context,
+            projectId
+          ),
+          linkedItemsToRemove: getWorkItemReferences(
+            args,
+            "linked_items_to_remove",
+            context,
+            projectId
+          ),
           customFields: getOptionalArray(args, "custom_fields") as
             | WorkItemCustomFieldInput[]
             | undefined,
           severity: getOptionalString(args, "severity"),
           escalationStatus: getOptionalString(args, "escalation_status")
-        })
+        });
+      }
     },
     {
       name: "gitlab_convert_work_item_type",
@@ -8649,7 +8661,8 @@ function getOptionalArray(args: ToolArgs, key: string): unknown[] | undefined {
 function getWorkItemReferences(
   args: ToolArgs,
   key: string,
-  context: AppContext
+  context: AppContext,
+  defaultProjectId: string
 ): WorkItemReference[] | undefined {
   const values = getOptionalArray(args, key);
   if (!values) {
@@ -8661,15 +8674,16 @@ function getWorkItemReferences(
       throw new Error(`'${key}' must contain objects`);
     }
     const record = value as Record<string, unknown>;
-    if (typeof record.project_id !== "string") {
+    if (record.project_id !== undefined && typeof record.project_id !== "string") {
       throw new Error(`'${key}.project_id' must be string`);
     }
     const iid = typeof record.iid === "string" ? Number(record.iid) : record.iid;
     if (typeof iid !== "number" || Number.isNaN(iid)) {
       throw new Error(`'${key}.iid' must be number`);
     }
+    const projectId = record.project_id ?? defaultProjectId;
     return {
-      project_id: resolveExplicitProjectId(context, record.project_id),
+      project_id: resolveExplicitProjectId(context, projectId),
       iid
     };
   });
@@ -8678,9 +8692,10 @@ function getWorkItemReferences(
 function getLinkedWorkItemReferences(
   args: ToolArgs,
   key: string,
-  context: AppContext
+  context: AppContext,
+  defaultProjectId: string
 ): LinkedWorkItemReference[] | undefined {
-  const references = getWorkItemReferences(args, key, context) as
+  const references = getWorkItemReferences(args, key, context, defaultProjectId) as
     | LinkedWorkItemReference[]
     | undefined;
   const rawValues = getOptionalArray(args, key);

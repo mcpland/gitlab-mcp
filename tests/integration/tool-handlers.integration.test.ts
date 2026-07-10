@@ -2680,6 +2680,67 @@ describe("Tool handlers: work item GraphQL tools", () => {
     }
   });
 
+  it("defaults nested child and linked references to the current project", async () => {
+    const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
+    const executeGraphql = vi
+      .fn()
+      .mockImplementation((query: string, variables: Record<string, unknown>) => {
+        if (query.includes("workItem(iid: $iid)")) {
+          return Promise.resolve({
+            data: {
+              namespace: {
+                workItem: { id: `gid://gitlab/WorkItem/${String(variables.iid)}` }
+              }
+            }
+          });
+        }
+        if (query.includes("workItemAddLinkedItems")) {
+          return Promise.resolve({ data: { workItemAddLinkedItems: { errors: [] } } });
+        }
+        return Promise.resolve({
+          data: {
+            workItemUpdate: {
+              workItem: {
+                id: "gid://gitlab/WorkItem/1",
+                iid: "1",
+                title: "Parent",
+                widgets: []
+              },
+              errors: []
+            }
+          }
+        });
+      });
+    const pair = await createLinkedPair(
+      buildContext({ gitlabStub: { getProject, executeGraphql } })
+    );
+
+    try {
+      const result = await pair.client.callTool({
+        name: "gitlab_update_work_item",
+        arguments: {
+          project_id: "group/project",
+          iid: 1,
+          children_to_add: [{ iid: 2 }],
+          linked_items_to_add: [{ iid: 3, link_type: "RELATED" }]
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getProject).toHaveBeenCalledTimes(3);
+      expect(getProject).toHaveBeenNthCalledWith(1, "group/project");
+      expect(getProject).toHaveBeenNthCalledWith(2, "group/project");
+      expect(getProject).toHaveBeenNthCalledWith(3, "group/project");
+      expect(executeGraphql).toHaveBeenCalledWith(
+        expect.stringContaining("workItemAddLinkedItems"),
+        expect.objectContaining({ workItemsIds: ["gid://gitlab/WorkItem/3"] })
+      );
+    } finally {
+      await pair.clientTransport.close();
+      await pair.serverTransport.close();
+    }
+  });
+
   it("creates incident timeline events with Issue GIDs", async () => {
     const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
     const executeGraphql = vi
