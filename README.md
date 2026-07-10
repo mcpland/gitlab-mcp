@@ -357,6 +357,9 @@ GITLAB_ALLOWED_TOOLS=get_project,list_merge_requests,get_merge_request
 # Or select compact domain presets (multiple values form a union)
 GITLAB_TOOLSETS=core,wiki
 
+# Opt in only for clients that still call legacy duplicate names
+GITLAB_ENABLE_COMPATIBILITY_ALIASES=true
+
 # Block tools by regex pattern
 GITLAB_DENIED_TOOLS_REGEX=^gitlab_(delete|create)_
 

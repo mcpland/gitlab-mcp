@@ -59,6 +59,7 @@ interface GitLabToolDefinition {
   requiresAuth?: boolean;
   requiresFeature?: "wiki" | "milestone" | "pipeline" | "release";
   requiresLocalFileTools?: boolean;
+  compatibilityAlias?: boolean;
   inputSchema?: ToolSchemaShape;
   handler: (args: ToolArgs, context: AppContext) => Promise<unknown>;
 }
@@ -218,6 +219,10 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
     }
 
     if (definition.requiresLocalFileTools && !context.allowLocalFileTools) {
+      continue;
+    }
+
+    if (definition.compatibilityAlias && !context.env.GITLAB_ENABLE_COMPATIBILITY_ALIASES) {
       continue;
     }
 
@@ -1547,6 +1552,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     },
     {
       name: "gitlab_mr_discussions",
+      compatibilityAlias: true,
       title: "Merge Request Discussions (Alias)",
       description: "Backward-compatible alias of gitlab_list_merge_request_discussions.",
       capabilities: readCapabilities,
@@ -1684,6 +1690,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     },
     {
       name: "gitlab_get_merge_request_notes",
+      compatibilityAlias: true,
       title: "Get Merge Request Notes (Alias)",
       description: "Backward-compatible alias of gitlab_list_merge_request_notes.",
       capabilities: readCapabilities,
@@ -3439,6 +3446,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     },
     {
       name: "gitlab_edit_milestone",
+      compatibilityAlias: true,
       title: "Edit Milestone (Alias)",
       description: "Backward-compatible alias of gitlab_update_milestone.",
       capabilities: writeCapabilities,
@@ -4666,6 +4674,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     },
     {
       name: "gitlab_execute_graphql",
+      compatibilityAlias: true,
       title: "Execute GraphQL (Compat)",
       description:
         "Backward-compatible GraphQL executor. Mutation payloads still honor read-only policy.",

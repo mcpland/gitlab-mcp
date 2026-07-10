@@ -34,6 +34,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_ALLOWED_PROJECT_IDS: [],
       GITLAB_ALLOWED_TOOLS: [],
       GITLAB_TOOLSETS: [],
+      GITLAB_ENABLE_COMPATIBILITY_ALIASES: false,
       GITLAB_DISABLED_CAPABILITIES: [],
       GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: false,
       GITLAB_RESPONSE_MODE: "json",

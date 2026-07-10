@@ -19,7 +19,9 @@ describe("Tool schema contract", () => {
   let toolsByName = new Map<string, Record<string, unknown>>();
 
   beforeAll(async () => {
-    const { client, clientTransport, serverTransport } = await createLinkedPair(buildContext());
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ enableCompatibilityAliases: true })
+    );
 
     try {
       const { tools } = await client.listTools();

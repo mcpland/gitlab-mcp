@@ -68,7 +68,7 @@ describe("GraphQL tools: Registration", () => {
 
   it("graphql_mutation not registered in readonly mode", async () => {
     const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ readOnlyMode: true })
+      buildContext({ readOnlyMode: true, enableCompatibilityAliases: true })
     );
 
     try {
@@ -93,7 +93,7 @@ describe("GraphQL tools: Query/Mutation enforcement", () => {
     const executeGraphql = vi.fn().mockResolvedValue({ data: { project: { id: 1 } } });
 
     const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ gitlabStub: { executeGraphql } })
+      buildContext({ enableCompatibilityAliases: true, gitlabStub: { executeGraphql } })
     );
 
     try {
@@ -114,7 +114,7 @@ describe("GraphQL tools: Query/Mutation enforcement", () => {
     const executeGraphql = vi.fn();
 
     const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ gitlabStub: { executeGraphql } })
+      buildContext({ enableCompatibilityAliases: true, gitlabStub: { executeGraphql } })
     );
 
     try {
@@ -212,7 +212,7 @@ describe("GraphQL tools: Compat (gitlab_execute_graphql)", () => {
     const executeGraphql = vi.fn().mockResolvedValue({ data: { project: { id: 1 } } });
 
     const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ gitlabStub: { executeGraphql } })
+      buildContext({ enableCompatibilityAliases: true, gitlabStub: { executeGraphql } })
     );
 
     try {
@@ -233,7 +233,7 @@ describe("GraphQL tools: Compat (gitlab_execute_graphql)", () => {
     const executeGraphql = vi.fn().mockResolvedValue({ data: { createProject: { id: 1 } } });
 
     const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ gitlabStub: { executeGraphql } })
+      buildContext({ enableCompatibilityAliases: true, gitlabStub: { executeGraphql } })
     );
 
     try {
@@ -254,7 +254,11 @@ describe("GraphQL tools: Compat (gitlab_execute_graphql)", () => {
     const executeGraphql = vi.fn();
 
     const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ readOnlyMode: true, gitlabStub: { executeGraphql } })
+      buildContext({
+        readOnlyMode: true,
+        enableCompatibilityAliases: true,
+        gitlabStub: { executeGraphql }
+      })
     );
 
     try {

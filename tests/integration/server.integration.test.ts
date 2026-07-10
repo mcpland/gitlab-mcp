@@ -150,6 +150,15 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
       }
     });
 
+    it("hides compatibility aliases by default", async () => {
+      const names = (await client.listTools()).tools.map((tool) => tool.name);
+
+      expect(names).not.toContain("gitlab_mr_discussions");
+      expect(names).not.toContain("gitlab_get_merge_request_notes");
+      expect(names).not.toContain("gitlab_edit_milestone");
+      expect(names).not.toContain("gitlab_execute_graphql");
+    });
+
     it("classifies every project tool with a project_id schema", async () => {
       const result = await client.listTools();
 
@@ -191,6 +200,23 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
       const ts = structured!.timestamp as string;
       expect(new Date(ts).toISOString()).toBe(ts);
     });
+  });
+});
+
+describe("MCP Server Integration - Compatibility aliases", () => {
+  it("can expose legacy aliases explicitly", async () => {
+    const pair = await createLinkedPair(buildContext({ enableCompatibilityAliases: true }));
+
+    try {
+      const names = (await pair.client.listTools()).tools.map((tool) => tool.name);
+      expect(names).toContain("gitlab_mr_discussions");
+      expect(names).toContain("gitlab_get_merge_request_notes");
+      expect(names).toContain("gitlab_edit_milestone");
+      expect(names).toContain("gitlab_execute_graphql");
+    } finally {
+      await pair.clientTransport.close();
+      await pair.serverTransport.close();
+    }
   });
 });
 
