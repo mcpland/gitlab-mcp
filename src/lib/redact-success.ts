@@ -1,3 +1,5 @@
+import { copyPaginationMetadata } from "./pagination.js";
+
 const OMITTED_SUCCESS_RESPONSE_FIELDS = new Set(["runners_token", "import_url"]);
 
 /**
@@ -8,7 +10,10 @@ const OMITTED_SUCCESS_RESPONSE_FIELDS = new Set(["runners_token", "import_url"])
  */
 export function redactSuccessfulResponse<T>(value: T): T {
   if (Array.isArray(value)) {
-    return value.map((item) => redactSuccessfulResponse(item)) as T;
+    return copyPaginationMetadata(
+      value,
+      value.map((item) => redactSuccessfulResponse(item))
+    ) as T;
   }
 
   if (!isPlainObject(value)) {
@@ -23,7 +28,7 @@ export function redactSuccessfulResponse<T>(value: T): T {
     output[key] = redactSuccessfulResponse(item);
   }
 
-  return output as T;
+  return copyPaginationMetadata(value, output) as T;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

@@ -6,6 +6,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import { GitLabApiError, GitLabClient, getEffectiveSessionAuth } from "../src/lib/gitlab-client.js";
 import { runWithSessionAuth } from "../src/lib/auth-context.js";
+import { getPaginationMetadata } from "../src/lib/pagination.js";
 
 const fetchMock = vi.fn();
 const tempDirs: string[] = [];
@@ -71,6 +72,34 @@ describe("GitLabClient", () => {
 
       const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
       expect(new Headers(init.headers).has("PRIVATE-TOKEN")).toBe(false);
+    });
+
+    it("attaches GitLab pagination headers without changing the response shape", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse([{ id: 1 }], 200, {
+          "X-Page": "2",
+          "X-Next-Page": "3",
+          "X-Prev-Page": "1",
+          "X-Per-Page": "20",
+          "X-Total": "81",
+          "X-Total-Pages": "5",
+          Link: '<https://token:secret@gitlab.example.com/api/v4/projects?page=3&private_token=hidden>; rel="next"'
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.listProjects({ query: { page: 2, per_page: 20 } });
+
+      expect(JSON.stringify(result)).toBe('[{"id":1}]');
+      expect(getPaginationMetadata(result)).toEqual({
+        page: 2,
+        next_page: 3,
+        prev_page: 1,
+        per_page: 20,
+        total: 81,
+        total_pages: 5,
+        links: { next: 3 }
+      });
     });
 
     it("uses token from request options over default token", async () => {
@@ -1022,6 +1051,7 @@ describe("GitLabClient", () => {
         pagination_note:
           "Pass next_page_token as page_token with pagination=keyset to retrieve the next page."
       });
+      expect(getPaginationMetadata(result)).toEqual({ next_page_token: "abc123" });
     });
 
     it("uses x-next-page as keyset repository tree token fallback", async () => {

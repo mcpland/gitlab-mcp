@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { getSessionAuth, type SessionAuth } from "./auth-context.js";
 import { encodeGitLabProjectId } from "./gitlab-path.js";
+import { attachPaginationMetadata, extractGitLabPaginationMetadata } from "./pagination.js";
 import type { GitLabAuthHeader } from "../types/auth.js";
 
 export interface GitLabClientOptions {
@@ -394,22 +395,26 @@ export class GitLabClient {
       (usesKeyset ? response.headers.get("x-next-page") : null) ??
       undefined;
 
+    const pagination = extractGitLabPaginationMetadata(response.headers);
     if (!usesKeyset && !nextPageToken) {
-      return body;
+      return attachPaginationMetadata(body, pagination);
     }
 
-    return {
-      items: Array.isArray(body) ? body : [],
-      ...(nextPageToken
-        ? {
-            next_page_token: nextPageToken,
-            pagination_note:
-              "Pass next_page_token as page_token with pagination=keyset to retrieve the next page."
-          }
-        : {
-            pagination_note: "No next_page_token was returned; this is the final keyset page."
-          })
-    };
+    return attachPaginationMetadata(
+      {
+        items: Array.isArray(body) ? body : [],
+        ...(nextPageToken
+          ? {
+              next_page_token: nextPageToken,
+              pagination_note:
+                "Pass next_page_token as page_token with pagination=keyset to retrieve the next page."
+            }
+          : {
+              pagination_note: "No next_page_token was returned; this is the final keyset page."
+            })
+      },
+      pagination
+    );
   }
 
   getFileContents(
@@ -2899,7 +2904,9 @@ export class GitLabClient {
       );
     }
 
-    return body;
+    return options.method === "GET"
+      ? attachPaginationMetadata(body, extractGitLabPaginationMetadata(response.headers))
+      : body;
   }
 
   private async parseApiResponse(response: Response): Promise<unknown> {

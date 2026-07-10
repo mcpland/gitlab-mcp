@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { runWithSessionAuth } from "../../src/lib/auth-context.js";
 import { GitLabApiError } from "../../src/lib/gitlab-client.js";
+import { attachPaginationMetadata } from "../../src/lib/pagination.js";
 import { buildContext, createLinkedPair } from "./_helpers.js";
 
 /* ------------------------------------------------------------------ */
@@ -2777,16 +2778,21 @@ describe("Tool handlers: webhook tools", () => {
   });
 
   it("summarizes webhook events", async () => {
-    const listWebhookEvents = vi.fn().mockResolvedValue([
-      {
-        id: 1,
-        url: "https://example.com",
-        trigger: "push_hooks",
-        response_status: "200",
-        execution_duration: 0.42,
-        request_data: "large"
-      }
-    ]);
+    const listWebhookEvents = vi.fn().mockResolvedValue(
+      attachPaginationMetadata(
+        [
+          {
+            id: 1,
+            url: "https://example.com",
+            trigger: "push_hooks",
+            response_status: "200",
+            execution_duration: 0.42,
+            request_data: "large"
+          }
+        ],
+        { page: 1, next_page: 2, per_page: 20 }
+      )
+    );
 
     const { client, clientTransport, serverTransport } = await createLinkedPair(
       buildContext({ gitlabStub: { listWebhookEvents } })
@@ -2812,7 +2818,10 @@ describe("Tool handlers: webhook tools", () => {
       });
       const structured = (
         result as {
-          structuredContent?: { result?: { items?: Array<Record<string, unknown>> } };
+          structuredContent?: {
+            result?: { items?: Array<Record<string, unknown>> };
+            meta?: { pagination?: Record<string, unknown> };
+          };
         }
       ).structuredContent;
       expect(structured?.result?.items?.[0]).toEqual({
@@ -2822,6 +2831,7 @@ describe("Tool handlers: webhook tools", () => {
         response_status: "200",
         execution_duration: 0.42
       });
+      expect(structured?.meta?.pagination).toEqual({ page: 1, next_page: 2, per_page: 20 });
     } finally {
       await clientTransport.close();
       await serverTransport.close();
@@ -3563,6 +3573,59 @@ describe("Tool response structure", () => {
       const meta = structured!.meta as { truncated: boolean; bytes: number };
       expect(meta.truncated).toBe(false);
       expect(meta.bytes).toBeGreaterThan(0);
+      expect(meta).not.toHaveProperty("pagination");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("exposes pagination only in structured meta after redaction and project filtering", async () => {
+    const projects = attachPaginationMetadata(
+      [
+        {
+          id: 1,
+          path_with_namespace: "group/allowed",
+          runners_token: "must-not-leak"
+        },
+        { id: 2, path_with_namespace: "group/blocked" }
+      ],
+      {
+        page: 2,
+        next_page: 3,
+        per_page: 20,
+        total: 40,
+        total_pages: 2,
+        links: { next: 3 }
+      }
+    );
+    const listProjects = vi.fn().mockResolvedValue(projects);
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["group/allowed"],
+        gitlabStub: { listProjects }
+      })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_projects",
+        arguments: { page: 2, per_page: 20 }
+      });
+      const text = (result.content as Array<{ type: string; text: string }>)[0]?.text ?? "";
+      const structured = result.structuredContent as {
+        result?: { items?: Array<Record<string, unknown>> };
+        meta?: { pagination?: Record<string, unknown> };
+      };
+
+      expect(JSON.parse(text)).toEqual([{ id: 1, path_with_namespace: "group/allowed" }]);
+      expect(text).not.toContain("must-not-leak");
+      expect(structured.result?.items).toEqual([{ id: 1, path_with_namespace: "group/allowed" }]);
+      expect(structured.meta?.pagination).toEqual({
+        page: 2,
+        next_page: 3,
+        per_page: 20
+      });
     } finally {
       await clientTransport.close();
       await serverTransport.close();
@@ -3753,11 +3816,15 @@ describe("resolveProjectId with GITLAB_ALLOWED_PROJECT_IDS", () => {
 
   it("runs global code search separately for each allowed project", async () => {
     const searchCode = vi.fn();
-    const searchCodeBlobs = vi
-      .fn()
-      .mockImplementation((projectId: string) =>
-        Promise.resolve([{ project_id: projectId, path: `${projectId}/file.ts` }])
-      );
+    const searchCodeBlobs = vi.fn().mockImplementation((projectId: string) =>
+      Promise.resolve(
+        attachPaginationMetadata([{ project_id: projectId, path: `${projectId}/file.ts` }], {
+          page: 1,
+          next_page: 2,
+          total: 10
+        })
+      )
+    );
     const { client, clientTransport, serverTransport } = await createLinkedPair(
       buildContext({
         allowedProjectIds: ["1", "group/project"],
@@ -3784,6 +3851,9 @@ describe("resolveProjectId with GITLAB_ALLOWED_PROJECT_IDS", () => {
         "needle",
         expect.objectContaining({ query: expect.objectContaining({ filename: "file.ts" }) })
       );
+      expect(
+        (result.structuredContent as { meta?: Record<string, unknown> }).meta
+      ).not.toHaveProperty("pagination");
     } finally {
       await clientTransport.close();
       await serverTransport.close();

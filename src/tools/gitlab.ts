@@ -47,6 +47,11 @@ import {
 import { getSessionAuth } from "../lib/auth-context.js";
 import { createDownloadToken, type DownloadTokenResource } from "../lib/download-token.js";
 import { filterDiffRecords, filterDiffResponse } from "../lib/diff-filter.js";
+import {
+  copyPaginationMetadata,
+  copyPaginationMetadataAfterLocalFilter,
+  getPaginationMetadata
+} from "../lib/pagination.js";
 import { redactSuccessfulResponse } from "../lib/redact-success.js";
 import { sanitizeToolArguments } from "../lib/sanitize.js";
 import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
@@ -270,6 +275,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
           const args = sanitizeToolArguments(definition.name, (rawArgs ?? {}) as ToolArgs);
           assertToolCanExecuteInProjectScope(definition, args, context);
           const result = redactSuccessfulResponse(await definition.handler(args, context));
+          const pagination = getPaginationMetadata(result);
           const formatted = context.formatter.format(result);
           const structuredResult = formatted.truncated
             ? { truncated: true }
@@ -286,7 +292,8 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
               result: structuredResult,
               meta: {
                 truncated: formatted.truncated,
-                bytes: formatted.bytes
+                bytes: formatted.bytes,
+                ...(pagination ? { pagination } : {})
               }
             }
           };
@@ -5190,9 +5197,12 @@ function filterProjectScopedResponse(
   }
 
   if (Array.isArray(value)) {
-    return value.filter(
-      (item): item is Record<string, unknown> =>
-        isObjectRecord(item) && recordMatchesAllowedProject(item, allowed, identityKind)
+    return copyPaginationMetadataAfterLocalFilter(
+      value,
+      value.filter(
+        (item): item is Record<string, unknown> =>
+          isObjectRecord(item) && recordMatchesAllowedProject(item, allowed, identityKind)
+      )
     );
   }
 
@@ -5201,11 +5211,11 @@ function filterProjectScopedResponse(
       (item): item is Record<string, unknown> =>
         isObjectRecord(item) && recordMatchesAllowedProject(item, allowed, identityKind)
     );
-    return {
+    return copyPaginationMetadataAfterLocalFilter(value, {
       ...value,
       items,
       count: items.length
-    };
+    });
   }
 
   return [];
@@ -7225,13 +7235,16 @@ function resolveWebhookScope(
 function summarizeWebhookEvents(
   events: Array<Record<string, unknown>>
 ): Array<Record<string, unknown>> {
-  return events.map((event) => ({
-    id: event.id,
-    url: event.url,
-    trigger: event.trigger,
-    response_status: event.response_status,
-    execution_duration: event.execution_duration
-  }));
+  return copyPaginationMetadata(
+    events,
+    events.map((event) => ({
+      id: event.id,
+      url: event.url,
+      trigger: event.trigger,
+      response_status: event.response_status,
+      execution_duration: event.execution_duration
+    }))
+  );
 }
 
 async function findWebhookEvent(
@@ -7267,8 +7280,11 @@ function extractRecords(value: unknown): Array<Record<string, unknown>> {
     return [];
   }
 
-  return value.filter(
-    (item): item is Record<string, unknown> => typeof item === "object" && item !== null
+  return copyPaginationMetadata(
+    value,
+    value.filter(
+      (item): item is Record<string, unknown> => typeof item === "object" && item !== null
+    )
   );
 }
 

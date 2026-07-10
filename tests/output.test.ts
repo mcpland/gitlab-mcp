@@ -2,8 +2,24 @@ import { parse as parseYaml } from "yaml";
 import { describe, expect, it } from "vitest";
 
 import { OutputFormatter } from "../src/lib/output.js";
+import { attachPaginationMetadata } from "../src/lib/pagination.js";
 
 describe("OutputFormatter", () => {
+  it.each(["json", "compact-json", "yaml"] as const)(
+    "does not serialize pagination sidecar metadata in %s mode",
+    (responseMode) => {
+      const formatter = new OutputFormatter({ responseMode, maxBytes: 10_000 });
+      const value = attachPaginationMetadata([{ id: 1 }], { page: 1, total: 10 });
+      const result = formatter.format(value);
+
+      expect(result.text).not.toContain("pagination");
+      expect(result.text).not.toContain("total");
+      expect(responseMode === "yaml" ? parseYaml(result.text) : JSON.parse(result.text)).toEqual([
+        { id: 1 }
+      ]);
+    }
+  );
+
   describe("json mode", () => {
     it("formats objects with 2-space indentation", () => {
       const formatter = new OutputFormatter({ responseMode: "json", maxBytes: 10_000 });
