@@ -844,6 +844,129 @@ describe("Tool handler: gitlab_create_issue", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  gitlab_get_issue / gitlab_update_issue                             */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handlers: slim issue responses", () => {
+  it("slims milestone details by default and preserves full_response compatibility", async () => {
+    const issue = {
+      id: 50,
+      iid: 5,
+      title: "Bug",
+      description: "Issue details",
+      milestone: {
+        id: 9,
+        iid: 3,
+        title: "M1",
+        state: "active",
+        web_url: "https://gitlab.example.com/milestones/3",
+        description: "Large milestone description",
+        created_at: "2026-01-01T00:00:00Z"
+      }
+    };
+    const getIssue = vi.fn().mockResolvedValue(issue);
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getIssue } })
+    );
+
+    try {
+      const slimResult = await client.callTool({
+        name: "gitlab_get_issue",
+        arguments: { project_id: "group/project", issue_iid: "5" }
+      });
+      const fullResult = await client.callTool({
+        name: "gitlab_get_issue",
+        arguments: { project_id: "group/project", issue_iid: "5", full_response: true }
+      });
+
+      expect(slimResult.isError).toBeFalsy();
+      expect(
+        (slimResult as { structuredContent?: { result?: Record<string, unknown> } })
+          .structuredContent?.result
+      ).toEqual({
+        ...issue,
+        milestone: {
+          id: 9,
+          iid: 3,
+          title: "M1",
+          state: "active",
+          web_url: "https://gitlab.example.com/milestones/3"
+        }
+      });
+      expect(
+        (fullResult as { structuredContent?: { result?: Record<string, unknown> } })
+          .structuredContent?.result
+      ).toEqual(issue);
+      expect(getIssue).toHaveBeenNthCalledWith(1, "group/project", "5");
+      expect(getIssue).toHaveBeenNthCalledWith(2, "group/project", "5");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("returns a slim update confirmation unless full_response is requested", async () => {
+    const issue = {
+      id: 50,
+      iid: 5,
+      project_id: 10,
+      title: "Updated bug",
+      state: "opened",
+      updated_at: "2026-07-10T00:00:00Z",
+      web_url: "https://gitlab.example.com/issues/5",
+      description: "Large body",
+      author: { id: 1, username: "alice" }
+    };
+    const updateIssue = vi.fn().mockResolvedValue(issue);
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { updateIssue } })
+    );
+
+    try {
+      const slimResult = await client.callTool({
+        name: "gitlab_update_issue",
+        arguments: { project_id: "group/project", issue_iid: "5", title: "Updated bug" }
+      });
+      const fullResult = await client.callTool({
+        name: "gitlab_update_issue",
+        arguments: {
+          project_id: "group/project",
+          issue_iid: "5",
+          title: "Updated bug",
+          full_response: true
+        }
+      });
+
+      expect(
+        (slimResult as { structuredContent?: { result?: Record<string, unknown> } })
+          .structuredContent?.result
+      ).toEqual({
+        id: 50,
+        iid: 5,
+        project_id: 10,
+        title: "Updated bug",
+        state: "opened",
+        updated_at: "2026-07-10T00:00:00Z",
+        web_url: "https://gitlab.example.com/issues/5"
+      });
+      expect(
+        (fullResult as { structuredContent?: { result?: Record<string, unknown> } })
+          .structuredContent?.result
+      ).toEqual(issue);
+      expect(updateIssue).toHaveBeenNthCalledWith(1, "group/project", "5", {
+        title: "Updated bug"
+      });
+      expect(updateIssue).toHaveBeenNthCalledWith(2, "group/project", "5", {
+        title: "Updated bug"
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_update_issue_description_patch                              */
 /* ------------------------------------------------------------------ */
 
@@ -951,9 +1074,19 @@ describe("Tool handler: gitlab_get_merge_request", () => {
       title: "Add feature",
       state: "opened"
     });
+    const countMergeRequestCommits = vi.fn();
+    const getProject = vi.fn();
+    const getMergeRequestApprovalState = vi.fn();
 
     const { client, clientTransport, serverTransport } = await createLinkedPair(
-      buildContext({ gitlabStub: { getMergeRequest } })
+      buildContext({
+        gitlabStub: {
+          getMergeRequest,
+          countMergeRequestCommits,
+          getProject,
+          getMergeRequestApprovalState
+        }
+      })
     );
 
     try {
@@ -964,6 +1097,13 @@ describe("Tool handler: gitlab_get_merge_request", () => {
 
       expect(result.isError).toBeFalsy();
       expect(getMergeRequest).toHaveBeenCalledWith("group/project", "7");
+      expect(countMergeRequestCommits).not.toHaveBeenCalled();
+      expect(getProject).not.toHaveBeenCalled();
+      expect(getMergeRequestApprovalState).not.toHaveBeenCalled();
+      expect(
+        (result as { structuredContent?: { result?: Record<string, unknown> } }).structuredContent
+          ?.result
+      ).not.toHaveProperty("commit_addition_summary");
     } finally {
       await clientTransport.close();
       await serverTransport.close();
@@ -1002,7 +1142,11 @@ describe("Tool handler: gitlab_get_merge_request", () => {
     try {
       const result = await client.callTool({
         name: "gitlab_get_merge_request",
-        arguments: { project_id: "group/project", merge_request_iid: "7" }
+        arguments: {
+          project_id: "group/project",
+          merge_request_iid: "7",
+          include_summaries: true
+        }
       });
 
       expect(result.isError).toBeFalsy();

@@ -1015,15 +1015,19 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         project_id: optionalProjectIdSchema,
         merge_request_iid: optionalString,
-        source_branch: optionalRefLikeSchema
+        source_branch: optionalRefLikeSchema,
+        include_summaries: optionalBoolean
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
         const mergeRequestIid = getOptionalString(args, "merge_request_iid");
+        const includeSummaries = getOptionalBoolean(args, "include_summaries") ?? false;
 
         if (mergeRequestIid) {
           const mergeRequest = await context.gitlab.getMergeRequest(projectId, mergeRequestIid);
-          return withMergeRequestSummaries(projectId, mergeRequest, context);
+          return includeSummaries
+            ? withMergeRequestSummaries(projectId, mergeRequest, context)
+            : mergeRequest;
         }
 
         const sourceBranch = getOptionalString(args, "source_branch");
@@ -1043,7 +1047,9 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         });
 
         const mergeRequest = await getDetailedMergeRequestFromMatch(projectId, match, context);
-        return withMergeRequestSummaries(projectId, mergeRequest, context);
+        return includeSummaries
+          ? withMergeRequestSummaries(projectId, mergeRequest, context)
+          : mergeRequest;
       }
     },
     {
@@ -2196,10 +2202,16 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       capabilities: readCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        issue_iid: z.string().min(1)
+        issue_iid: z.string().min(1),
+        full_response: optionalBoolean
       },
-      handler: async (args, context) =>
-        context.gitlab.getIssue(resolveProjectId(args, context, true), getString(args, "issue_iid"))
+      handler: async (args, context) => {
+        const issue = await context.gitlab.getIssue(
+          resolveProjectId(args, context, true),
+          getString(args, "issue_iid")
+        );
+        return getOptionalBoolean(args, "full_response") ? issue : slimIssueMilestone(issue);
+      }
     },
     {
       name: "gitlab_create_issue",
@@ -2247,10 +2259,14 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         assignee_ids: optionalNumberArray,
         discussion_locked: optionalBoolean,
         weight: optionalCoercedNumber,
-        issue_type: z.enum(["issue", "incident", "test_case", "task"]).optional()
+        issue_type: z.enum(["issue", "incident", "test_case", "task"]).optional(),
+        full_response: optionalBoolean
       },
       handler: async (args, context) => {
-        const payload = toQuery(omit(args, ["project_id", "issue_iid"])) as Record<string, unknown>;
+        const payload = toQuery(omit(args, ["project_id", "issue_iid", "full_response"])) as Record<
+          string,
+          unknown
+        >;
         if (payload.labels === undefined) {
           payload.labels = toCsvValue(args.labels);
         }
@@ -2258,11 +2274,12 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           payload.assignee_ids = args.assignee_ids as number[];
         }
 
-        return context.gitlab.updateIssue(
+        const issue = await context.gitlab.updateIssue(
           resolveProjectId(args, context, true),
           getString(args, "issue_iid"),
           payload
         );
+        return getOptionalBoolean(args, "full_response") ? issue : slimUpdatedIssue(issue);
       }
     },
     {
@@ -7169,6 +7186,48 @@ function inferMergeRequestApproved(rules: Array<Record<string, unknown>>): boole
   }
 
   return rules.every((rule) => rule.approved === true);
+}
+
+function slimIssueMilestone(issue: unknown): unknown {
+  if (!isRecord(issue) || !isRecord(issue.milestone)) {
+    return issue;
+  }
+
+  return {
+    ...issue,
+    milestone: pickRecordFields(issue.milestone, ["id", "iid", "title", "state", "web_url"])
+  };
+}
+
+function slimUpdatedIssue(issue: unknown): unknown {
+  if (!isRecord(issue)) {
+    return issue;
+  }
+
+  return pickRecordFields(issue, [
+    "id",
+    "iid",
+    "project_id",
+    "title",
+    "state",
+    "updated_at",
+    "web_url"
+  ]);
+}
+
+function pickRecordFields(
+  record: Record<string, unknown>,
+  fields: string[]
+): Record<string, unknown> {
+  return Object.fromEntries(
+    fields
+      .filter((field) => Object.prototype.hasOwnProperty.call(record, field))
+      .map((field) => [field, record[field]])
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function getString(args: ToolArgs, key: string): string {
