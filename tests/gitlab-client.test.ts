@@ -1885,6 +1885,45 @@ describe("GitLabClient", () => {
       const url = new URL(String(requestUrl));
       expect(url.searchParams.get("name")).toBe("bug");
     });
+
+    it("bounds job traces by line count and marks them as untrusted", async () => {
+      const trace = Array.from({ length: 1_100 }, (_, index) => `line-${index}`).join("\n");
+      fetchMock.mockResolvedValue(textResponse(trace));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const output = await client.getPipelineJobOutput("group/project", "77", {
+        limit: 5_000,
+        offset: 2
+      });
+      const [, selectedTrace = ""] = output.split("\n\n", 2);
+
+      expect(output).toContain("[Untrusted CI job trace:");
+      expect(output).toContain("[Log line-limited:");
+      expect(selectedTrace.split("\n")).toHaveLength(1_000);
+      expect(selectedTrace).toContain("line-1097");
+      expect(selectedTrace).not.toContain("line-1098");
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      expect(String(requestUrl)).toContain("/projects/group%2Fproject/jobs/77/trace");
+      expect(new Headers(init.headers).get("Range")).toBe("bytes=-1048576");
+      expect(new Headers(init.headers).get("Accept")).toBe("text/plain");
+    });
+
+    it("stops reading job traces at the configured byte cap", async () => {
+      fetchMock.mockResolvedValue(textResponse("0123456789\nsecond-line\nthird-line"));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxJobTraceBytes: 16
+      });
+      const output = await client.getPipelineJobOutput("proj", "8");
+
+      expect(output).toContain("[Log byte-limited to 16 bytes;");
+      expect(output).toContain("0123456789\nsecon");
+      expect(output).not.toContain("third-line");
+
+      const [, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      expect(new Headers(init.headers).get("Range")).toBe("bytes=-16");
+    });
   });
 
   describe("getEffectiveSessionAuth", () => {

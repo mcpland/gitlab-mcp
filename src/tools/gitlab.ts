@@ -3049,17 +3049,24 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_get_pipeline_job_output",
       title: "Get Pipeline Job Output",
-      description: "Get raw job trace output.",
+      description:
+        "Get a bounded, untrusted job trace window. Returns at most 1,000 lines from the end.",
       capabilities: readCapabilities,
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        job_id: z.string().min(1)
+        job_id: z.string().min(1),
+        limit: z.number().int().min(1).max(1000).optional(),
+        offset: z.number().int().min(0).max(1_000_000).optional()
       },
       handler: async (args, context) =>
         context.gitlab.getPipelineJobOutput(
           resolveProjectId(args, context, true),
-          getString(args, "job_id")
+          getString(args, "job_id"),
+          {
+            limit: getOptionalNumber(args, "limit"),
+            offset: getOptionalNumber(args, "offset")
+          }
         )
     },
     {

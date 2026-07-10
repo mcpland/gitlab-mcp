@@ -49,6 +49,44 @@ describe("Tool handler: gitlab_get_project", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  gitlab_get_pipeline_job_output                                     */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handler: gitlab_get_pipeline_job_output", () => {
+  it("passes bounded line window options to the client", async () => {
+    const getPipelineJobOutput = vi
+      .fn()
+      .mockResolvedValue(
+        "[Untrusted CI job trace: logs can contain attacker-controlled text.]\n\nlast line"
+      );
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getPipelineJobOutput } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_pipeline_job_output",
+        arguments: {
+          project_id: "group/project",
+          job_id: "77",
+          limit: 250,
+          offset: 10
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getPipelineJobOutput).toHaveBeenCalledWith("group/project", "77", {
+        limit: 250,
+        offset: 10
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_list_projects                                               */
 /* ------------------------------------------------------------------ */
 
