@@ -108,6 +108,7 @@ jobs:
         shell: bash
         run: |
           docker build --tag gitlab-mcp:ci .
+          test "$(docker image inspect --format '{{.Config.User}}' gitlab-mcp:ci)" = "node"
           container_id="$(docker run --detach --rm \
             --env REMOTE_AUTHORIZATION=true \
             --env HTTP_HOST=0.0.0.0 \
