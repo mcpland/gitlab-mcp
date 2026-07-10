@@ -92,6 +92,17 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
       }
     });
 
+    it("omits redundant JSON Schema dialect declarations", async () => {
+      const result = await client.listTools();
+
+      for (const tool of result.tools) {
+        expect(tool.inputSchema).not.toHaveProperty("$schema");
+        if (tool.outputSchema) {
+          expect(tool.outputSchema).not.toHaveProperty("$schema");
+        }
+      }
+    });
+
     it("every tool has a description", async () => {
       const result = await client.listTools();
       for (const tool of result.tools) {
