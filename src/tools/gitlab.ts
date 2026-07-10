@@ -6071,7 +6071,7 @@ async function resolveDependencyProxyGroupFullPath(
 
 function resolveExplicitProjectId(context: AppContext, projectId: string): string {
   const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
-  if (allowed.length > 0 && !allowed.includes(projectId)) {
+  if (allowed.length > 0 && !isAllowedProjectIdentity(projectId, allowed)) {
     throw new Error(
       `Project '${projectId}' is not in GITLAB_ALLOWED_PROJECT_IDS: ${allowed.join(", ")}`
     );
@@ -6146,7 +6146,17 @@ function recordMatchesAllowedProject(
   return candidates.some(
     (candidate) =>
       (typeof candidate === "string" || typeof candidate === "number") &&
-      allowedProjectIds.includes(String(candidate))
+      isAllowedProjectIdentity(String(candidate), allowedProjectIds)
+  );
+}
+
+function isAllowedProjectIdentity(
+  projectId: string,
+  allowedProjectIds: readonly string[]
+): boolean {
+  const canonicalProjectId = encodeGitLabProjectId(projectId);
+  return allowedProjectIds.some(
+    (allowedProjectId) => encodeGitLabProjectId(allowedProjectId) === canonicalProjectId
   );
 }
 
@@ -7940,7 +7950,7 @@ function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean
   const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
 
   if (allowed.length > 0) {
-    if (fromArgs && !allowed.includes(fromArgs)) {
+    if (fromArgs && !isAllowedProjectIdentity(fromArgs, allowed)) {
       throw new Error(
         `Project '${fromArgs}' is not in GITLAB_ALLOWED_PROJECT_IDS: ${allowed.join(", ")}`
       );

@@ -3948,6 +3948,61 @@ describe("resolveProjectId with GITLAB_ALLOWED_PROJECT_IDS", () => {
     }
   });
 
+  it("matches encoded project paths by canonical allowlist identity", async () => {
+    const getProject = vi.fn().mockImplementation((projectId: string) =>
+      Promise.resolve({ id: 1, path_with_namespace: projectId })
+    );
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["group/allowed-project"],
+        gitlabStub: { getProject }
+      })
+    );
+
+    try {
+      for (const projectId of ["group%2Fallowed-project", "group%252Fallowed-project"]) {
+        const result = await client.callTool({
+          name: "gitlab_get_project",
+          arguments: { project_id: projectId }
+        });
+
+        expect(result.isError, projectId).toBeFalsy();
+      }
+
+      expect(getProject).toHaveBeenNthCalledWith(1, "group%2Fallowed-project");
+      expect(getProject).toHaveBeenNthCalledWith(2, "group%252Fallowed-project");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("keeps numeric project allowlist identities exact", async () => {
+    const getProject = vi.fn().mockResolvedValue({ id: 123 });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ allowedProjectIds: ["123"], gitlabStub: { getProject } })
+    );
+
+    try {
+      const allowed = await client.callTool({
+        name: "gitlab_get_project",
+        arguments: { project_id: "%31%32%33" }
+      });
+      const rejected = await client.callTool({
+        name: "gitlab_get_project",
+        arguments: { project_id: "0123" }
+      });
+
+      expect(allowed.isError).toBeFalsy();
+      expect(rejected.isError).toBe(true);
+      expect(getProject).toHaveBeenCalledTimes(1);
+      expect(getProject).toHaveBeenCalledWith("%31%32%33");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
   it("rejects target and parent projects outside the allowed set", async () => {
     const createMergeRequest = vi.fn();
     const createIssueLink = vi.fn();
