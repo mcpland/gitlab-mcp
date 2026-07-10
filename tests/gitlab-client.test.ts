@@ -818,6 +818,31 @@ describe("GitLabClient", () => {
       expect(String(requestUrl)).toContain("group%2Fsubgroup%2Fproject");
     });
 
+    it("updates a project with only the supplied allowlisted payload", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ id: 1, visibility: "internal" }));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.updateProject("group/project", {
+        description: "Updated project",
+        visibility: "internal",
+        topics: ["mcp", "gitlab"],
+        only_allow_merge_if_pipeline_succeeds: true,
+        issues_access_level: "private"
+      });
+
+      const [requestUrl, init] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      expect(String(requestUrl)).toContain("/projects/group%2Fproject");
+      expect(init.method).toBe("PUT");
+      expect(new Headers(init.headers).get("Content-Type")).toBe("application/json");
+      expect(JSON.parse(init.body as string)).toEqual({
+        description: "Updated project",
+        visibility: "internal",
+        topics: ["mcp", "gitlab"],
+        only_allow_merge_if_pipeline_succeeds: true,
+        issues_access_level: "private"
+      });
+    });
+
     it("creates merge request with correct payload", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ iid: 1 }));
 

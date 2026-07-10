@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import {
   GitLabApiError,
+  type GitLabProjectUpdate,
   type GitLabPipelineInputValue,
   type PushFileAction
 } from "../lib/gitlab-client.js";
@@ -171,6 +172,8 @@ const protectedBranchUnprotectAccessLevelSchema = z.union([
   z.literal(40),
   z.literal(60)
 ]);
+const projectFeatureAccessLevelSchema = z.enum(["disabled", "private", "enabled"]);
+const projectPagesAccessLevelSchema = z.enum(["disabled", "private", "enabled", "public"]);
 const emojiNameSchema = z.string().min(1);
 const awardEmojiIdSchema = z.string().min(1);
 const workItemTypes = [
@@ -333,6 +336,113 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           context,
           "project"
         )
+    },
+    {
+      name: "gitlab_update_project",
+      title: "Update Project",
+      description:
+        "Update an allowlisted set of project metadata, merge defaults, and feature access levels.",
+      capabilities: adminCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        name: optionalDisplayNameSchema,
+        description: optionalString,
+        visibility: z.enum(["private", "internal", "public"]).optional(),
+        topics: optionalStringArray,
+        request_access_enabled: optionalBoolean,
+        remove_source_branch_after_merge: optionalBoolean,
+        only_allow_merge_if_pipeline_succeeds: optionalBoolean,
+        only_allow_merge_if_all_discussions_are_resolved: optionalBoolean,
+        squash_option: z.enum(["never", "always", "default_on", "default_off"]).optional(),
+        merge_method: z.enum(["merge", "rebase_merge", "ff"]).optional(),
+        issues_access_level: projectFeatureAccessLevelSchema.optional(),
+        merge_requests_access_level: projectFeatureAccessLevelSchema.optional(),
+        builds_access_level: projectFeatureAccessLevelSchema.optional(),
+        wiki_access_level: projectFeatureAccessLevelSchema.optional(),
+        snippets_access_level: projectFeatureAccessLevelSchema.optional(),
+        container_registry_access_level: projectFeatureAccessLevelSchema.optional(),
+        environments_access_level: projectFeatureAccessLevelSchema.optional(),
+        forking_access_level: projectFeatureAccessLevelSchema.optional(),
+        package_registry_access_level: projectFeatureAccessLevelSchema.optional(),
+        pages_access_level: projectPagesAccessLevelSchema.optional()
+      },
+      handler: async (args, context) => {
+        const updates: GitLabProjectUpdate = {
+          name: getOptionalString(args, "name"),
+          description: getOptionalString(args, "description"),
+          visibility: getOptionalString(args, "visibility") as GitLabProjectUpdate["visibility"],
+          topics: getOptionalStringArray(args, "topics"),
+          request_access_enabled: getOptionalBoolean(args, "request_access_enabled"),
+          remove_source_branch_after_merge: getOptionalBoolean(
+            args,
+            "remove_source_branch_after_merge"
+          ),
+          only_allow_merge_if_pipeline_succeeds: getOptionalBoolean(
+            args,
+            "only_allow_merge_if_pipeline_succeeds"
+          ),
+          only_allow_merge_if_all_discussions_are_resolved: getOptionalBoolean(
+            args,
+            "only_allow_merge_if_all_discussions_are_resolved"
+          ),
+          squash_option: getOptionalString(
+            args,
+            "squash_option"
+          ) as GitLabProjectUpdate["squash_option"],
+          merge_method: getOptionalString(
+            args,
+            "merge_method"
+          ) as GitLabProjectUpdate["merge_method"],
+          issues_access_level: getOptionalString(
+            args,
+            "issues_access_level"
+          ) as GitLabProjectUpdate["issues_access_level"],
+          merge_requests_access_level: getOptionalString(
+            args,
+            "merge_requests_access_level"
+          ) as GitLabProjectUpdate["merge_requests_access_level"],
+          builds_access_level: getOptionalString(
+            args,
+            "builds_access_level"
+          ) as GitLabProjectUpdate["builds_access_level"],
+          wiki_access_level: getOptionalString(
+            args,
+            "wiki_access_level"
+          ) as GitLabProjectUpdate["wiki_access_level"],
+          snippets_access_level: getOptionalString(
+            args,
+            "snippets_access_level"
+          ) as GitLabProjectUpdate["snippets_access_level"],
+          container_registry_access_level: getOptionalString(
+            args,
+            "container_registry_access_level"
+          ) as GitLabProjectUpdate["container_registry_access_level"],
+          environments_access_level: getOptionalString(
+            args,
+            "environments_access_level"
+          ) as GitLabProjectUpdate["environments_access_level"],
+          forking_access_level: getOptionalString(
+            args,
+            "forking_access_level"
+          ) as GitLabProjectUpdate["forking_access_level"],
+          package_registry_access_level: getOptionalString(
+            args,
+            "package_registry_access_level"
+          ) as GitLabProjectUpdate["package_registry_access_level"],
+          pages_access_level: getOptionalString(
+            args,
+            "pages_access_level"
+          ) as GitLabProjectUpdate["pages_access_level"]
+        };
+        const payload = Object.fromEntries(
+          Object.entries(updates).filter(([, value]) => value !== undefined)
+        ) as GitLabProjectUpdate;
+        if (Object.keys(payload).length === 0) {
+          throw new Error("At least one allowlisted project field must be provided");
+        }
+
+        return context.gitlab.updateProject(resolveProjectId(args, context, true), payload);
+      }
     },
     {
       name: "gitlab_create_repository",

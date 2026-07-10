@@ -146,6 +146,14 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
         openWorldHint: true
       });
 
+      const updateProjectTool = result.tools.find((tool) => tool.name === "gitlab_update_project");
+      expect(updateProjectTool?.annotations).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      });
+
       const unprotectTool = result.tools.find((tool) => tool.name === "gitlab_unprotect_branch");
       expect(unprotectTool?.annotations).toMatchObject({
         readOnlyHint: false,
@@ -268,6 +276,7 @@ describe("MCP Server Integration - Read-only mode", () => {
     expect(names).not.toContain("gitlab_delete_issue");
     expect(names).not.toContain("gitlab_create_or_update_file");
     expect(names).not.toContain("gitlab_push_files");
+    expect(names).not.toContain("gitlab_update_project");
   });
 
   it("still includes read-only tools", async () => {

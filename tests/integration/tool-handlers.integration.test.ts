@@ -124,6 +124,112 @@ describe("Tool handler: gitlab_list_projects", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  gitlab_update_project                                              */
+/* ------------------------------------------------------------------ */
+
+describe("Tool handler: gitlab_update_project", () => {
+  it("passes only the explicit allowlisted project fields", async () => {
+    const updatedProject = {
+      id: 42,
+      name: "Renamed project",
+      visibility: "internal",
+      issues_access_level: "private"
+    };
+    const updateProject = vi.fn().mockResolvedValue(updatedProject);
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { updateProject } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_update_project",
+        arguments: {
+          project_id: "group/project",
+          name: "Renamed project",
+          visibility: "internal",
+          topics: ["mcp", "gitlab"],
+          request_access_enabled: false,
+          only_allow_merge_if_pipeline_succeeds: true,
+          merge_method: "ff",
+          issues_access_level: "private",
+          pages_access_level: "public"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(updateProject).toHaveBeenCalledWith("group/project", {
+        name: "Renamed project",
+        visibility: "internal",
+        topics: ["mcp", "gitlab"],
+        request_access_enabled: false,
+        only_allow_merge_if_pipeline_succeeds: true,
+        merge_method: "ff",
+        issues_access_level: "private",
+        pages_access_level: "public"
+      });
+      expect(result.structuredContent).toMatchObject({ result: updatedProject });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects empty and non-allowlisted project updates before the API call", async () => {
+    const updateProject = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { updateProject } })
+    );
+
+    try {
+      const empty = await client.callTool({
+        name: "gitlab_update_project",
+        arguments: { project_id: "group/project" }
+      });
+      const unsafe = await client.callTool({
+        name: "gitlab_update_project",
+        arguments: {
+          project_id: "group/project",
+          import_url: "https://user:secret@example.com/repository.git"
+        }
+      });
+
+      expect(empty.isError).toBe(true);
+      expect(unsafe.isError).toBe(true);
+      expect(updateProject).not.toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("rejects project updates outside the configured project scope", async () => {
+    const updateProject = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["group/allowed"],
+        gitlabStub: { updateProject }
+      })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_update_project",
+        arguments: { project_id: "group/forbidden", description: "blocked" }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(updateProject).not.toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  gitlab_list_group_projects                                         */
 /* ------------------------------------------------------------------ */
 

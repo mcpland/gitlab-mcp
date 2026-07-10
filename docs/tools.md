@@ -18,20 +18,23 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 
 ## Projects & Organization
 
-| Tool                           | Mutating | Description                                                                                                                                   |
-| ------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gitlab_get_project`           | No       | Get project details by ID or path.                                                                                                            |
-| `gitlab_list_projects`         | No       | List projects available to the current user. Supports `search`, `topic`, `visibility`, `membership`, `owned`, `archived`, `order_by`, `sort`. |
-| `gitlab_create_repository`     | **Yes**  | Create a new GitLab project. Params: `name`, `description`, `visibility`, `initialize_with_readme`, `path`, `namespace_id`, `default_branch`. |
-| `gitlab_create_group`          | **Yes**  | Create a new GitLab group or subgroup. Params: `name`, `path` (required). Supports `description`, `visibility`, `parent_id`.                  |
-| `gitlab_fork_repository`       | **Yes**  | Fork a project to another namespace. Params: `namespace`, `namespace_id`, `path`, `name`, `description`, `visibility`, `default_branch`.      |
-| `gitlab_list_project_members`  | No       | List members of a project. Supports `query`, `user_ids`, `skip_users`, `include_inheritance`.                                                 |
-| `gitlab_list_group_projects`   | No       | List projects under a group. Params: `group_id` (required). Supports `include_subgroups`, `search`, `topic`, filters.                         |
-| `gitlab_list_group_iterations` | No       | List iterations for a group. Params: `group_id` (required). Supports `state`, `search`, date filters.                                         |
-| `gitlab_search_repositories`   | No       | Search repositories by keyword. Params: `search` (required).                                                                                  |
-| `gitlab_search_code`           | No       | Search code globally. Params: `search` (required). Supports `filename`, `path`, `extension`, pagination.                                      |
-| `gitlab_search_project_code`   | No       | Search code in a project. Params: `project_id`, `search` (required). Supports `ref`, `filename`, `path`, `extension`, pagination.             |
-| `gitlab_search_group_code`     | No       | Search code in a group. Params: `group_id`, `search` (required). Supports `filename`, `path`, `extension`, pagination.                        |
+| Tool                           | Mutating | Description                                                                                                                                                                                  |
+| ------------------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_get_project`           | No       | Get project details by ID or path.                                                                                                                                                           |
+| `gitlab_list_projects`         | No       | List projects available to the current user. Supports `search`, `topic`, `visibility`, `membership`, `owned`, `archived`, `order_by`, `sort`.                                                |
+| `gitlab_update_project`        | **Yes**  | Update allowlisted metadata, merge defaults, and feature access levels. Supports `name`, `description`, `visibility`, `topics`, merge policy fields, and documented `*_access_level` fields. |
+| `gitlab_create_repository`     | **Yes**  | Create a new GitLab project. Params: `name`, `description`, `visibility`, `initialize_with_readme`, `path`, `namespace_id`, `default_branch`.                                                |
+| `gitlab_create_group`          | **Yes**  | Create a new GitLab group or subgroup. Params: `name`, `path` (required). Supports `description`, `visibility`, `parent_id`.                                                                 |
+| `gitlab_fork_repository`       | **Yes**  | Fork a project to another namespace. Params: `namespace`, `namespace_id`, `path`, `name`, `description`, `visibility`, `default_branch`.                                                     |
+| `gitlab_list_project_members`  | No       | List members of a project. Supports `query`, `user_ids`, `skip_users`, `include_inheritance`.                                                                                                |
+| `gitlab_list_group_projects`   | No       | List projects under a group. Params: `group_id` (required). Supports `include_subgroups`, `search`, `topic`, filters.                                                                        |
+| `gitlab_list_group_iterations` | No       | List iterations for a group. Params: `group_id` (required). Supports `state`, `search`, date filters.                                                                                        |
+| `gitlab_search_repositories`   | No       | Search repositories by keyword. Params: `search` (required).                                                                                                                                 |
+| `gitlab_search_code`           | No       | Search code globally. Params: `search` (required). Supports `filename`, `path`, `extension`, pagination.                                                                                     |
+| `gitlab_search_project_code`   | No       | Search code in a project. Params: `project_id`, `search` (required). Supports `ref`, `filename`, `path`, `extension`, pagination.                                                            |
+| `gitlab_search_group_code`     | No       | Search code in a group. Params: `group_id`, `search` (required). Supports `filename`, `path`, `extension`, pagination.                                                                       |
+
+`gitlab_update_project` accepts only: `name`, `description`, `visibility`, `topics`, `request_access_enabled`, `remove_source_branch_after_merge`, `only_allow_merge_if_pipeline_succeeds`, `only_allow_merge_if_all_discussions_are_resolved`, `squash_option`, `merge_method`, `issues_access_level`, `merge_requests_access_level`, `builds_access_level`, `wiki_access_level`, `snippets_access_level`, `container_registry_access_level`, `environments_access_level`, `forking_access_level`, `package_registry_access_level`, and `pages_access_level`. Other GitLab project-update fields are rejected. Use `gitlab_update_default_branch` for the default branch.
 
 ---
 

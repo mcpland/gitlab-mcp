@@ -62,6 +62,29 @@ export interface GitLabProject {
   last_activity_at: string;
 }
 
+export interface GitLabProjectUpdate {
+  name?: string;
+  description?: string;
+  visibility?: "private" | "internal" | "public";
+  topics?: string[];
+  request_access_enabled?: boolean;
+  remove_source_branch_after_merge?: boolean;
+  only_allow_merge_if_pipeline_succeeds?: boolean;
+  only_allow_merge_if_all_discussions_are_resolved?: boolean;
+  squash_option?: "never" | "always" | "default_on" | "default_off";
+  merge_method?: "merge" | "rebase_merge" | "ff";
+  issues_access_level?: "disabled" | "private" | "enabled";
+  merge_requests_access_level?: "disabled" | "private" | "enabled";
+  builds_access_level?: "disabled" | "private" | "enabled";
+  wiki_access_level?: "disabled" | "private" | "enabled";
+  snippets_access_level?: "disabled" | "private" | "enabled";
+  container_registry_access_level?: "disabled" | "private" | "enabled";
+  environments_access_level?: "disabled" | "private" | "enabled";
+  forking_access_level?: "disabled" | "private" | "enabled";
+  package_registry_access_level?: "disabled" | "private" | "enabled";
+  pages_access_level?: "disabled" | "private" | "enabled" | "public";
+}
+
 export interface PushFileAction {
   action: "create" | "delete" | "move" | "update" | "chmod";
   file_path: string;
@@ -162,6 +185,21 @@ export class GitLabClient {
 
   listProjects(options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get("/projects", options);
+  }
+
+  updateProject(
+    projectId: string,
+    payload: GitLabProjectUpdate,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.put(`/projects/${encode(projectId)}`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
   }
 
   createRepository(
