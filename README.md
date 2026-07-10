@@ -449,7 +449,7 @@ node dist/http.js --env-file=.env.production
 | Auth Extensions | `GITLAB_TOKEN_SCRIPT`                     | —                           | Resolve token from an external script.                                                                      |
 | Auth Extensions | `GITLAB_TOKEN_FILE`                       | —                           | Resolve token from a local file.                                                                            |
 | Auth Extensions | `GITLAB_AUTH_COOKIE_PATH`                 | —                           | Enable cookie-jar based session auth from Netscape cookie file.                                             |
-| Output          | `GITLAB_RESPONSE_MODE`                    | `json`                      | Response format: `json`, `compact-json`, `yaml`.                                                            |
+| Output          | `GITLAB_RESPONSE_MODE`                    | `json`                      | Response format; prefer `compact-json` for agent-facing deployments.                                        |
 | Output          | `GITLAB_MAX_RESPONSE_BYTES`               | `200000`                    | Max response payload (1KB–2MB), oversized payloads are truncated safely.                                    |
 | Output          | `GITLAB_MAX_LOCAL_FILE_BYTES`             | `250000000`                 | Max size for files saved locally by download tools such as job artifacts.                                   |
 | Output          | `GITLAB_LOCAL_FILE_ROOTS`                 | current working directory   | Comma-separated roots allowed for stdio local uploads and artifact writes.                                  |

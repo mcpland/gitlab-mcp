@@ -82,6 +82,8 @@ node dist/http.js
 
 Clients then send `Authorization: Bearer <random-secret>`. This protection also covers legacy `/sse` and `/messages` endpoints when `SSE=true`.
 
+For agent-facing deployments, set `GITLAB_RESPONSE_MODE=compact-json` to preserve the full JSON payload without indentation overhead.
+
 ### With Remote Authorization
 
 For multi-user deployments where each client provides their own GitLab token:

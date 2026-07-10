@@ -172,6 +172,8 @@ When `GITLAB_ALLOWED_PROJECT_IDS` is non-empty, it is enforced as a strict resou
 | `GITLAB_AUTH_VALIDATION_TTL_SECONDS` | number                             | `30`                                   | Cache TTL for valid and invalid remote-token checks (1–300s). Cache keys are token digests.                                            |
 | `GITLAB_ERROR_DETAIL_MODE`           | `safe` \| `full`                   | `safe` in production, `full` otherwise | Controls error response verbosity. `safe` returns only the error message; `full` includes upstream details.                            |
 
+For agent-facing and remote deployments, prefer `GITLAB_RESPONSE_MODE=compact-json`. It preserves the same JSON fields and values while removing indentation, reducing transport bytes and model-token overhead. Keep `json` when human-readable output is more useful during local debugging.
+
 `GITLAB_LOCAL_FILE_ROOTS` applies only to local-file operations in stdio mode. Relative roots are resolved from the server working directory. Traversal outside a configured root and symbolic-link escapes are rejected. HTTP transports continue to hide local artifact-write tools and reject `file_path` uploads.
 
 ## Network
