@@ -325,6 +325,22 @@ Unsafe or invalid `GITLAB_DENIED_TOOLS_REGEX` patterns fail startup rather than 
 
 ## Multi-Instance Deployment
 
+### Horizontal Scaling
+
+gitlab-mcp does not coordinate HTTP transport state, rate-limit counters, or metrics between replicas. Treat the following runtime state as process-local:
+
+| Runtime state                                                                                       | Multi-replica requirement                                                                                                                                                                                                                |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Streamable HTTP sessions, pending sessions, legacy SSE sessions, request queues, and session limits | Stateful Streamable HTTP requests carrying the same `Mcp-Session-Id` must reach the same replica. Legacy SSE `/sse` and its `/messages?sessionId=...` requests also require affinity. `MAX_SESSIONS` applies separately to each replica. |
+| Per-IP, per-session, and download rate-limit counters                                               | Configured limits apply independently in every process, so they are not fleet-wide quotas. Enforce any global abuse or tenant quota at the ingress, API gateway, or another shared limiter.                                              |
+| `/metrics` counters, histograms, session gauges, and `/healthz` session counts                      | Scrape every replica as a distinct Prometheus target. Aggregate counters and histograms across targets, and sum session gauges when a fleet total is needed; a single replica's endpoint is not a cluster view.                          |
+
+When load-balancer affinity is unavailable, set `OAUTH_STATELESS_MODE=true` and use Streamable HTTP. This creates a fresh transport for each `/mcp` request; per-request authorization modes must resend their credential on every request. Do not enable legacy SSE for this topology because its connection and message transport remain process-local.
+
+MCP OAuth registration, callback, authorization-code, and refresh-token envelopes are independently stateless when every replica has identical current and previous `GITLAB_MCP_OAUTH_STATE_SECRET` values. This does not make MCP transport sessions stateless; follow the [MCP OAuth rotation and stateless HTTP guidance](authentication.md#mcp-oauth-discovery) for both layers.
+
+Verification paths: `src/http-app.ts` owns the process-local session maps and limiters, while `src/lib/metrics.ts` owns the in-memory registry. `tests/http-app.test.ts` and `tests/metrics.test.ts` cover their runtime behavior. In staging, verify that a stateful session's follow-up request reaches its original replica and that Prometheus discovers every replica before increasing the replica count.
+
 ### Multiple GitLab Instances
 
 The server can rotate across multiple GitLab API URLs:
