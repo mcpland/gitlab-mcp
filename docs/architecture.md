@@ -84,7 +84,7 @@ config/env.ts
 
 ### `tools/gitlab.ts` — Tool Definitions
 
-- Defines 80+ tools as a `GitLabToolDefinition[]` array
+- Defines the complete registry as a `GitLabToolDefinition[]` array; the [generated index](tools-index.md) is the authoritative inventory
 - Each definition specifies: `name`, `title`, `description`, `capabilities`, optional `requiresFeature`, project/group/global/raw-GraphQL scope metadata, `inputSchema` (Zod), and `handler`
 - Tools are filtered by project-scope metadata and the policy engine at registration time
 - Tool execution wraps results through the output formatter
@@ -93,7 +93,7 @@ config/env.ts
 **Tool execution flow:**
 
 ```
-Raw args ──▶ stripNullsDeep ──▶ scope guard ──▶ handler(args, context) ──▶ formatter.format() ──▶ MCP response
+Raw args ──▶ sanitizeToolArguments ──▶ scope guard ──▶ handler ──▶ success redaction ──▶ formatter ──▶ MCP response
                                       │                  │
                                       │                  └── assertAuthReady()  (check token exists)
                                       │                  └── resolveProjectId() (defense in depth)

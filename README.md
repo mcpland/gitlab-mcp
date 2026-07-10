@@ -4,7 +4,7 @@
 [![npm](https://img.shields.io/npm/v/gitlab-mcp.svg)](https://www.npmjs.com/package/gitlab-mcp)
 ![license](https://img.shields.io/npm/l/gitlab-mcp)
 
-A production-ready [MCP](https://modelcontextprotocol.io/) server for GitLab. Provides **80+ tools** that let AI assistants read and manage GitLab projects, merge requests, issues, pipelines, wikis, releases, and more through a unified, policy-controlled interface.
+A production-ready [MCP](https://modelcontextprotocol.io/) server for GitLab. It lets AI assistants read and manage GitLab projects, merge requests, issues, pipelines, wikis, releases, and more through a broad, policy-controlled tool registry.
 
 ## Highlights
 
@@ -317,26 +317,26 @@ pnpm start:http -- --env-file .env.local
 
 Tools are organized into these categories. All GitLab tools use the `gitlab_` prefix, except `health_check`.
 
-| Category            | Examples                                                                    | Count |
-| ------------------- | --------------------------------------------------------------------------- | ----- |
-| **Projects**        | `get_project`, `list_projects`, `create_repository`, `fork_repository`      | 8     |
-| **Repository**      | `get_repository_tree`, `get_file_contents`, `push_files`, `create_branch`   | 7     |
-| **Merge Requests**  | `list_merge_requests`, `get_merge_request_conflicts`, `merge_merge_request` | 13    |
-| **MR Code Context** | `get_merge_request_code_context` (advanced code review)                     | 1     |
-| **MR Discussions**  | `list_merge_request_discussions`, `create_merge_request_thread`             | 7     |
-| **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                     | 7     |
-| **Draft Notes**     | `list_draft_notes`, `create_draft_note`, `bulk_publish_draft_notes`         | 7     |
-| **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                  | 13    |
-| **Pipelines**       | `list_pipelines`, `list_deployments`, `get_job_artifact_file_inline`        | 20    |
-| **Commits**         | `list_commits`, `get_commit`, `get_commit_diff`                             | 3     |
-| **Labels**          | `list_labels`, `create_label`, `update_label`                               | 5     |
-| **Milestones**      | `list_milestones`, `create_milestone`, burndown events                      | 10    |
-| **Releases**        | `list_releases`, `create_release`, `download_release_asset`                 | 7     |
-| **Wiki**            | `list_wiki_pages`, `create_wiki_page`, `update_wiki_page`                   | 5     |
-| **Uploads**         | `upload_markdown`, `download_attachment`                                    | 2     |
-| **GraphQL**         | `execute_graphql_query`, `execute_graphql_mutation`                         | 3     |
-| **Users & Groups**  | `get_users`, `list_namespaces`, `list_events`                               | 6     |
-| **Health**          | `health_check`                                                              | 1     |
+| Category            | Examples                                                                     |
+| ------------------- | ---------------------------------------------------------------------------- |
+| **Projects**        | `get_project`, `list_projects`, `create_repository`, `update_project`        |
+| **Repository**      | `get_repository_tree`, `get_file_contents`, `push_files`, protected branches |
+| **Merge Requests**  | `list_merge_requests`, `get_merge_request_conflicts`, `merge_merge_request`  |
+| **MR Code Context** | `get_merge_request_code_context` (advanced code review)                      |
+| **MR Discussions**  | `list_merge_request_discussions`, `create_merge_request_thread`              |
+| **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                      |
+| **Draft Notes**     | `list_draft_notes`, `create_draft_note`, `bulk_publish_draft_notes`          |
+| **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                   |
+| **Pipelines**       | `list_pipelines`, `list_deployments`, `get_job_artifact_file`                |
+| **Commits**         | `list_commits`, `get_commit`, `get_commit_diff`                              |
+| **Labels**          | `list_labels`, `create_label`, `update_label`                                |
+| **Milestones**      | `list_milestones`, `create_milestone`, burndown events                       |
+| **Releases**        | `list_releases`, `create_release`, `download_release_asset`                  |
+| **Wiki**            | `list_wiki_pages`, `create_wiki_page`, `update_wiki_page`                    |
+| **Uploads**         | `upload_markdown`, `download_attachment`                                     |
+| **GraphQL**         | `execute_graphql_query`, `execute_graphql_mutation`                          |
+| **Users & Groups**  | `get_users`, `list_namespaces`, `list_events`                                |
+| **Health**          | `health_check`                                                               |
 
 See [docs/tools.md](docs/tools.md) for usage details and
 [docs/tools-index.md](docs/tools-index.md) for the generated complete registry.
