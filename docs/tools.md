@@ -40,14 +40,14 @@ Most list endpoints support `page` and `per_page`. Notable exceptions are `gitla
 
 ## Users & Namespaces
 
-| Tool                      | Mutating | Description                                                                      |
-| ------------------------- | -------- | -------------------------------------------------------------------------------- |
-| `gitlab_get_users`        | No       | Search users. Supports `username`, `search`, `active`, `extern_uid`, `provider`. |
-| `gitlab_get_user`         | No       | Get one user by ID. Params: `user_id` (required).                                |
-| `gitlab_whoami`           | No       | Get the current authenticated user.                                              |
-| `gitlab_list_namespaces`  | No       | List namespaces visible to user. Supports `search`, `owned`.                     |
-| `gitlab_get_namespace`    | No       | Get namespace by ID or path. Params: `namespace_id_or_path` or `namespace_id`.   |
-| `gitlab_verify_namespace` | No       | Verify if a namespace path exists. Params: `path` (required).                    |
+| Tool                      | Mutating | Description                                                                                               |
+| ------------------------- | -------- | --------------------------------------------------------------------------------------------------------- |
+| `gitlab_get_users`        | No       | Search users. Supports `username`, `search`, `active`, `extern_uid`, `provider`.                          |
+| `gitlab_get_user`         | No       | Get one user by ID. Params: `user_id` (required).                                                         |
+| `gitlab_whoami`           | No       | Get the current authenticated user.                                                                       |
+| `gitlab_list_namespaces`  | No       | List namespaces visible to user. Supports `search`, `owned`.                                              |
+| `gitlab_get_namespace`    | No       | Get namespace by ID or path. Params: `namespace_id_or_path` or `namespace_id`.                            |
+| `gitlab_verify_namespace` | No       | Verify if a namespace path exists. Params: `path` (required), optional `parent_id` for nested namespaces. |
 
 ---
 

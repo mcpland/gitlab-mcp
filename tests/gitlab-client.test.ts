@@ -616,6 +616,18 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("scope")).toBe("assigned_to_me");
       expect(url.searchParams.get("page")).toBe("2");
     });
+
+    it("verifies a namespace within an optional parent", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ exists: true }));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.verifyNamespace("platform", { query: { parent_id: 42 } });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.pathname).toBe("/api/v4/namespaces/platform/exists");
+      expect(url.searchParams.get("parent_id")).toBe("42");
+    });
   });
 
   describe("attachment downloads", () => {

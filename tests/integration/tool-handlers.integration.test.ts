@@ -1671,6 +1671,28 @@ describe("Tool handler: gitlab_list_merge_requests", () => {
   });
 });
 
+describe("Tool handler: gitlab_verify_namespace", () => {
+  it("passes parent_id to disambiguate nested namespace paths", async () => {
+    const verifyNamespace = vi.fn().mockResolvedValue({ exists: true });
+    const pair = await createLinkedPair(buildContext({ gitlabStub: { verifyNamespace } }));
+
+    try {
+      const result = await pair.client.callTool({
+        name: "gitlab_verify_namespace",
+        arguments: { path: "platform", parent_id: 42 }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(verifyNamespace).toHaveBeenCalledWith("platform", {
+        query: { parent_id: 42 }
+      });
+    } finally {
+      await pair.clientTransport.close();
+      await pair.serverTransport.close();
+    }
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  gitlab_get_merge_request_conflicts                                 */
 /* ------------------------------------------------------------------ */

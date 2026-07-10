@@ -4155,9 +4155,16 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       description: "Verify if namespace path exists.",
       capabilities: readCapabilities,
       inputSchema: {
-        path: z.string().min(1)
+        path: z.string().min(1),
+        parent_id: nullableOptional(z.number().int().positive())
       },
-      handler: async (args, context) => context.gitlab.verifyNamespace(getString(args, "path"))
+      handler: async (args, context) => {
+        const parentId = getOptionalNumber(args, "parent_id");
+        return context.gitlab.verifyNamespace(
+          getString(args, "path"),
+          parentId === undefined ? undefined : { query: { parent_id: parentId } }
+        );
+      }
     },
     {
       name: "gitlab_get_users",
