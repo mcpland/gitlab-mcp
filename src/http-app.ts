@@ -492,8 +492,11 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   const downloadProxyHandler: express.RequestHandler = async (req, res) => {
     try {
       const resource = getDownloadResourceFromRequest(req);
-      const auth = parseDownloadAuth(req, resource);
+      const auth = await resolveDownloadAuth(req, resource);
       if (!auth) {
+        if (appEnv.MCP_HTTP_AUTH_TOKEN) {
+          res.setHeader("WWW-Authenticate", 'Bearer realm="gitlab-mcp-downloads"');
+        }
         res.status(401).json({ error: "Authentication required" });
         return;
       }
@@ -1074,10 +1077,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     };
   }
 
-  function parseDownloadAuth(
+  async function resolveDownloadAuth(
     req: express.Request,
     resource: DownloadTokenResource
-  ): (SessionAuth & { token: string; header: GitLabAuthHeader }) | undefined {
+  ): Promise<(SessionAuth & { token: string; header: GitLabAuthHeader }) | undefined> {
     const encryptedToken = getSingleQueryValue(req.query._token);
     if (encryptedToken) {
       const payload = decryptDownloadToken(encryptedToken, {
@@ -1095,8 +1098,21 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       };
     }
 
+    if (
+      appEnv.MCP_HTTP_AUTH_TOKEN &&
+      !verifyMcpHttpBearerToken(req.header("authorization"), appEnv.MCP_HTTP_AUTH_TOKEN)
+    ) {
+      metrics?.incrementAuthFailure("mcp_http_bearer");
+      return undefined;
+    }
+
     const parsedAuth = parseRequestAuth(req);
-    if (parsedAuth?.token && parsedAuth.header) {
+    if (appEnv.REMOTE_AUTHORIZATION) {
+      if (!parsedAuth?.token || !parsedAuth.header || !(await validateRequestAuth(parsedAuth))) {
+        metrics?.incrementAuthFailure("remote_gitlab");
+        return undefined;
+      }
+
       return {
         token: parsedAuth.token,
         header: parsedAuth.header,
@@ -1105,7 +1121,43 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       };
     }
 
-    if (!appEnv.REMOTE_AUTHORIZATION) {
+    if (appEnv.GITLAB_MCP_OAUTH) {
+      if (!parsedAuth?.token || !parsedAuth.header) {
+        metrics?.incrementAuthFailure("mcp_oauth");
+        return undefined;
+      }
+
+      if (parsedAuth.header === "authorization") {
+        try {
+          await oauthProvider?.verifyAccessToken(parsedAuth.token);
+        } catch {
+          metrics?.incrementAuthFailure("mcp_oauth");
+          return undefined;
+        }
+
+        if (!oauthProvider) {
+          metrics?.incrementAuthFailure("mcp_oauth");
+          return undefined;
+        }
+      } else {
+        if (
+          appEnv.GITLAB_OAUTH_ALLOWED_GROUPS.length > 0 ||
+          !(await validateRequestAuth(parsedAuth))
+        ) {
+          metrics?.incrementAuthFailure("mcp_oauth");
+          return undefined;
+        }
+      }
+
+      return {
+        token: parsedAuth.token,
+        header: parsedAuth.header,
+        apiUrl: parsedAuth.apiUrl,
+        updatedAt: parsedAuth.updatedAt
+      };
+    }
+
+    if (appEnv.MCP_HTTP_AUTH_TOKEN) {
       if (appEnv.GITLAB_PERSONAL_ACCESS_TOKEN) {
         return {
           token: appEnv.GITLAB_PERSONAL_ACCESS_TOKEN,

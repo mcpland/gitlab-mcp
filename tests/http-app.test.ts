@@ -366,9 +366,225 @@ describe("http app pending session handling", () => {
 });
 
 describe("http app download proxy", () => {
-  it("bounds token buckets and stops token rotation at the client IP layer", async () => {
+  it("does not expose a static server token to unauthenticated direct downloads", async () => {
     let upstreamRequests = 0;
     const gitLabServer = createServer((_req, res) => {
+      upstreamRequests += 1;
+      res.statusCode = 200;
+      res.end("should-not-be-reached");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = "static-gitlab-token";
+      context.env.MCP_HTTP_AUTH_TOKEN = "m".repeat(32);
+      running = await startServerForContext(context);
+
+      const url = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+      url.searchParams.set("project_id", "group/project");
+      url.searchParams.set("job_id", "39");
+
+      const response = await fetch(url);
+      expect(response.status).toBe(401);
+      expect(response.headers.get("www-authenticate")).toContain("gitlab-mcp-downloads");
+      expect(upstreamRequests).toBe(0);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("uses a static server token only after independent MCP bearer authentication", async () => {
+    let upstreamRequests = 0;
+    const gitLabServer = createServer((req, res) => {
+      upstreamRequests += 1;
+      expect(req.headers["private-token"]).toBe("static-gitlab-token");
+      res.statusCode = 200;
+      res.end("authenticated-download");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = "static-gitlab-token";
+      context.env.MCP_HTTP_AUTH_TOKEN = "m".repeat(32);
+      running = await startServerForContext(context);
+
+      const url = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+      url.searchParams.set("project_id", "group/project");
+      url.searchParams.set("job_id", "39");
+
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${"m".repeat(32)}` }
+      });
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("authenticated-download");
+      expect(upstreamRequests).toBe(1);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("validates direct remote credentials before proxying a download", async () => {
+    let downloadRequests = 0;
+    const gitLabServer = createServer((req, res) => {
+      if (req.url === "/api/v4/user") {
+        res.statusCode = req.headers["private-token"] === "valid-remote-token" ? 200 : 401;
+        res.end("{}");
+        return;
+      }
+
+      downloadRequests += 1;
+      expect(req.headers["private-token"]).toBe("valid-remote-token");
+      res.statusCode = 200;
+      res.end("remote-download");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      context.env.REMOTE_AUTHORIZATION = true;
+      running = await startServerForContext(context);
+
+      const url = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+      url.searchParams.set("project_id", "group/project");
+      url.searchParams.set("job_id", "40");
+
+      const rejected = await fetch(url, {
+        headers: { "Private-Token": "invalid-remote-token" }
+      });
+      expect(rejected.status).toBe(401);
+      expect(downloadRequests).toBe(0);
+
+      const accepted = await fetch(url, {
+        headers: { "Private-Token": "valid-remote-token" }
+      });
+      expect(accepted.status).toBe(200);
+      expect(await accepted.text()).toBe("remote-download");
+      expect(downloadRequests).toBe(1);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("enforces MCP OAuth application and group policy on direct downloads", async () => {
+    let downloadRequests = 0;
+    let directPatValidationRequests = 0;
+    const gitLabServer = createServer((req, res) => {
+      const authorization = req.headers.authorization;
+      if (req.url === "/oauth/token/info") {
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            scopes: ["api"],
+            expires_in_seconds: 7_200,
+            application: { uid: "test-gitlab-oauth-app" }
+          })
+        );
+        return;
+      }
+      if (req.url?.startsWith("/api/v4/groups?")) {
+        res.setHeader("content-type", "application/json");
+        res.setHeader("x-next-page", "");
+        res.end(
+          JSON.stringify([
+            { full_path: authorization === "Bearer allowed-oauth-token" ? "my-org" : "other-org" }
+          ])
+        );
+        return;
+      }
+      if (req.url === "/api/v4/user") {
+        directPatValidationRequests += 1;
+        res.statusCode = 200;
+        res.end("{}");
+        return;
+      }
+
+      downloadRequests += 1;
+      expect(authorization).toBe("Bearer allowed-oauth-token");
+      res.statusCode = 200;
+      res.end("oauth-download");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      context.env.GITLAB_MCP_OAUTH = true;
+      context.env.GITLAB_OAUTH_ALLOWED_GROUPS = ["my-org"];
+      context.env.MCP_SERVER_URL = "https://mcp.example.com";
+      running = await startServerForContext(context);
+
+      const url = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+      url.searchParams.set("project_id", "group/project");
+      url.searchParams.set("job_id", "41");
+
+      const rejectedGroup = await fetch(url, {
+        headers: { Authorization: "Bearer denied-oauth-token" }
+      });
+      expect(rejectedGroup.status).toBe(401);
+      expect(downloadRequests).toBe(0);
+
+      const rejectedPat = await fetch(url, {
+        headers: { "Private-Token": "direct-pat" }
+      });
+      expect(rejectedPat.status).toBe(401);
+      expect(directPatValidationRequests).toBe(0);
+      expect(downloadRequests).toBe(0);
+
+      const accepted = await fetch(url, {
+        headers: { Authorization: "Bearer allowed-oauth-token" }
+      });
+      expect(accepted.status).toBe(200);
+      expect(await accepted.text()).toBe("oauth-download");
+      expect(downloadRequests).toBe(1);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("bounds token buckets and stops token rotation at the client IP layer", async () => {
+    let upstreamRequests = 0;
+    const gitLabServer = createServer((req, res) => {
+      if (req.url === "/api/v4/user") {
+        res.statusCode = 200;
+        res.end("{}");
+        return;
+      }
+
       upstreamRequests += 1;
       res.statusCode = 200;
       res.end("download");
@@ -413,6 +629,13 @@ describe("http app download proxy", () => {
 
   it("uses the shared canonical dynamic API URL policy", async () => {
     const gitLabServer = createServer((req, res) => {
+      if (req.url === "/api/v4/user") {
+        expect(req.headers["private-token"]).toBe("dynamic-token");
+        res.statusCode = 200;
+        res.end("{}");
+        return;
+      }
+
       expect(req.url).toBe("/api/v4/projects/group%2Fproject/jobs/41/artifacts");
       expect(req.headers["private-token"]).toBe("dynamic-token");
       res.statusCode = 200;
