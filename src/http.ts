@@ -35,6 +35,9 @@ const context: AppContext = {
   gitlab: new GitLabClient(env.GITLAB_API_URL, defaultToken, {
     apiUrls: env.GITLAB_API_URLS,
     timeoutMs: env.GITLAB_HTTP_TIMEOUT_MS,
+    maxGetRetries: env.GITLAB_HTTP_MAX_RETRIES,
+    getRetryBaseDelayMs: env.GITLAB_HTTP_RETRY_BASE_MS,
+    getRetryMaxDelayMs: env.GITLAB_HTTP_RETRY_MAX_DELAY_MS,
     maxLocalFileBytes: env.GITLAB_MAX_LOCAL_FILE_BYTES,
     localFileRoots: env.GITLAB_LOCAL_FILE_ROOTS,
     defaultAuthHeader,

@@ -14,6 +14,7 @@ const tempDirs: string[] = [];
 vi.stubGlobal("fetch", fetchMock);
 
 afterEach(async () => {
+  vi.useRealTimers();
   fetchMock.mockReset();
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
@@ -256,6 +257,85 @@ describe("GitLabClient", () => {
           message: expect.stringContaining("exceeds limit")
         })
       );
+    });
+  });
+
+  describe("idempotent GET retries", () => {
+    it.each([429, 502, 503, 504])("retries GET responses with status %s", async (status) => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ message: "temporary" }, status))
+        .mockResolvedValueOnce(jsonResponse({ id: 1, name: "recovered" }));
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxGetRetries: 1,
+        getRetryBaseDelayMs: 0
+      });
+
+      await expect(client.getProject("proj")).resolves.toMatchObject({ name: "recovered" });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("honors Retry-After before retrying", async () => {
+      vi.useFakeTimers();
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ message: "slow down" }, 429, { "Retry-After": "1" }))
+        .mockResolvedValueOnce(jsonResponse({ id: 1 }));
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxGetRetries: 1,
+        getRetryBaseDelayMs: 0,
+        getRetryMaxDelayMs: 2_000
+      });
+
+      const resultPromise = client.getProject("proj");
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(999);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+
+      await expect(resultPromise).resolves.toMatchObject({ id: 1 });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not retry when Retry-After exceeds the configured maximum", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ message: "slow down" }, 429, { "Retry-After": "2" })
+      );
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxGetRetries: 2,
+        getRetryBaseDelayMs: 0,
+        getRetryMaxDelayMs: 1_000
+      });
+
+      await expect(client.getProject("proj")).rejects.toMatchObject({ status: 429 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops after the configured number of retries", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ message: "unavailable" }, 503));
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxGetRetries: 2,
+        getRetryBaseDelayMs: 0
+      });
+
+      await expect(client.getProject("proj")).rejects.toMatchObject({ status: 503 });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("never retries mutations", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ message: "unavailable" }, 503))
+        .mockResolvedValueOnce(jsonResponse({ id: 1 }));
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxGetRetries: 2,
+        getRetryBaseDelayMs: 0
+      });
+
+      await expect(client.createRepository({ name: "demo" })).rejects.toMatchObject({
+        status: 503
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 

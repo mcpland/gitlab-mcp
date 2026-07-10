@@ -17,6 +17,9 @@ export interface GitLabClientOptions {
   maxResponseBodyBytes?: number;
   maxJobTraceBytes?: number;
   localFileRoots?: string[];
+  maxGetRetries?: number;
+  getRetryBaseDelayMs?: number;
+  getRetryMaxDelayMs?: number;
   defaultAuthHeader?: GitLabAuthHeader;
   beforeRequest?: (
     context: GitLabBeforeRequestContext
@@ -159,6 +162,9 @@ export class GitLabClient {
   private readonly maxResponseBodyBytes: number;
   private readonly maxJobTraceBytes: number;
   private readonly localFileBoundary: LocalFileBoundary;
+  private readonly maxGetRetries: number;
+  private readonly getRetryBaseDelayMs: number;
+  private readonly getRetryMaxDelayMs: number;
   private readonly beforeRequest?: GitLabClientOptions["beforeRequest"];
 
   constructor(baseApiUrl: string, defaultToken?: string, options: GitLabClientOptions = {}) {
@@ -180,6 +186,15 @@ export class GitLabClient {
       Math.floor(options.maxJobTraceBytes ?? GitLabClient.DEFAULT_MAX_JOB_TRACE_BYTES)
     );
     this.localFileBoundary = new LocalFileBoundary(options.localFileRoots);
+    this.maxGetRetries = Math.min(5, Math.max(0, Math.floor(options.maxGetRetries ?? 2)));
+    this.getRetryBaseDelayMs = Math.min(
+      10_000,
+      Math.max(0, Math.floor(options.getRetryBaseDelayMs ?? 250))
+    );
+    this.getRetryMaxDelayMs = Math.min(
+      120_000,
+      Math.max(0, Math.floor(options.getRetryMaxDelayMs ?? 10_000))
+    );
     this.beforeRequest = options.beforeRequest;
   }
 
@@ -2876,11 +2891,10 @@ export class GitLabClient {
 
     this.attachAuth(headers, token, authHeader);
 
-    const response = await fetchImpl(url, {
+    const response = await this.fetchGenericResponse(fetchImpl, url, {
       method: options.method,
       body: requestBody,
-      headers,
-      signal: AbortSignal.timeout(this.timeoutMs)
+      headers
     });
 
     let body: unknown;
@@ -2911,6 +2925,42 @@ export class GitLabClient {
     return options.method === "GET"
       ? attachPaginationMetadata(body, extractGitLabPaginationMetadata(response.headers))
       : body;
+  }
+
+  private async fetchGenericResponse(
+    fetchImpl: typeof fetch,
+    url: URL,
+    options: { method: string; body?: BodyInit; headers: Headers }
+  ): Promise<Response> {
+    for (let retry = 0; ; retry += 1) {
+      const response = await fetchImpl(url, {
+        method: options.method,
+        body: options.body,
+        headers: options.headers,
+        signal: AbortSignal.timeout(this.timeoutMs)
+      });
+
+      if (
+        options.method !== "GET" ||
+        retry >= this.maxGetRetries ||
+        !RETRYABLE_GET_STATUSES.has(response.status)
+      ) {
+        return response;
+      }
+
+      const delayMs = resolveGetRetryDelay(
+        response.headers.get("retry-after"),
+        retry,
+        this.getRetryBaseDelayMs,
+        this.getRetryMaxDelayMs
+      );
+      if (delayMs === undefined) {
+        return response;
+      }
+
+      await response.body?.cancel();
+      await waitForRetry(delayMs);
+    }
   }
 
   private async parseApiResponse(response: Response): Promise<unknown> {
@@ -3415,6 +3465,43 @@ function parseContentLength(value: string | null): number | undefined {
   }
 
   return parsed;
+}
+
+const RETRYABLE_GET_STATUSES = new Set([429, 502, 503, 504]);
+
+function resolveGetRetryDelay(
+  retryAfter: string | null,
+  retry: number,
+  baseDelayMs: number,
+  maxDelayMs: number
+): number | undefined {
+  const requestedDelay = parseRetryAfter(retryAfter);
+  if (requestedDelay !== undefined) {
+    return requestedDelay <= maxDelayMs ? requestedDelay : undefined;
+  }
+
+  return Math.min(baseDelayMs * 2 ** retry, maxDelayMs);
+}
+
+function parseRetryAfter(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  if (/^\d+$/u.test(normalized)) {
+    return Number.parseInt(normalized, 10) * 1000;
+  }
+
+  const timestamp = Date.parse(normalized);
+  return Number.isFinite(timestamp) ? Math.max(0, timestamp - Date.now()) : undefined;
+}
+
+async function waitForRetry(delayMs: number): Promise<void> {
+  if (delayMs <= 0) {
+    return;
+  }
+  await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
 }
 
 function assertContentLengthWithinLimit(response: Response, maxBytes: number, label: string): void {

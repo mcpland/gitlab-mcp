@@ -426,6 +426,9 @@ node dist/http.js --env-file=.env.production
 | Output          | `GITLAB_DOWNLOAD_TOKEN_SECRET`            | random per process          | Secret for short-lived HTTP download proxy URLs; set this for multi-replica deployments.                    |
 | Output          | `GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS`       | `300`                       | Lifetime of generated HTTP download proxy URLs.                                                             |
 | Output          | `GITLAB_HTTP_TIMEOUT_MS`                  | `20000`                     | Upstream GitLab HTTP timeout (1s–120s).                                                                     |
+| Output          | `GITLAB_HTTP_MAX_RETRIES`                 | `2`                         | Retries for idempotent GETs on 429/502/503/504; mutations are never retried.                                |
+| Output          | `GITLAB_HTTP_RETRY_BASE_MS`               | `250`                       | Initial exponential delay for retryable GETs without `Retry-After`.                                         |
+| Output          | `GITLAB_HTTP_RETRY_MAX_DELAY_MS`          | `10000`                     | Maximum accepted retry delay; longer `Retry-After` values stop retrying.                                    |
 | Output          | `GITLAB_ERROR_DETAIL_MODE`                | `safe/full`                 | Error verbosity (`safe` by default in production, `full` otherwise).                                        |
 | Network/TLS     | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`   | —                           | Proxy settings for outbound GitLab requests, including per-host proxy bypass rules.                         |
 | Network/TLS     | `GITLAB_CA_CERT_PATH`                     | —                           | Custom CA certificate path (PEM).                                                                           |
