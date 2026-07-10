@@ -15,7 +15,7 @@
   ],
   "packageManager": "pnpm@10.28.1",
   "engines": {
-    "node": ">=20.11.0"
+    "node": ">=20.18.1"
   },
   "publishConfig": {
     "access": "public",
@@ -45,18 +45,18 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "fetch-cookie": "^3.2.0",
     "graphql": "^16.12.0",
     "open": "^11.0.0",
-    "picomatch": "^4.0.3",
+    "picomatch": "^4.0.5",
     "pino": "^10.3.1",
     "pkce-challenge": "^6.0.0",
     "tough-cookie": "^6.0.0",
-    "undici": "^7.21.0",
-    "yaml": "^2.8.2",
+    "undici": "^7.28.0",
+    "yaml": "^2.8.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -83,6 +83,19 @@
     "*.ts": [
       "eslint --fix"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "@modelcontextprotocol/sdk>@hono/node-server": "1.19.13",
+      "@modelcontextprotocol/sdk>ajv": "8.18.0",
+      "@modelcontextprotocol/sdk>express-rate-limit": "8.2.2",
+      "@modelcontextprotocol/sdk>hono": "4.12.25",
+      "ajv>fast-uri": "3.1.2",
+      "body-parser>qs": "6.15.2",
+      "express-rate-limit>ip-address": "10.1.1",
+      "express>qs": "6.15.2",
+      "router>path-to-regexp": "8.4.0"
+    }
   },
   "config": {
     "commitizen": {
