@@ -24,6 +24,8 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       MCP_SERVER_VERSION: "0.0.1",
       MCP_SERVER_URL: undefined,
       MCP_HTTP_AUTH_TOKEN: undefined,
+      MCP_METRICS_ENABLED: false,
+      MCP_METRICS_AUTH_TOKEN: undefined,
       MCP_ALLOWED_HOSTS: [],
       MCP_ALLOWED_ORIGINS: [],
       GITLAB_API_URL: "https://gitlab.example.com/api/v4",
@@ -933,6 +935,86 @@ describe("http app pre-session IP rate limiting", () => {
       });
       expect(response.status).toBe(400);
     }
+  });
+});
+
+describe("http app Prometheus metrics", () => {
+  it("does not expose /metrics by default", async () => {
+    running = await startServer();
+    const response = await fetch(`${running.baseUrl}/metrics`);
+    expect(response.status).toBe(404);
+  });
+
+  it("enforces Host, Origin, and an independent metrics bearer", async () => {
+    const context = buildContext();
+    context.env.MCP_METRICS_ENABLED = true;
+    context.env.MCP_METRICS_AUTH_TOKEN = "metrics-token-that-is-at-least-32-chars";
+    context.env.MCP_ALLOWED_ORIGINS = ["https://monitoring.example.com"];
+    running = await startServerForContext(context);
+
+    await expect(fetch(`${running.baseUrl}/healthz`)).resolves.toMatchObject({ status: 200 });
+
+    const missing = await fetch(`${running.baseUrl}/metrics`);
+    expect(missing.status).toBe(401);
+
+    const rejectedOrigin = await fetch(`${running.baseUrl}/metrics`, {
+      headers: {
+        authorization: `Bearer ${context.env.MCP_METRICS_AUTH_TOKEN}`,
+        origin: "https://attacker.example.com"
+      }
+    });
+    expect(rejectedOrigin.status).toBe(403);
+
+    const response = await fetch(`${running.baseUrl}/metrics`, {
+      headers: { authorization: `Bearer ${context.env.MCP_METRICS_AUTH_TOKEN}` }
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    const output = await response.text();
+    expect(output).toContain(
+      'gitlab_mcp_http_requests_total{method="GET",route="healthz",status_code="200"} 1'
+    );
+    expect(output).toContain('gitlab_mcp_auth_failures_total{mode="metrics_bearer"} 1');
+    expect(output).toContain('gitlab_mcp_sessions{state="streamable"} 0');
+  });
+
+  it("reuses MCP_HTTP_AUTH_TOKEN when no metrics-specific token is configured", async () => {
+    const context = buildContext();
+    context.env.MCP_METRICS_ENABLED = true;
+    context.env.MCP_HTTP_AUTH_TOKEN = "shared-mcp-token-that-is-at-least-32-chars";
+    running = await startServerForContext(context);
+
+    const response = await fetch(`${running.baseUrl}/metrics`, {
+      headers: { authorization: `Bearer ${context.env.MCP_HTTP_AUTH_TOKEN}` }
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("exports pre-session rate-limit rejections", async () => {
+    const context = buildContext();
+    context.env.MCP_METRICS_ENABLED = true;
+    context.env.MCP_METRICS_AUTH_TOKEN = "metrics-token-that-is-at-least-32-chars";
+    context.env.MAX_REQUESTS_PER_MINUTE_PER_IP = 1;
+    running = await startServerForContext(context);
+    const baseUrl = running.baseUrl;
+
+    const malformed = () =>
+      fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: '{"jsonrpc":"2.0"'
+      });
+    expect((await malformed()).status).toBe(400);
+    expect((await malformed()).status).toBe(429);
+
+    const response = await fetch(`${baseUrl}/metrics`, {
+      headers: { authorization: `Bearer ${context.env.MCP_METRICS_AUTH_TOKEN}` }
+    });
+    const output = await response.text();
+    expect(output).toContain('gitlab_mcp_rate_limit_rejections_total{scope="ip"} 1');
+    expect(output).toContain(
+      'gitlab_mcp_http_requests_total{method="POST",route="mcp",status_code="429"} 1'
+    );
   });
 });
 

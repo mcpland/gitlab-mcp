@@ -170,17 +170,21 @@ When `GITLAB_ALLOWED_PROJECT_IDS` is non-empty, it is enforced as a strict resou
 
 These settings apply only to the HTTP transport (`dist/http.js`).
 
-| Variable         | Type    | Default     | Description                                                                                                  |
-| ---------------- | ------- | ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `HTTP_HOST`      | string  | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces.                                                     |
-| `HTTP_PORT`      | number  | `3333`      | Listen port (1–65535).                                                                                       |
-| `HTTP_JSON_ONLY` | boolean | `false`     | Force JSON-only responses (disable streaming).                                                               |
-| `SSE`            | boolean | `false`     | Enable legacy SSE transport (`GET /sse`, `POST /messages`). Cannot be used with `REMOTE_AUTHORIZATION=true`. |
+| Variable                 | Type               | Default     | Description                                                                                                  |
+| ------------------------ | ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------ |
+| `HTTP_HOST`              | string             | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces.                                                     |
+| `HTTP_PORT`              | number             | `3333`      | Listen port (1–65535).                                                                                       |
+| `HTTP_JSON_ONLY`         | boolean            | `false`     | Force JSON-only responses (disable streaming).                                                               |
+| `SSE`                    | boolean            | `false`     | Enable legacy SSE transport (`GET /sse`, `POST /messages`). Cannot be used with `REMOTE_AUTHORIZATION=true`. |
+| `MCP_METRICS_ENABLED`    | boolean            | `false`     | Expose Prometheus text metrics at `GET /metrics`.                                                            |
+| `MCP_METRICS_AUTH_TOKEN` | string (32+ chars) | —           | Dedicated bearer token for `/metrics`. Falls back to `MCP_HTTP_AUTH_TOKEN` when omitted.                     |
 
 When `MCP_HTTP_AUTH_TOKEN` is configured, clients must send
 `Authorization: Bearer <MCP_HTTP_AUTH_TOKEN>` to Streamable HTTP and legacy SSE endpoints. The comparison is constant-time. In `REMOTE_AUTHORIZATION=true` mode, send the independent MCP token in `Authorization` and the upstream GitLab credential in `Private-Token` or `Job-Token`.
 
 Host validation is always enabled. `MCP_SERVER_URL` contributes its hostname and origin automatically. A wildcard bind (`HTTP_HOST=0.0.0.0` or `::`) fails startup unless `MCP_SERVER_URL` or `MCP_ALLOWED_HOSTS` supplies at least one public hostname. Browser requests with an `Origin` header must exactly match `MCP_SERVER_URL` or `MCP_ALLOWED_ORIGINS`; non-browser clients may omit Origin.
+
+`/metrics` is absent unless `MCP_METRICS_ENABLED=true`. It always passes through the same Host and Origin policy as other HTTP endpoints. When `MCP_METRICS_AUTH_TOKEN` is set it requires that bearer; otherwise it reuses `MCP_HTTP_AUTH_TOKEN` when available. If neither token is configured, every network client that can reach an allowed Host may scrape it. Metric labels are intentionally bounded to method, normalized route, status, session state, rejection scope, and auth mode—tokens, URLs, project/group IDs, session IDs, and client IPs are never labels.
 
 ## Session Management (HTTP Mode)
 

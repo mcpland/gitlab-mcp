@@ -28,6 +28,13 @@ export interface GitLabClientOptions {
   beforeRequest?: (
     context: GitLabBeforeRequestContext
   ) => Promise<GitLabBeforeRequestResult | void>;
+  onRequestCompleted?: (metric: GitLabRequestMetric) => void;
+}
+
+export interface GitLabRequestMetric {
+  method: string;
+  statusCode: number | "network_error";
+  durationMs: number;
 }
 
 export interface GitLabRequestOptions {
@@ -173,6 +180,7 @@ export class GitLabClient {
   private readonly getRetryBaseDelayMs: number;
   private readonly getRetryMaxDelayMs: number;
   private readonly beforeRequest?: GitLabClientOptions["beforeRequest"];
+  private readonly onRequestCompleted?: GitLabClientOptions["onRequestCompleted"];
 
   constructor(baseApiUrl: string, defaultToken?: string, options: GitLabClientOptions = {}) {
     this.baseApiUrl = normalizeApiUrl(baseApiUrl);
@@ -203,6 +211,7 @@ export class GitLabClient {
       Math.max(0, Math.floor(options.getRetryMaxDelayMs ?? 10_000))
     );
     this.beforeRequest = options.beforeRequest;
+    this.onRequestCompleted = options.onRequestCompleted;
   }
 
   // projects
@@ -2892,7 +2901,7 @@ export class GitLabClient {
 
     this.attachAuth(headers, token, authHeader);
 
-    return fetchImpl(url, {
+    return this.fetchWithMetrics(fetchImpl, url, {
       method: options.method,
       body: requestBody,
       headers,
@@ -3043,7 +3052,7 @@ export class GitLabClient {
     options: { method: string; body?: BodyInit; headers: Headers }
   ): Promise<Response> {
     for (let retry = 0; ; retry += 1) {
-      const response = await fetchImpl(url, {
+      const response = await this.fetchWithMetrics(fetchImpl, url, {
         method: options.method,
         body: options.body,
         headers: options.headers,
@@ -3070,6 +3079,38 @@ export class GitLabClient {
 
       await response.body?.cancel();
       await waitForRetry(delayMs);
+    }
+  }
+
+  private async fetchWithMetrics(
+    fetchImpl: typeof fetch,
+    url: URL,
+    init: RequestInit
+  ): Promise<Response> {
+    const startedAt = performance.now();
+    try {
+      const response = await fetchImpl(url, init);
+      this.reportRequestMetric({
+        method: init.method ?? "GET",
+        statusCode: response.status,
+        durationMs: performance.now() - startedAt
+      });
+      return response;
+    } catch (error) {
+      this.reportRequestMetric({
+        method: init.method ?? "GET",
+        statusCode: "network_error",
+        durationMs: performance.now() - startedAt
+      });
+      throw error;
+    }
+  }
+
+  private reportRequestMetric(metric: GitLabRequestMetric): void {
+    try {
+      this.onRequestCompleted?.(metric);
+    } catch {
+      // Observability must never alter GitLab request behavior.
     }
   }
 

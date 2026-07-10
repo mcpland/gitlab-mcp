@@ -40,6 +40,7 @@ import {
 } from "./lib/http-request-policy.js";
 import { createGitLabMcpOAuthProvider } from "./lib/mcp-oauth-provider.js";
 import { verifyMcpHttpBearerToken } from "./lib/mcp-http-bearer-auth.js";
+import { classifyHttpRoute, MetricsRegistry } from "./lib/metrics.js";
 import { resolveOauthScopes } from "./lib/oauth-scopes.js";
 import { createMcpServer } from "./server/build-server.js";
 import type { GitLabAuthHeader } from "./types/auth.js";
@@ -80,6 +81,7 @@ export interface SetupMcpHttpAppDeps {
   context: AppContext;
   env: AppContext["env"];
   logger: AppContext["logger"];
+  metrics?: MetricsRegistry;
 }
 
 export interface SetupMcpHttpAppResult {
@@ -217,6 +219,7 @@ function getPrefixedOAuthMetadataRoutes(metadataRoute: string, pathPrefix: strin
 
 export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResult {
   const { context, env: appEnv, logger: appLogger } = deps;
+  const metrics = appEnv.MCP_METRICS_ENABLED ? (deps.metrics ?? new MetricsRegistry()) : undefined;
   const configuredPathPrefix = getConfiguredServerPathPrefix(appEnv);
   const gitLabApiUrlPolicy = buildGitLabApiUrlPolicy(appEnv);
   const gitLabAuthValidator = new GitLabAuthValidator({
@@ -227,6 +230,13 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   const requestPolicy = buildHttpRequestPolicy(appEnv);
   const app = express();
   app.set("trust proxy", appEnv.MCP_TRUST_PROXY ? 1 : false);
+  if (metrics) {
+    app.use((req, res, next) => {
+      const route = classifyHttpRoute(req.path, configuredPathPrefix);
+      res.once("finish", () => metrics.recordHttpRequest(req.method, route, res.statusCode));
+      next();
+    });
+  }
   app.use((req, res, next) => {
     if (!isRequestHostAllowed(req.header("host"), requestPolicy)) {
       res.status(403).json({
@@ -266,6 +276,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     }
 
     const retryAfterSeconds = Math.max(1, Math.ceil(decision.retryAfterMs / 1000));
+    metrics?.incrementRateLimit("ip");
     res.setHeader("Retry-After", String(retryAfterSeconds));
     res.setHeader("X-RateLimit-Limit", String(decision.limit));
     res.setHeader("X-RateLimit-Remaining", "0");
@@ -291,6 +302,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     }
 
     res.setHeader("WWW-Authenticate", 'Bearer realm="gitlab-mcp"');
+    metrics?.incrementAuthFailure("mcp_http_bearer");
     if (isMcpRequestPath(req.path, configuredPathPrefix)) {
       res.status(401).json({
         jsonrpc: "2.0",
@@ -339,6 +351,26 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   const sessions = new Map<string, SessionState>();
   const pendingSessions = new Set<SessionState>();
   const sseSessions = new Map<string, SseSessionState>();
+  if (metrics) {
+    app.get("/metrics", (req, res) => {
+      const expectedToken = appEnv.MCP_METRICS_AUTH_TOKEN ?? appEnv.MCP_HTTP_AUTH_TOKEN;
+      if (expectedToken && !verifyMcpHttpBearerToken(req.header("authorization"), expectedToken)) {
+        metrics.incrementAuthFailure("metrics_bearer");
+        res.setHeader("WWW-Authenticate", 'Bearer realm="gitlab-mcp-metrics"');
+        res.status(401).send("Metrics authentication required");
+        return;
+      }
+
+      res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+      res.status(200).send(
+        metrics.render({
+          streamable: sessions.size,
+          pending: pendingSessions.size,
+          sse: sseSessions.size
+        })
+      );
+    });
+  }
   const oauthIssuerUrl = appEnv.GITLAB_MCP_OAUTH
     ? new URL(appEnv.MCP_SERVER_URL ?? `http://${appEnv.HTTP_HOST}:${String(appEnv.HTTP_PORT)}`)
     : undefined;
@@ -409,6 +441,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       }
 
       if (!checkDownloadRateLimit(`${auth.header}:${auth.token}`)) {
+        metrics?.incrementRateLimit("download");
         res.status(429).json({ error: "Rate limit exceeded" });
         return;
       }
@@ -416,11 +449,19 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       const gitLabPath = buildDownloadGitLabPath(resource, appEnv);
       const apiUrl = getDownloadApiUrl(req, auth.apiUrl);
       const url = new URL(gitLabPath.replace(/^\//, ""), `${apiUrl.replace(/\/+$/, "")}/`);
-      const gitLabResponse = await fetch(url, {
-        method: "GET",
-        headers: toGitLabDownloadHeaders(auth),
-        signal: AbortSignal.timeout(appEnv.GITLAB_HTTP_TIMEOUT_MS)
-      });
+      const startedAt = performance.now();
+      let gitLabResponse: Response;
+      try {
+        gitLabResponse = await fetch(url, {
+          method: "GET",
+          headers: toGitLabDownloadHeaders(auth),
+          signal: AbortSignal.timeout(appEnv.GITLAB_HTTP_TIMEOUT_MS)
+        });
+        metrics?.observeGitLabRequest("GET", gitLabResponse.status, performance.now() - startedAt);
+      } catch (error) {
+        metrics?.observeGitLabRequest("GET", "network_error", performance.now() - startedAt);
+        throw error;
+      }
 
       if (!gitLabResponse.ok) {
         res.status(gitLabResponse.status).json({
@@ -601,10 +642,20 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       }
 
       sendInvalidGitLabAuthResponse(res);
+      metrics?.incrementAuthFailure("mcp_oauth");
       return;
     }
 
-    oauthBearerAuth(req, res, next);
+    let oauthAccepted = false;
+    res.once("finish", () => {
+      if (!oauthAccepted && res.statusCode === 401) {
+        metrics?.incrementAuthFailure("mcp_oauth");
+      }
+    });
+    oauthBearerAuth(req, res, (error?: unknown) => {
+      oauthAccepted = true;
+      next(error);
+    });
   };
 
   const mcpRequestHandler: express.RequestHandler = async (req, res) => {
@@ -616,6 +667,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       const parsedAuth = parseRequestAuth(req);
 
       if ((appEnv.REMOTE_AUTHORIZATION || appEnv.GITLAB_MCP_OAUTH) && !parsedAuth?.token) {
+        metrics?.incrementAuthFailure(appEnv.REMOTE_AUTHORIZATION ? "remote_gitlab" : "mcp_oauth");
         res.status(401).json({
           jsonrpc: "2.0",
           error: {
@@ -648,6 +700,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         parsedAuth.header &&
         !(await validateRequestAuth(parsedAuth))
       ) {
+        metrics?.incrementAuthFailure("remote_gitlab");
         sendInvalidGitLabAuthResponse(res);
         return;
       }
@@ -713,6 +766,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       const activeSession = session;
 
       if (!checkSessionRateLimit(activeSession)) {
+        metrics?.incrementRateLimit("session");
         res.status(429).json({
           jsonrpc: "2.0",
           error: {

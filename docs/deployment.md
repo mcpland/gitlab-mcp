@@ -96,6 +96,17 @@ node dist/http.js
 
 `MCP_SERVER_URL=https://your-server.example.com` can be used instead of `MCP_ALLOWED_HOSTS`; it also seeds the browser Origin allowlist. If browser clients run on a different origin, add it explicitly with `MCP_ALLOWED_ORIGINS=https://client.example.com`. Wildcard Host or Origin entries are intentionally unsupported.
 
+### Prometheus Metrics
+
+Metrics are disabled by default. For a remote Prometheus scraper, configure a dedicated bearer independently of MCP OAuth:
+
+```bash
+MCP_METRICS_ENABLED=true
+MCP_METRICS_AUTH_TOKEN=<random-secret-at-least-32-characters>
+```
+
+Scrape `GET /metrics` with `Authorization: Bearer <secret>`. Host validation always applies; an `Origin` header, when present, must match `MCP_ALLOWED_ORIGINS` or `MCP_SERVER_URL`. The endpoint exports normalized HTTP request/status counters, current session gauges, auth/rate-limit rejection counters, and GitLab upstream latency histograms. It never labels metrics with tokens, request URLs, project/group IDs, session IDs, or IP addresses. GitLab latency measures fetch time to response headers.
+
 When exactly one trusted reverse proxy sits in front of the server, set `MCP_TRUST_PROXY=true` so the pre-session IP limiter uses the proxy-provided client address. Leave it `false` when clients can connect directly; otherwise they can spoof `X-Forwarded-For`. `MAX_REQUESTS_PER_MINUTE_PER_IP` controls this outer limiter, while `MAX_REQUESTS_PER_MINUTE` remains the per-session inner limit.
 
 Clients connect with their credentials:

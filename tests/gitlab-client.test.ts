@@ -51,6 +51,43 @@ async function createTempDir(prefix: string) {
 }
 
 describe("GitLabClient", () => {
+  describe("request metrics", () => {
+    it("reports bounded method, status, and latency without request identifiers", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+      const onRequestCompleted = vi.fn();
+      const client = new GitLabClient("https://gitlab.example.com", "secret-token", {
+        onRequestCompleted
+      });
+
+      await client.getProject("secret-group/secret-project");
+
+      expect(onRequestCompleted).toHaveBeenCalledWith({
+        method: "GET",
+        statusCode: 200,
+        durationMs: expect.any(Number)
+      });
+      const metric = onRequestCompleted.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(metric).not.toHaveProperty("url");
+      expect(metric).not.toHaveProperty("token");
+      expect(metric).not.toHaveProperty("projectId");
+    });
+
+    it("reports network errors without changing request failure behavior", async () => {
+      fetchMock.mockRejectedValue(new Error("network unavailable"));
+      const onRequestCompleted = vi.fn();
+      const client = new GitLabClient("https://gitlab.example.com", undefined, {
+        onRequestCompleted
+      });
+
+      await expect(client.listProjects()).rejects.toThrow("network unavailable");
+      expect(onRequestCompleted).toHaveBeenCalledWith({
+        method: "GET",
+        statusCode: "network_error",
+        durationMs: expect.any(Number)
+      });
+    });
+  });
+
   describe("authentication", () => {
     it("sends private token header when token is provided", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ id: 1, name: "demo" }));

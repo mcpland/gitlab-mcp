@@ -6,6 +6,7 @@ import { env } from "./config/env.js";
 import { GitLabClient } from "./lib/gitlab-client.js";
 import { assertSafeHttpAuthConfig } from "./lib/http-auth-guard.js";
 import { logger } from "./lib/logger.js";
+import { MetricsRegistry } from "./lib/metrics.js";
 import { configureNetworkRuntime } from "./lib/network.js";
 import { OutputFormatter } from "./lib/output.js";
 import { ToolPolicyEngine } from "./lib/policy.js";
@@ -21,6 +22,7 @@ import type { AppContext } from "./types/context.js";
 assertSafeHttpAuthConfig(env);
 
 const requestRuntime = new GitLabRequestRuntime(env, logger);
+const metrics = env.MCP_METRICS_ENABLED ? new MetricsRegistry() : undefined;
 configureNetworkRuntime(env, logger);
 const defaultToken = env.GITLAB_PERSONAL_ACCESS_TOKEN ?? env.GITLAB_JOB_TOKEN;
 const defaultAuthHeader = env.GITLAB_PERSONAL_ACCESS_TOKEN
@@ -41,7 +43,9 @@ const context: AppContext = {
     maxLocalFileBytes: env.GITLAB_MAX_LOCAL_FILE_BYTES,
     localFileRoots: env.GITLAB_LOCAL_FILE_ROOTS,
     defaultAuthHeader,
-    beforeRequest: (requestContext) => requestRuntime.beforeRequest(requestContext)
+    beforeRequest: (requestContext) => requestRuntime.beforeRequest(requestContext),
+    onRequestCompleted: (metric) =>
+      metrics?.observeGitLabRequest(metric.method, metric.statusCode, metric.durationMs)
   }),
   policy: new ToolPolicyEngine({
     readOnlyMode: env.GITLAB_READ_ONLY_MODE,
@@ -62,7 +66,12 @@ const context: AppContext = {
   allowLocalFileTools: false
 };
 
-const { app, shutdown, garbageCollectSessions } = setupMcpHttpApp({ context, env, logger });
+const { app, shutdown, garbageCollectSessions } = setupMcpHttpApp({
+  context,
+  env,
+  logger,
+  metrics
+});
 
 const httpServer = createServer(app);
 
@@ -75,7 +84,8 @@ httpServer.listen(env.HTTP_PORT, env.HTTP_HOST, () => {
       jsonOnly: env.HTTP_JSON_ONLY,
       maxSessions: env.MAX_SESSIONS,
       sessionTimeoutSeconds: env.SESSION_TIMEOUT_SECONDS,
-      remoteAuthEnabled: env.REMOTE_AUTHORIZATION
+      remoteAuthEnabled: env.REMOTE_AUTHORIZATION,
+      metricsEnabled: env.MCP_METRICS_ENABLED
     },
     "MCP HTTP server started"
   );

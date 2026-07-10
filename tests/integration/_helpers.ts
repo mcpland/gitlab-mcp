@@ -33,6 +33,8 @@ const defaultEnv: AppContext["env"] = {
   MCP_SERVER_VERSION: "0.0.1",
   MCP_SERVER_URL: undefined,
   MCP_HTTP_AUTH_TOKEN: undefined,
+  MCP_METRICS_ENABLED: false,
+  MCP_METRICS_AUTH_TOKEN: undefined,
   MCP_ALLOWED_HOSTS: [],
   MCP_ALLOWED_ORIGINS: [],
   GITLAB_API_URL: "https://gitlab.example.com/api/v4",
