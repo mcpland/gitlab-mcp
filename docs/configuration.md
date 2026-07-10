@@ -26,6 +26,8 @@ node dist/http.js --env-file=.env.production
 | Variable                       | Type   | Default                     | Description                                                                                                                                       |
 | ------------------------------ | ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GITLAB_API_URL`               | string | `https://gitlab.com/api/v4` | Base API URL. Supports **comma-separated** URLs for multi-instance rotation. Each URL is automatically normalized to end with `/api/v4`.          |
+| `GITLAB_ALLOWED_HOSTS`         | CSV    | —                           | Additional canonical hosts, `host:port` pairs, or API URLs selectable by `X-GitLab-API-URL`.                                                      |
+| `GITLAB_POOL_MAX_SIZE`         | number | `100`                       | Maximum number of distinct configured GitLab API `host:port` entries (1–1000).                                                                    |
 | `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —                           | Static default token for requests in default mode (`REMOTE_AUTHORIZATION=false`). If omitted, runtime can still resolve OAuth/script/file tokens. |
 | `GITLAB_JOB_TOKEN`             | string | —                           | Static CI job token fallback. Used with the `JOB-TOKEN` header only when `GITLAB_PERSONAL_ACCESS_TOKEN` is not configured.                        |
 
@@ -87,6 +89,8 @@ The client will normalize each entry and rotate across them for load distributio
 | ------------------------ | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `REMOTE_AUTHORIZATION`   | boolean | `false` | Require per-request tokens via `Authorization` (Bearer), `Private-Token`, or `Job-Token` headers for HTTP requests. Disables fallback auth chain. |
 | `ENABLE_DYNAMIC_API_URL` | boolean | `false` | Require per-request API URL via `X-GitLab-API-URL` header. Requires `REMOTE_AUTHORIZATION=true`.                                                  |
+
+Dynamic API URLs are allowlisted by canonical `host:port`. Hosts from `GITLAB_API_URL` are always registered; `GITLAB_ALLOWED_HOSTS` adds more. The request header selects a registered entry, but its scheme and path are not forwarded: the server uses the canonical configured API URL ending in `/api/v4`. MCP requests, encrypted download tokens, and direct download requests all use the same policy.
 
 ## Policy
 

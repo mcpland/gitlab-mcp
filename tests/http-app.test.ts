@@ -28,6 +28,8 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       MCP_ALLOWED_ORIGINS: [],
       GITLAB_API_URL: "https://gitlab.example.com/api/v4",
       GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
+      GITLAB_ALLOWED_HOSTS: [],
+      GITLAB_POOL_MAX_SIZE: 100,
       GITLAB_PERSONAL_ACCESS_TOKEN: "test-token",
       GITLAB_USE_OAUTH: false,
       GITLAB_MCP_OAUTH: false,
@@ -325,6 +327,71 @@ describe("http app pending session handling", () => {
 });
 
 describe("http app download proxy", () => {
+  it("uses the shared canonical dynamic API URL policy", async () => {
+    const gitLabServer = createServer((req, res) => {
+      expect(req.url).toBe("/api/v4/projects/group%2Fproject/jobs/41/artifacts");
+      expect(req.headers["private-token"]).toBe("dynamic-token");
+      res.statusCode = 200;
+      res.end("canonical-download");
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      gitLabServer.listen(0, "127.0.0.1", (error?: Error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      context.env.REMOTE_AUTHORIZATION = true;
+      context.env.ENABLE_DYNAMIC_API_URL = true;
+      running = await startServerForContext(context);
+
+      const url = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+      url.searchParams.set("project_id", "group/project");
+      url.searchParams.set("job_id", "41");
+
+      const response = await fetch(url, {
+        headers: {
+          "Private-Token": "dynamic-token",
+          "X-GitLab-API-URL": `http://127.0.0.1:${gitLabAddress.port}/untrusted/path`
+        }
+      });
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe("canonical-download");
+
+      const rejected = await fetch(url, {
+        headers: {
+          "Private-Token": "dynamic-token",
+          "X-GitLab-API-URL": "https://attacker.example.com/api/v4"
+        }
+      });
+      expect(rejected.status).toBe(400);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+  });
+
   it("streams a token-bound job artifact download", async () => {
     const gitLabServer = createServer((req, res) => {
       expect(req.url).toBe("/api/v4/projects/group%2Fproject/jobs/42/artifacts");

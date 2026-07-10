@@ -59,6 +59,8 @@ const envSchema = z.object({
   MCP_ALLOWED_HOSTS: z.string().optional(),
   MCP_ALLOWED_ORIGINS: z.string().optional(),
   GITLAB_API_URL: z.string().min(1).default("https://gitlab.com/api/v4"),
+  GITLAB_ALLOWED_HOSTS: z.string().optional(),
+  GITLAB_POOL_MAX_SIZE: z.coerce.number().int().min(1).max(1_000).default(100),
   GITLAB_PERSONAL_ACCESS_TOKEN: z.string().min(1).optional(),
   GITLAB_JOB_TOKEN: z.string().min(1).optional(),
   GITLAB_USE_OAUTH: z.enum(["true", "false"]).default("false"),
@@ -215,6 +217,7 @@ export const env = {
     false
   ),
   GITLAB_API_URLS: normalizedApiUrls,
+  GITLAB_ALLOWED_HOSTS: parseCsv(data.GITLAB_ALLOWED_HOSTS),
   GITLAB_API_URL: normalizedApiUrls[0] ?? normalizeApiUrl("https://gitlab.com/api/v4")
 };
 

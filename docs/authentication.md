@@ -246,6 +246,7 @@ When serving multiple GitLab instances, enable dynamic API URL per request:
 ```bash
 REMOTE_AUTHORIZATION=true
 ENABLE_DYNAMIC_API_URL=true
+GITLAB_ALLOWED_HOSTS=other-gitlab.example.com
 ```
 
 Clients can then send:
@@ -253,6 +254,8 @@ Clients can then send:
 ```
 X-GitLab-API-URL: https://other-gitlab.example.com/api/v4
 ```
+
+The header host and port must match `GITLAB_API_URL` or `GITLAB_ALLOWED_HOSTS`. It acts only as a selector: the server forwards requests to the registered canonical API base, not to an arbitrary scheme or path supplied by the client.
 
 ### Authentication Flow (HTTP Mode)
 

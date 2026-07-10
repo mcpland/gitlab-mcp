@@ -32,6 +32,7 @@ function buildRemoteAuthContext(
   ctx.allowLocalFileTools = false;
   if (overrides?.enableDynamicApiUrl) {
     (ctx.env as { ENABLE_DYNAMIC_API_URL: boolean }).ENABLE_DYNAMIC_API_URL = true;
+    ctx.env.GITLAB_ALLOWED_HOSTS = ["custom-gitlab.example.com"];
   }
   return ctx;
 }
@@ -218,6 +219,26 @@ describe("Remote Authorization - Dynamic API URL", () => {
     expect(res.status).toBe(200);
     const sessionId = res.headers.get("mcp-session-id");
     expect(sessionId).toBeTruthy();
+    expect(result.sessions.get(sessionId!)?.auth?.apiUrl).toBe(
+      "https://custom-gitlab.example.com/api/v4"
+    );
+  });
+
+  it("rejects an unlisted dynamic API URL host", async () => {
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        ...MCP_HEADERS,
+        Authorization: "Bearer test-token",
+        "X-GitLab-API-URL": "https://attacker.example.com/api/v4"
+      },
+      body: initializeBody()
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: { code?: number; message?: string } };
+    expect(body.error?.code).toBe(-32012);
+    expect(body.error?.message).toContain("host is not allowed");
   });
 
   it("invalid X-GitLab-API-URL returns structured 400 JSON-RPC error", async () => {

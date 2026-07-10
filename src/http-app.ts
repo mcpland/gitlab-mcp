@@ -29,6 +29,7 @@ import {
   type DownloadTokenResource
 } from "./lib/download-token.js";
 import { encodeGitLabProjectId } from "./lib/gitlab-path.js";
+import { buildGitLabApiUrlPolicy } from "./lib/gitlab-api-url-policy.js";
 import { hasReachedSessionCapacity } from "./lib/session-capacity.js";
 import {
   buildHttpRequestPolicy,
@@ -215,6 +216,7 @@ function getPrefixedOAuthMetadataRoutes(metadataRoute: string, pathPrefix: strin
 export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResult {
   const { context, env: appEnv, logger: appLogger } = deps;
   const configuredPathPrefix = getConfiguredServerPathPrefix(appEnv);
+  const gitLabApiUrlPolicy = buildGitLabApiUrlPolicy(appEnv);
 
   const requestPolicy = buildHttpRequestPolicy(appEnv);
   const app = express();
@@ -370,7 +372,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       }
 
       const gitLabPath = buildDownloadGitLabPath(resource, appEnv);
-      const apiUrl = auth.apiUrl ?? getDownloadApiUrl(req);
+      const apiUrl = getDownloadApiUrl(req, auth.apiUrl);
       const url = new URL(gitLabPath.replace(/^\//, ""), `${apiUrl.replace(/\/+$/, "")}/`);
       const gitLabResponse = await fetch(url, {
         method: "GET",
@@ -400,7 +402,8 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       appLogger.error({ err: error }, "Download proxy request failed");
       if (!res.headersSent) {
         const message = error instanceof Error ? error.message : "Failed to proxy download";
-        const status = isDownloadClientError(error) ? 400 : 502;
+        const status =
+          isDownloadClientError(error) || isClientHeaderValidationError(error) ? 400 : 502;
         res.status(status).json({ error: message });
       }
     }
@@ -940,24 +943,17 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     return undefined;
   }
 
-  function getDownloadApiUrl(req: express.Request): string {
-    if (!appEnv.ENABLE_DYNAMIC_API_URL) {
-      return appEnv.GITLAB_API_URL;
-    }
-
-    const dynamicApiUrl = req.header("x-gitlab-api-url")?.trim();
-    if (!dynamicApiUrl) {
-      return appEnv.GITLAB_API_URL;
-    }
+  function getDownloadApiUrl(req: express.Request, tokenApiUrl?: string): string {
+    const selectedApiUrl =
+      tokenApiUrl ??
+      (appEnv.ENABLE_DYNAMIC_API_URL ? req.header("x-gitlab-api-url")?.trim() : undefined) ??
+      appEnv.GITLAB_API_URL;
 
     try {
-      const parsedApiUrl = new URL(dynamicApiUrl);
-      if (!isHttpUrl(parsedApiUrl)) {
-        throw new Error("unsupported protocol");
-      }
-      return parsedApiUrl.toString();
-    } catch {
-      throw new DownloadClientError(`Invalid x-gitlab-api-url header: '${dynamicApiUrl}'`);
+      return gitLabApiUrlPolicy.resolve(selectedApiUrl);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "invalid URL";
+      throw new DownloadClientError(`Invalid x-gitlab-api-url header: ${reason}`);
     }
   }
 
@@ -982,13 +978,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       const dynamicApiUrl = req.header("x-gitlab-api-url")?.trim();
       if (dynamicApiUrl) {
         try {
-          const parsedApiUrl = new URL(dynamicApiUrl);
-          if (!isHttpUrl(parsedApiUrl)) {
-            throw new Error("unsupported protocol");
-          }
-          apiUrl = parsedApiUrl.toString();
-        } catch {
-          throw new Error(`Invalid x-gitlab-api-url header: '${dynamicApiUrl}'`);
+          apiUrl = gitLabApiUrlPolicy.resolve(dynamicApiUrl);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "invalid URL";
+          throw new Error(`Invalid x-gitlab-api-url header: ${reason}`);
         }
       }
     }
@@ -1317,8 +1310,4 @@ function isJsonBodyParserError(error: unknown): error is JsonBodyParseError {
     ((error as { type?: string }).type === "entity.parse.failed" ||
       (error as { type?: string }).type === "entity.too.large")
   );
-}
-
-function isHttpUrl(url: URL): boolean {
-  return url.protocol === "http:" || url.protocol === "https:";
 }

@@ -37,6 +37,8 @@ const defaultEnv: AppContext["env"] = {
   MCP_ALLOWED_ORIGINS: [],
   GITLAB_API_URL: "https://gitlab.example.com/api/v4",
   GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
+  GITLAB_ALLOWED_HOSTS: [],
+  GITLAB_POOL_MAX_SIZE: 100,
   GITLAB_PERSONAL_ACCESS_TOKEN: "test-token",
   GITLAB_USE_OAUTH: false,
   GITLAB_MCP_OAUTH: false,
