@@ -65,6 +65,8 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       OAUTH_STATELESS_MODE: false,
       MAX_SESSIONS: overrides?.maxSessions ?? 1000,
       MAX_REQUESTS_PER_MINUTE: 300,
+      MAX_REQUESTS_PER_MINUTE_PER_IP: 300,
+      MCP_TRUST_PROXY: false,
       HTTP_HOST: "127.0.0.1",
       HTTP_PORT: 3333,
       GITLAB_TOKEN_CACHE_SECONDS: 300,
@@ -728,6 +730,77 @@ describe("http app Host and Origin policy", () => {
     expect(() => setupMcpHttpApp({ context, env: context.env, logger: context.logger })).toThrow(
       "requires MCP_SERVER_URL or MCP_ALLOWED_HOSTS"
     );
+  });
+});
+
+describe("http app pre-session IP rate limiting", () => {
+  it("limits malformed requests before session creation", async () => {
+    const context = buildContext();
+    context.env.MAX_REQUESTS_PER_MINUTE_PER_IP = 2;
+    running = await startServerForContext(context);
+
+    for (let requestNumber = 0; requestNumber < 2; requestNumber += 1) {
+      const response = await fetch(`${running.baseUrl}/mcp`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: '{"jsonrpc":"2.0"'
+      });
+      expect(response.status).toBe(400);
+    }
+
+    const limited = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"jsonrpc":"2.0"'
+    });
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBeTruthy();
+    expect(running.pendingSessions.size).toBe(0);
+  });
+
+  it("ignores X-Forwarded-For unless trust proxy is explicit", async () => {
+    const context = buildContext();
+    context.env.MAX_REQUESTS_PER_MINUTE_PER_IP = 1;
+    running = await startServerForContext(context);
+
+    const first = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "198.51.100.1"
+      },
+      body: '{"jsonrpc":"2.0"'
+    });
+    expect(first.status).toBe(400);
+
+    const second = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "198.51.100.2"
+      },
+      body: '{"jsonrpc":"2.0"'
+    });
+    expect(second.status).toBe(429);
+  });
+
+  it("uses the trusted proxy client IP when enabled", async () => {
+    const context = buildContext();
+    context.env.MAX_REQUESTS_PER_MINUTE_PER_IP = 1;
+    context.env.MCP_TRUST_PROXY = true;
+    running = await startServerForContext(context);
+
+    for (const clientIp of ["198.51.100.1", "198.51.100.2"]) {
+      const response = await fetch(`${running.baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": clientIp
+        },
+        body: '{"jsonrpc":"2.0"'
+      });
+      expect(response.status).toBe(400);
+    }
   });
 });
 

@@ -96,6 +96,8 @@ node dist/http.js
 
 `MCP_SERVER_URL=https://your-server.example.com` can be used instead of `MCP_ALLOWED_HOSTS`; it also seeds the browser Origin allowlist. If browser clients run on a different origin, add it explicitly with `MCP_ALLOWED_ORIGINS=https://client.example.com`. Wildcard Host or Origin entries are intentionally unsupported.
 
+When exactly one trusted reverse proxy sits in front of the server, set `MCP_TRUST_PROXY=true` so the pre-session IP limiter uses the proxy-provided client address. Leave it `false` when clients can connect directly; otherwise they can spoof `X-Forwarded-For`. `MAX_REQUESTS_PER_MINUTE_PER_IP` controls this outer limiter, while `MAX_REQUESTS_PER_MINUTE` remains the per-session inner limit.
+
 Clients connect with their credentials:
 
 ```json

@@ -29,6 +29,7 @@ import {
   type DownloadTokenResource
 } from "./lib/download-token.js";
 import { encodeGitLabProjectId } from "./lib/gitlab-path.js";
+import { FixedWindowRateLimiter } from "./lib/fixed-window-rate-limiter.js";
 import { buildGitLabApiUrlPolicy } from "./lib/gitlab-api-url-policy.js";
 import { hasReachedSessionCapacity } from "./lib/session-capacity.js";
 import {
@@ -220,6 +221,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
   const requestPolicy = buildHttpRequestPolicy(appEnv);
   const app = express();
+  app.set("trust proxy", appEnv.MCP_TRUST_PROXY ? 1 : false);
   app.use((req, res, next) => {
     if (!isRequestHostAllowed(req.header("host"), requestPolicy)) {
       res.status(403).json({
@@ -240,6 +242,36 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     }
 
     next();
+  });
+  const ipRateLimiter = new FixedWindowRateLimiter({
+    limit: appEnv.MAX_REQUESTS_PER_MINUTE_PER_IP,
+    windowMs: 60_000
+  });
+  app.use((req, res, next) => {
+    if (!isMcpRequestPath(req.path, configuredPathPrefix)) {
+      next();
+      return;
+    }
+
+    const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+    const decision = ipRateLimiter.consume(clientIp);
+    if (decision.allowed) {
+      next();
+      return;
+    }
+
+    const retryAfterSeconds = Math.max(1, Math.ceil(decision.retryAfterMs / 1000));
+    res.setHeader("Retry-After", String(retryAfterSeconds));
+    res.setHeader("X-RateLimit-Limit", String(decision.limit));
+    res.setHeader("X-RateLimit-Remaining", "0");
+    res.status(429).json({
+      jsonrpc: "2.0",
+      error: {
+        code: -32017,
+        message: `IP rate limit exceeded: max ${decision.limit} requests/minute`
+      },
+      id: null
+    });
   });
   app.use((req, res, next) => {
     const expectedToken = appEnv.MCP_HTTP_AUTH_TOKEN;
