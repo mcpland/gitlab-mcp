@@ -94,6 +94,8 @@ const envSchema = z.object({
   GITLAB_DOWNLOAD_TOKEN_SECRET: optionalNonEmptyString,
   GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
   GITLAB_HTTP_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
+  GITLAB_AUTH_VALIDATION_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
+  GITLAB_AUTH_VALIDATION_TTL_SECONDS: z.coerce.number().int().min(1).max(300).default(30),
   GITLAB_ERROR_DETAIL_MODE: errorDetailModeSchema.optional(),
   GITLAB_AUTH_COOKIE_PATH: z.string().optional(),
   GITLAB_COOKIE_WARMUP_PATH: z.string().default("/user"),

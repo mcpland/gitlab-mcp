@@ -48,6 +48,8 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_DOWNLOAD_TOKEN_SECRET: "test-download-secret",
       GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS: 300,
       GITLAB_HTTP_TIMEOUT_MS: 20_000,
+      GITLAB_AUTH_VALIDATION_TIMEOUT_MS: 5_000,
+      GITLAB_AUTH_VALIDATION_TTL_SECONDS: 30,
       GITLAB_ERROR_DETAIL_MODE: "full",
       GITLAB_CLOUDFLARE_BYPASS: false,
       GITLAB_ALLOW_INSECURE_TOKEN_FILE: false,
@@ -622,6 +624,67 @@ describe("http app MCP OAuth", () => {
     });
     expect(prefixedMcpResponse.status).toBe(401);
     expect(prefixedMcpResponse.headers.get("www-authenticate")).toContain("Bearer");
+  });
+
+  it("validates direct PAT bypass before MCP OAuth session creation", async () => {
+    const gitLabServer = createServer((req, res) => {
+      const valid = req.url === "/api/v4/user" && req.headers["private-token"] === "valid-pat";
+      res.statusCode = valid ? 200 : 401;
+      res.end(valid ? "{}" : "unauthorized");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const address = gitLabServer.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Unexpected GitLab validation server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${address.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_MCP_OAUTH = true;
+      context.env.MCP_SERVER_URL = "https://mcp.example.com";
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      running = await startServerForContext(context);
+
+      const body = JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "oauth-bypass-test", version: "0.0.1" }
+        }
+      });
+      const invalid = await fetch(`${running.baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          "private-token": "invalid-pat"
+        },
+        body
+      });
+      expect(invalid.status).toBe(401);
+      expect(running.pendingSessions.size).toBe(0);
+
+      const valid = await fetch(`${running.baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+          "private-token": "valid-pat"
+        },
+        body
+      });
+      expect(valid.status).toBe(200);
+      expect(valid.headers.get("mcp-session-id")).toBeTruthy();
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
   });
 });
 

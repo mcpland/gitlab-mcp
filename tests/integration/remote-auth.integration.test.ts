@@ -21,18 +21,59 @@ const MCP_HEADERS = {
   Accept: "application/json, text/event-stream"
 };
 
+let gitLabServer: HttpServer;
+let gitLabApiUrl: string;
+
+beforeAll(async () => {
+  gitLabServer = createServer((req, res) => {
+    if (req.url === "/api/v4/user") {
+      const token =
+        req.headers["private-token"] ?? req.headers.authorization?.replace(/^Bearer\s+/i, "");
+      const valid = typeof token === "string" && !token.startsWith("invalid-");
+      res.statusCode = valid ? 200 : 401;
+      res.end(valid ? "{}" : "unauthorized");
+      return;
+    }
+
+    if (req.url === "/api/v4/job") {
+      const token = req.headers["job-token"];
+      const valid = typeof token === "string" && !token.startsWith("invalid-");
+      res.statusCode = valid ? 200 : 401;
+      res.end(valid ? "{}" : "unauthorized");
+      return;
+    }
+
+    res.statusCode = 404;
+    res.end("not found");
+  });
+  await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+  const address = gitLabServer.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Unexpected GitLab validation server address");
+  }
+  gitLabApiUrl = `http://127.0.0.1:${address.port}/api/v4`;
+});
+
+afterAll(
+  () =>
+    new Promise<void>((resolve, reject) => {
+      gitLabServer.close((error) => (error ? reject(error) : resolve()));
+    })
+);
+
 function buildRemoteAuthContext(
   overrides?: Parameters<typeof buildContext>[0] & {
     enableDynamicApiUrl?: boolean;
   }
 ): AppContext {
   const ctx = buildContext({ ...overrides, token: null });
+  ctx.env.GITLAB_API_URL = gitLabApiUrl;
+  ctx.env.GITLAB_API_URLS = [gitLabApiUrl];
   (ctx.env as { REMOTE_AUTHORIZATION: boolean }).REMOTE_AUTHORIZATION = true;
   (ctx.env as { HTTP_JSON_ONLY: boolean }).HTTP_JSON_ONLY = true;
   ctx.allowLocalFileTools = false;
   if (overrides?.enableDynamicApiUrl) {
     (ctx.env as { ENABLE_DYNAMIC_API_URL: boolean }).ENABLE_DYNAMIC_API_URL = true;
-    ctx.env.GITLAB_ALLOWED_HOSTS = ["custom-gitlab.example.com"];
   }
   return ctx;
 }
@@ -145,6 +186,24 @@ describe("Remote Authorization Integration", () => {
     expect(sessionId).toBeTruthy();
   });
 
+  it("rejects an upstream-invalid token before creating a session", async () => {
+    const sessionsBefore = result.sessions.size;
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        ...MCP_HEADERS,
+        "Private-Token": "invalid-private-token"
+      },
+      body: initializeBody()
+    });
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error?: { code?: number; message?: string } };
+    expect(body.error?.code).toBe(-32018);
+    expect(body.error?.message).toContain("rejected by the configured GitLab API");
+    expect(result.sessions.size).toBe(sessionsBefore);
+  });
+
   it("/healthz shows remoteAuthorization: true", async () => {
     const res = await fetch(`${baseUrl}/healthz`);
     const body = (await res.json()) as { remoteAuthorization: boolean };
@@ -211,7 +270,7 @@ describe("Remote Authorization - Dynamic API URL", () => {
       headers: {
         ...MCP_HEADERS,
         Authorization: "Bearer test-token",
-        "X-GitLab-API-URL": "https://custom-gitlab.example.com/api/v4"
+        "X-GitLab-API-URL": `${gitLabApiUrl}/untrusted/request/path`
       },
       body: initializeBody()
     });
@@ -219,9 +278,7 @@ describe("Remote Authorization - Dynamic API URL", () => {
     expect(res.status).toBe(200);
     const sessionId = res.headers.get("mcp-session-id");
     expect(sessionId).toBeTruthy();
-    expect(result.sessions.get(sessionId!)?.auth?.apiUrl).toBe(
-      "https://custom-gitlab.example.com/api/v4"
-    );
+    expect(result.sessions.get(sessionId!)?.auth?.apiUrl).toBe(gitLabApiUrl);
   });
 
   it("rejects an unlisted dynamic API URL host", async () => {

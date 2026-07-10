@@ -31,6 +31,7 @@ import {
 import { encodeGitLabProjectId } from "./lib/gitlab-path.js";
 import { FixedWindowRateLimiter } from "./lib/fixed-window-rate-limiter.js";
 import { buildGitLabApiUrlPolicy } from "./lib/gitlab-api-url-policy.js";
+import { GitLabAuthValidator } from "./lib/gitlab-auth-validator.js";
 import { hasReachedSessionCapacity } from "./lib/session-capacity.js";
 import {
   buildHttpRequestPolicy,
@@ -218,6 +219,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   const { context, env: appEnv, logger: appLogger } = deps;
   const configuredPathPrefix = getConfiguredServerPathPrefix(appEnv);
   const gitLabApiUrlPolicy = buildGitLabApiUrlPolicy(appEnv);
+  const gitLabAuthValidator = new GitLabAuthValidator({
+    ttlMs: appEnv.GITLAB_AUTH_VALIDATION_TTL_SECONDS * 1_000,
+    timeoutMs: appEnv.GITLAB_AUTH_VALIDATION_TIMEOUT_MS
+  });
 
   const requestPolicy = buildHttpRequestPolicy(appEnv);
   const app = express();
@@ -565,14 +570,32 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
   /* ---- /mcp (streamable HTTP) ---- */
 
-  const mcpOAuthAuthMiddleware: express.RequestHandler = (req, res, next) => {
+  const mcpOAuthAuthMiddleware: express.RequestHandler = async (req, res, next) => {
     if (!oauthBearerAuth) {
       next();
       return;
     }
 
     if (req.header("private-token")?.trim() || req.header("job-token")?.trim()) {
-      next();
+      try {
+        const auth = parseRequestAuth(req);
+        if (auth?.token && auth.header && (await validateRequestAuth(auth))) {
+          next();
+          return;
+        }
+      } catch (error) {
+        if (isClientHeaderValidationError(error)) {
+          res.status(400).json({
+            jsonrpc: "2.0",
+            error: { code: -32012, message: error.message },
+            id: null
+          });
+          return;
+        }
+        throw error;
+      }
+
+      sendInvalidGitLabAuthResponse(res);
       return;
     }
 
@@ -611,6 +634,16 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
           },
           id: null
         });
+        return;
+      }
+
+      if (
+        appEnv.REMOTE_AUTHORIZATION &&
+        parsedAuth?.token &&
+        parsedAuth.header &&
+        !(await validateRequestAuth(parsedAuth))
+      ) {
+        sendInvalidGitLabAuthResponse(res);
         return;
       }
 
@@ -1036,6 +1069,18 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     };
   }
 
+  function validateRequestAuth(auth: SessionAuth): Promise<boolean> {
+    if (!auth.token || !auth.header) {
+      return Promise.resolve(false);
+    }
+
+    return gitLabAuthValidator.validate({
+      token: auth.token,
+      header: auth.header,
+      apiUrl: auth.apiUrl ?? appEnv.GITLAB_API_URL
+    });
+  }
+
   async function enqueueSessionRequest(
     session: SessionState,
     task: () => Promise<void>
@@ -1322,6 +1367,17 @@ function encodeSlashPath(value: string): string {
 }
 
 class DownloadClientError extends Error {}
+
+function sendInvalidGitLabAuthResponse(res: express.Response): void {
+  res.status(401).json({
+    jsonrpc: "2.0",
+    error: {
+      code: -32018,
+      message: "The provided GitLab token was rejected by the configured GitLab API"
+    },
+    id: null
+  });
+}
 
 function isDownloadClientError(error: unknown): error is DownloadClientError {
   return error instanceof DownloadClientError;

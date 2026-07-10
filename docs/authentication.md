@@ -231,6 +231,8 @@ REMOTE_AUTHORIZATION=true
 
 `REMOTE_AUTHORIZATION=true` enforces per-request credentials. If a request does not include a token header, the request is rejected.
 
+Before creating or updating an MCP session, the server validates the credential against the selected canonical GitLab API (`GET /user`; job tokens fall back to `GET /job`). Both successful and rejected checks are cached for 30 seconds by default using a SHA-256 token digest as the cache key. Validation fails closed on timeout or upstream errors.
+
 ### Client Headers
 
 The server accepts tokens via:
@@ -275,6 +277,8 @@ MCP_SERVER_URL=https://mcp.example.com
 ```
 
 The HTTP server then exposes OAuth metadata and authorize/token/register/revoke endpoints backed by the configured GitLab instance. `/mcp` accepts validated `Authorization: Bearer <oauth_token>` requests, while `Private-Token` and `Job-Token` headers remain supported as direct bypass headers.
+
+The direct `Private-Token` / `Job-Token` OAuth bypass is allowed only after the same upstream GitLab validation succeeds; malformed, expired, or cross-instance credentials receive HTTP 401 before MCP request handling.
 
 ### Stateless HTTP Mode
 
