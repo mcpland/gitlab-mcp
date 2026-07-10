@@ -17,7 +17,7 @@ import {
   type GitLabPipelineInputValue,
   type PushFileAction
 } from "../lib/gitlab-client.js";
-import { encodeGitLabProjectId } from "../lib/gitlab-path.js";
+import { encodeGitLabProjectId, isGitLabProjectIdentityAllowed } from "../lib/gitlab-path.js";
 import {
   applySearchReplace,
   applyUnifiedDiff,
@@ -6086,7 +6086,7 @@ async function resolveDependencyProxyGroupFullPath(
 
 function resolveExplicitProjectId(context: AppContext, projectId: string): string {
   const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
-  if (allowed.length > 0 && !isAllowedProjectIdentity(projectId, allowed)) {
+  if (allowed.length > 0 && !isGitLabProjectIdentityAllowed(projectId, allowed)) {
     throw new Error(
       `Project '${projectId}' is not in GITLAB_ALLOWED_PROJECT_IDS: ${allowed.join(", ")}`
     );
@@ -6161,17 +6161,7 @@ function recordMatchesAllowedProject(
   return candidates.some(
     (candidate) =>
       (typeof candidate === "string" || typeof candidate === "number") &&
-      isAllowedProjectIdentity(String(candidate), allowedProjectIds)
-  );
-}
-
-function isAllowedProjectIdentity(
-  projectId: string,
-  allowedProjectIds: readonly string[]
-): boolean {
-  const canonicalProjectId = encodeGitLabProjectId(projectId);
-  return allowedProjectIds.some(
-    (allowedProjectId) => encodeGitLabProjectId(allowedProjectId) === canonicalProjectId
+      isGitLabProjectIdentityAllowed(String(candidate), allowedProjectIds)
   );
 }
 
@@ -7965,7 +7955,7 @@ function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean
   const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
 
   if (allowed.length > 0) {
-    if (fromArgs && !isAllowedProjectIdentity(fromArgs, allowed)) {
+    if (fromArgs && !isGitLabProjectIdentityAllowed(fromArgs, allowed)) {
       throw new Error(
         `Project '${fromArgs}' is not in GITLAB_ALLOWED_PROJECT_IDS: ${allowed.join(", ")}`
       );

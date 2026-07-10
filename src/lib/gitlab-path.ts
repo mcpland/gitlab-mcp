@@ -12,6 +12,17 @@ export function encodeGitLabProjectId(value: string): string {
   return encodeGitLabPathId(value, "project");
 }
 
+/** Compare raw or percent-encoded project identities using their canonical path segment. */
+export function isGitLabProjectIdentityAllowed(
+  value: string,
+  allowedValues: readonly string[]
+): boolean {
+  const canonicalValue = encodeGitLabProjectId(value);
+  return allowedValues.some(
+    (allowedValue) => encodeGitLabProjectId(allowedValue) === canonicalValue
+  );
+}
+
 /** Encode a numeric group ID or nested group path exactly once. */
 export function encodeGitLabGroupId(value: string): string {
   return encodeGitLabPathId(value, "group");

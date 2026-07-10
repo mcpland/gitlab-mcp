@@ -441,6 +441,143 @@ describe("http app download proxy", () => {
     }
   });
 
+  it("accepts canonical allowlist identities for encrypted and direct downloads", async () => {
+    const requestPaths: string[] = [];
+    const gitLabServer = createServer((req, res) => {
+      requestPaths.push(req.url ?? "");
+      expect(req.headers["private-token"]).toBe("static-gitlab-token");
+      res.statusCode = 200;
+      res.end("scoped-download");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = "static-gitlab-token";
+      context.env.MCP_HTTP_AUTH_TOKEN = "m".repeat(32);
+      context.env.GITLAB_ALLOWED_PROJECT_IDS = ["group/project", "123"];
+      running = await startServerForContext(context);
+
+      const identities = [
+        ["group/project", "group%2Fproject"],
+        ["group%2Fproject", "group%2Fproject"],
+        ["group%252Fproject", "group%2Fproject"],
+        ["%31%32%33", "123"]
+      ] as const;
+
+      for (const [projectId] of identities) {
+        const resource = {
+          type: "job-artifacts",
+          params: { project_id: projectId, job_id: "42" }
+        };
+        const token = createDownloadToken(
+          { header: "private-token", token: "static-gitlab-token" },
+          resource,
+          {
+            secret: context.env.GITLAB_DOWNLOAD_TOKEN_SECRET,
+            ttlSeconds: context.env.GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS
+          }
+        );
+        const encryptedUrl = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+        encryptedUrl.searchParams.set("project_id", projectId);
+        encryptedUrl.searchParams.set("job_id", "42");
+        encryptedUrl.searchParams.set("_token", token);
+
+        const encryptedResponse = await fetch(encryptedUrl);
+        expect(encryptedResponse.status, `encrypted ${projectId}`).toBe(200);
+        expect(await encryptedResponse.text()).toBe("scoped-download");
+
+        const directUrl = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+        directUrl.searchParams.set("project_id", projectId);
+        directUrl.searchParams.set("job_id", "42");
+        const directResponse = await fetch(directUrl, {
+          headers: { Authorization: `Bearer ${"m".repeat(32)}` }
+        });
+        expect(directResponse.status, `direct ${projectId}`).toBe(200);
+        expect(await directResponse.text()).toBe("scoped-download");
+      }
+
+      expect(requestPaths).toEqual(
+        identities.flatMap(([, canonicalProjectId]) => [
+          `/api/v4/projects/${canonicalProjectId}/jobs/42/artifacts`,
+          `/api/v4/projects/${canonicalProjectId}/jobs/42/artifacts`
+        ])
+      );
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("rejects non-allowlisted path and numeric identities for every download auth form", async () => {
+    let upstreamRequests = 0;
+    const gitLabServer = createServer((_req, res) => {
+      upstreamRequests += 1;
+      res.statusCode = 200;
+      res.end("should-not-be-reached");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const gitLabAddress = gitLabServer.address();
+      if (!gitLabAddress || typeof gitLabAddress === "string") {
+        throw new Error("Unexpected GitLab test server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${gitLabAddress.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = "static-gitlab-token";
+      context.env.MCP_HTTP_AUTH_TOKEN = "m".repeat(32);
+      context.env.GITLAB_ALLOWED_PROJECT_IDS = ["group/project", "123"];
+      running = await startServerForContext(context);
+
+      for (const projectId of ["group/other", "0123"]) {
+        const resource = {
+          type: "job-artifacts",
+          params: { project_id: projectId, job_id: "43" }
+        };
+        const token = createDownloadToken(
+          { header: "private-token", token: "static-gitlab-token" },
+          resource,
+          {
+            secret: context.env.GITLAB_DOWNLOAD_TOKEN_SECRET,
+            ttlSeconds: context.env.GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS
+          }
+        );
+        const encryptedUrl = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+        encryptedUrl.searchParams.set("project_id", projectId);
+        encryptedUrl.searchParams.set("job_id", "43");
+        encryptedUrl.searchParams.set("_token", token);
+        expect((await fetch(encryptedUrl)).status, `encrypted ${projectId}`).toBe(400);
+
+        const directUrl = new URL(`${running.baseUrl}/downloads/job-artifacts`);
+        directUrl.searchParams.set("project_id", projectId);
+        directUrl.searchParams.set("job_id", "43");
+        expect(
+          (
+            await fetch(directUrl, {
+              headers: { Authorization: `Bearer ${"m".repeat(32)}` }
+            })
+          ).status,
+          `direct ${projectId}`
+        ).toBe(400);
+      }
+
+      expect(upstreamRequests).toBe(0);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("validates direct remote credentials before proxying a download", async () => {
     let downloadRequests = 0;
     const gitLabServer = createServer((req, res) => {

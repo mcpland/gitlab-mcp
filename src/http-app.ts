@@ -27,7 +27,7 @@ import {
   downloadTokenResourceMatches,
   type DownloadTokenResource
 } from "./lib/download-token.js";
-import { encodeGitLabProjectId } from "./lib/gitlab-path.js";
+import { encodeGitLabProjectId, isGitLabProjectIdentityAllowed } from "./lib/gitlab-path.js";
 import { FixedWindowRateLimiter } from "./lib/fixed-window-rate-limiter.js";
 import { buildGitLabApiUrlPolicy } from "./lib/gitlab-api-url-policy.js";
 import { GitLabAuthValidator } from "./lib/gitlab-auth-validator.js";
@@ -1488,7 +1488,7 @@ function assertDownloadProjectAllowed(projectId: string, env: AppContext["env"])
     return;
   }
 
-  if (!env.GITLAB_ALLOWED_PROJECT_IDS.includes(projectId)) {
+  if (!isGitLabProjectIdentityAllowed(projectId, env.GITLAB_ALLOWED_PROJECT_IDS)) {
     throw new DownloadClientError(`Project '${projectId}' is not allowed`);
   }
 }

@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   encodeGitLabGroupId,
   encodeGitLabNamespaceId,
-  encodeGitLabProjectId
+  encodeGitLabProjectId,
+  isGitLabProjectIdentityAllowed
 } from "../src/lib/gitlab-path.js";
 
 describe("encodeGitLabProjectId", () => {
@@ -29,6 +30,20 @@ describe("encodeGitLabProjectId", () => {
     "group/project?admin=true"
   ])("rejects unsafe project ID %s", (input) => {
     expect(() => encodeGitLabProjectId(input)).toThrow(/Invalid GitLab project ID/u);
+  });
+});
+
+describe("isGitLabProjectIdentityAllowed", () => {
+  it.each(["group/project", "group%2Fproject", "group%252Fproject"])(
+    "matches canonical project path %s",
+    (projectId) => {
+      expect(isGitLabProjectIdentityAllowed(projectId, ["group/project"])).toBe(true);
+    }
+  );
+
+  it("keeps numeric project identities exact after canonical decoding", () => {
+    expect(isGitLabProjectIdentityAllowed("%31%32%33", ["123"])).toBe(true);
+    expect(isGitLabProjectIdentityAllowed("0123", ["123"])).toBe(false);
   });
 });
 
