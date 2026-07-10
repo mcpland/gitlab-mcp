@@ -588,6 +588,20 @@ describe("GitLabClient", () => {
       expect(url.searchParams.get("per_page")).toBe("5");
     });
 
+    it("serializes array query values using GitLab bracket parameters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.listGlobalMergeRequests({
+        query: { approved_by_usernames: ["alice", "bob"] }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+      expect(url.searchParams.getAll("approved_by_usernames[]")).toEqual(["alice", "bob"]);
+      expect(url.searchParams.has("approved_by_usernames")).toBe(false);
+    });
+
     it("supports global issue listing endpoint", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
 

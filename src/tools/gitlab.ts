@@ -1212,6 +1212,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         author_username: optionalString,
         reviewer_id: optionalStringOrNumber,
         reviewer_username: optionalString,
+        approved_by_usernames: optionalStringArray,
         created_after: optionalString,
         created_before: optionalString,
         updated_after: optionalString,
@@ -1240,9 +1241,15 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, false);
-        const query = toQuery(
-          normalizeIdUsernameFilters(omit(args, ["project_id"]), MERGE_REQUEST_ID_USERNAME_PAIRS)
+        const normalized = normalizeIdUsernameFilters(
+          omit(args, ["project_id"]),
+          MERGE_REQUEST_ID_USERNAME_PAIRS
         );
+        const approvedByUsernames = getOptionalStringArray(normalized, "approved_by_usernames");
+        const query = {
+          ...toQuery(omit(normalized, ["approved_by_usernames"])),
+          ...(approvedByUsernames ? { approved_by_usernames: approvedByUsernames } : {})
+        };
 
         if (projectId) {
           return context.gitlab.listMergeRequests(projectId, { query });

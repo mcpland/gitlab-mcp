@@ -1646,6 +1646,29 @@ describe("Tool handler: gitlab_list_merge_requests", () => {
       await serverTransport.close();
     }
   });
+
+  it("passes approved_by_usernames as an array query filter", async () => {
+    const listMergeRequests = vi.fn().mockResolvedValue([]);
+    const pair = await createLinkedPair(buildContext({ gitlabStub: { listMergeRequests } }));
+
+    try {
+      const result = await pair.client.callTool({
+        name: "gitlab_list_merge_requests",
+        arguments: {
+          project_id: "group/project",
+          approved_by_usernames: ["alice", "bob"]
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listMergeRequests).toHaveBeenCalledWith("group/project", {
+        query: { approved_by_usernames: ["alice", "bob"] }
+      });
+    } finally {
+      await pair.clientTransport.close();
+      await pair.serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */

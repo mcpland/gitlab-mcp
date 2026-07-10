@@ -27,7 +27,10 @@ export interface GitLabClientOptions {
 }
 
 export interface GitLabRequestOptions {
-  query?: Record<string, string | number | boolean | undefined | null>;
+  query?: Record<
+    string,
+    string | number | boolean | readonly (string | number | boolean)[] | undefined | null
+  >;
   body?: BodyInit;
   headers?: HeadersInit;
   token?: string;
@@ -367,11 +370,7 @@ export class GitLabClient {
       `${config.apiUrl}/`
     );
 
-    for (const [key, value] of Object.entries(options.query ?? {})) {
-      if (value !== undefined && value !== null) {
-        url.searchParams.set(key, String(value));
-      }
-    }
+    appendQueryParameters(url, options.query);
 
     const response = await this.fetchRawResponse(url, {
       method: "GET",
@@ -727,11 +726,7 @@ export class GitLabClient {
         `projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/commits`,
         `${config.apiUrl}/`
       );
-      for (const [key, value] of Object.entries(options.query ?? {})) {
-        if (value !== undefined && value !== null) {
-          url.searchParams.set(key, String(value));
-        }
-      }
+      appendQueryParameters(url, options.query);
       if (!url.searchParams.has("per_page")) {
         url.searchParams.set("per_page", "100");
       }
@@ -945,11 +940,7 @@ export class GitLabClient {
       `projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/approval_state`,
       `${config.apiUrl}/`
     );
-    for (const [key, value] of Object.entries(options.query ?? {})) {
-      if (value !== undefined && value !== null) {
-        url.searchParams.set(key, String(value));
-      }
-    }
+    appendQueryParameters(url, options.query);
 
     const response = await this.fetchRawResponse(url, {
       method: "GET",
@@ -2828,11 +2819,7 @@ export class GitLabClient {
     const config = this.resolveRequestConfig(options);
     const url = new URL(path.replace(/^\//, ""), `${config.apiUrl}/`);
 
-    for (const [key, value] of Object.entries(options.query ?? {})) {
-      if (value !== undefined && value !== null) {
-        url.searchParams.set(key, String(value));
-      }
-    }
+    appendQueryParameters(url, options.query);
 
     return this.rawRequest(url, {
       method,
@@ -3465,6 +3452,23 @@ function parseContentLength(value: string | null): number | undefined {
   }
 
   return parsed;
+}
+
+function appendQueryParameters(url: URL, query: GitLabRequestOptions["query"]): void {
+  for (const [key, value] of Object.entries(query ?? {})) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        url.searchParams.append(`${key}[]`, String(item));
+      }
+      continue;
+    }
+
+    url.searchParams.set(key, String(value));
+  }
 }
 
 const RETRYABLE_GET_STATUSES = new Set([429, 502, 503, 504]);
