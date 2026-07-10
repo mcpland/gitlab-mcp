@@ -1468,6 +1468,59 @@ describe("http app independent bearer authentication", () => {
       await response.body?.cancel();
     }
   });
+
+  it("fails closed for trailing-slash transport routes", async () => {
+    const context = buildContext();
+    context.env.MCP_HTTP_AUTH_TOKEN = gatewayToken;
+    context.env.SSE = true;
+    context.env.MCP_SERVER_URL = "https://mcp.example.com/gitlab-mcp";
+    running = await startServerForContext(context);
+
+    const trailingSlashRequests = [
+      fetch(`${running.baseUrl}/mcp/`),
+      fetch(`${running.baseUrl}/sse/`),
+      fetch(`${running.baseUrl}/messages/?sessionId=missing`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}"
+      }),
+      fetch(`${running.baseUrl}/gitlab-mcp/mcp/`),
+      fetch(`${running.baseUrl}/gitlab-mcp/sse/`),
+      fetch(`${running.baseUrl}/gitlab-mcp/messages/?sessionId=missing`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}"
+      })
+    ];
+
+    for (const response of await Promise.all(trailingSlashRequests)) {
+      expect(response.status).toBe(404);
+      await response.body?.cancel();
+    }
+
+    const exactRouteRequests = [
+      fetch(`${running.baseUrl}/mcp`),
+      fetch(`${running.baseUrl}/sse`),
+      fetch(`${running.baseUrl}/messages?sessionId=missing`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}"
+      }),
+      fetch(`${running.baseUrl}/gitlab-mcp/mcp`),
+      fetch(`${running.baseUrl}/gitlab-mcp/sse`),
+      fetch(`${running.baseUrl}/gitlab-mcp/messages?sessionId=missing`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}"
+      })
+    ];
+
+    for (const response of await Promise.all(exactRouteRequests)) {
+      expect(response.status).toBe(401);
+      expect(response.headers.get("www-authenticate")).toContain("gitlab-mcp");
+      await response.body?.cancel();
+    }
+  });
 });
 
 describe("http app Host and Origin policy", () => {
@@ -1680,7 +1733,10 @@ describe("http app Prometheus metrics", () => {
 
     await expect(fetch(`${running.baseUrl}/healthz`)).resolves.toMatchObject({ status: 200 });
 
-    const missing = await fetch(`${running.baseUrl}/metrics/`);
+    const trailingSlash = await fetch(`${running.baseUrl}/metrics/`);
+    expect(trailingSlash.status).toBe(404);
+
+    const missing = await fetch(`${running.baseUrl}/metrics`);
     expect(missing.status).toBe(401);
 
     const rejectedOrigin = await fetch(`${running.baseUrl}/metrics`, {
