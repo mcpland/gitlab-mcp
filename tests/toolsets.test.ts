@@ -22,6 +22,7 @@ describe("GitLab toolsets", () => {
     expect(toolsetsForTool("gitlab_list_group_wiki_pages")).toEqual(
       expect.arrayContaining(["wiki", "groups"])
     );
+    expect(toolsetsForTool("gitlab_list_ci_catalog_resources")).toEqual(["ci-catalog"]);
   });
 
   it("treats an empty selection and all as the complete registry", () => {

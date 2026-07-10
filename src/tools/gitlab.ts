@@ -121,7 +121,9 @@ const GLOBAL_TOOL_PROJECT_SCOPE_MODES = new Map<string, "allow" | "filter" | "de
   ["gitlab_get_users", "deny"],
   ["gitlab_get_user", "deny"],
   ["gitlab_list_events", "deny"],
-  ["gitlab_fork_repository", "deny"]
+  ["gitlab_fork_repository", "deny"],
+  ["gitlab_list_ci_catalog_resources", "deny"],
+  ["gitlab_get_ci_catalog_resource", "deny"]
 ]);
 
 const PROJECT_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
@@ -3391,6 +3393,65 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_list_ci_catalog_resources",
+      title: "List CI/CD Catalog Resources",
+      description:
+        "List GitLab CI/CD Catalog resources with cursor pagination and catalog filters.",
+      capabilities: readGraphqlCapabilities,
+      requiresFeature: "pipeline",
+      inputSchema: {
+        search: optionalString,
+        first: z.coerce.number().int().min(1).max(100).optional(),
+        after: optionalString,
+        group_ids: optionalStringArray,
+        scope: z.enum(["ALL", "NAMESPACES"]).optional(),
+        sort: z
+          .enum([
+            "CREATED_ASC",
+            "CREATED_DESC",
+            "LATEST_RELEASED_AT_ASC",
+            "LATEST_RELEASED_AT_DESC",
+            "NAME_ASC",
+            "NAME_DESC",
+            "STAR_COUNT_ASC",
+            "STAR_COUNT_DESC",
+            "USAGE_COUNT_ASC",
+            "USAGE_COUNT_DESC"
+          ])
+          .optional(),
+        topics: optionalStringArray,
+        verification_level: z
+          .enum([
+            "GITLAB_MAINTAINED",
+            "GITLAB_PARTNER_MAINTAINED",
+            "UNVERIFIED",
+            "VERIFIED_CREATOR_MAINTAINED",
+            "VERIFIED_CREATOR_SELF_MANAGED"
+          ])
+          .optional()
+      },
+      handler: listCiCatalogResources
+    },
+    {
+      name: "gitlab_get_ci_catalog_resource",
+      title: "Get CI/CD Catalog Resource",
+      description:
+        "Get one GitLab CI/CD Catalog resource, including paginated versions and components.",
+      capabilities: readGraphqlCapabilities,
+      requiresFeature: "pipeline",
+      inputSchema: {
+        id: optionalString,
+        full_path: optionalString,
+        version_limit: z.coerce.number().int().min(1).max(20).optional(),
+        version_after: optionalString,
+        component_limit: z.coerce.number().int().min(1).max(50).optional(),
+        component_after: optionalString,
+        component_name: optionalString,
+        include_readme: optionalBoolean
+      },
+      handler: getCiCatalogResource
+    },
+    {
       name: "gitlab_list_job_artifacts",
       title: "List Job Artifacts",
       description: "List files and directories inside a job artifacts archive.",
@@ -5181,6 +5242,199 @@ async function executeGraphqlData<T>(
   }
 
   return response as T;
+}
+
+async function listCiCatalogResources(args: ToolArgs, context: AppContext): Promise<unknown> {
+  const data = await executeGraphqlData<{
+    ciCatalogResources?: Record<string, unknown> | null;
+  }>(
+    context,
+    `query ListCiCatalogResources(
+      $search: String
+      $first: Int
+      $after: String
+      $groupIds: [GroupID!]
+      $scope: CiCatalogResourceScope
+      $sort: CiCatalogResourceSort
+      $topics: [String!]
+      $verificationLevel: CiCatalogResourceVerificationLevel
+    ) {
+      ciCatalogResources(
+        search: $search
+        first: $first
+        after: $after
+        groupIds: $groupIds
+        scope: $scope
+        sort: $sort
+        topics: $topics
+        verificationLevel: $verificationLevel
+      ) {
+        nodes {
+          id
+          name
+          description
+          fullPath
+          icon
+          starCount
+          topics
+          verificationLevel
+          visibilityLevel
+          webPath
+          latestReleasedAt
+          last30DayUsageCount
+        }
+        pageInfo { hasNextPage endCursor }
+      }
+    }`,
+    {
+      search: getOptionalString(args, "search"),
+      first: getOptionalNumber(args, "first") ?? 20,
+      after: getOptionalString(args, "after"),
+      groupIds: getOptionalStringArray(args, "group_ids"),
+      scope: getOptionalString(args, "scope"),
+      sort: getOptionalString(args, "sort"),
+      topics: getOptionalStringArray(args, "topics"),
+      verificationLevel: getOptionalString(args, "verification_level")
+    }
+  );
+
+  return data.ciCatalogResources ?? null;
+}
+
+async function getCiCatalogResource(args: ToolArgs, context: AppContext): Promise<unknown> {
+  const id = getOptionalString(args, "id");
+  const fullPath = getOptionalString(args, "full_path");
+  if (Boolean(id) === Boolean(fullPath)) {
+    throw new Error("Provide exactly one of 'id' or 'full_path'");
+  }
+
+  const data = await executeGraphqlData<{
+    ciCatalogResource?: Record<string, unknown> | null;
+  }>(
+    context,
+    `query GetCiCatalogResource(
+      $id: CiCatalogResourceID
+      $fullPath: ID
+      $versionLimit: Int!
+      $versionAfter: String
+      $componentLimit: Int!
+      $componentAfter: String
+      $includeReadme: Boolean!
+    ) {
+      ciCatalogResource(id: $id, fullPath: $fullPath) {
+        id
+        name
+        description
+        fullPath
+        icon
+        starCount
+        topics
+        verificationLevel
+        visibilityLevel
+        webPath
+        latestReleasedAt
+        last30DayUsageCount
+        versions(first: $versionLimit, after: $versionAfter) {
+          nodes {
+            id
+            name
+            path
+            createdAt
+            releasedAt
+            readme @include(if: $includeReadme)
+            semver { major minor patch }
+            components(first: $componentLimit, after: $componentAfter) {
+              nodes {
+                id
+                name
+                description
+                includePath
+                last30DayUsageCount
+                inputs {
+                  name
+                  description
+                  type
+                  required
+                  default
+                  options
+                  regex
+                }
+              }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }`,
+    {
+      id,
+      fullPath,
+      versionLimit: getOptionalNumber(args, "version_limit") ?? 5,
+      versionAfter: getOptionalString(args, "version_after"),
+      componentLimit: getOptionalNumber(args, "component_limit") ?? 20,
+      componentAfter: getOptionalString(args, "component_after"),
+      includeReadme: getOptionalBoolean(args, "include_readme") ?? false
+    }
+  );
+
+  const resource = data.ciCatalogResource ?? null;
+  const componentName = getOptionalString(args, "component_name");
+  if (!resource || !componentName) {
+    return resource;
+  }
+
+  return filterCiCatalogComponents(resource, componentName);
+}
+
+function filterCiCatalogComponents(
+  resource: Record<string, unknown>,
+  componentName: string
+): Record<string, unknown> {
+  const versions = resource.versions;
+  if (!versions || typeof versions !== "object" || Array.isArray(versions)) {
+    return resource;
+  }
+
+  const versionConnection = versions as Record<string, unknown>;
+  if (!Array.isArray(versionConnection.nodes)) {
+    return resource;
+  }
+
+  return {
+    ...resource,
+    versions: {
+      ...versionConnection,
+      nodes: versionConnection.nodes.map((version) => {
+        if (!version || typeof version !== "object" || Array.isArray(version)) {
+          return version;
+        }
+        const versionRecord = version as Record<string, unknown>;
+        const components = versionRecord.components;
+        if (!components || typeof components !== "object" || Array.isArray(components)) {
+          return version;
+        }
+        const componentConnection = components as Record<string, unknown>;
+        if (!Array.isArray(componentConnection.nodes)) {
+          return version;
+        }
+
+        return {
+          ...versionRecord,
+          components: {
+            ...componentConnection,
+            nodes: componentConnection.nodes.filter(
+              (component) =>
+                component &&
+                typeof component === "object" &&
+                !Array.isArray(component) &&
+                (component as Record<string, unknown>).name === componentName
+            )
+          }
+        };
+      })
+    }
+  };
 }
 
 function resolveExplicitProjectId(context: AppContext, projectId: string): string {

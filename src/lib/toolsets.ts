@@ -6,6 +6,7 @@ export const GITLAB_TOOLSETS = [
   "merge-requests",
   "issues",
   "pipelines",
+  "ci-catalog",
   "wiki",
   "milestones",
   "releases",
@@ -70,6 +71,7 @@ const TOOLSET_PATTERNS: ReadonlyArray<{
     toolset: "pipelines",
     pattern: /(?:pipeline|\bjob|job_|artifact|deployment|environment|ci_lint)/
   },
+  { toolset: "ci-catalog", pattern: /ci_catalog/ },
   { toolset: "wiki", pattern: /wiki/ },
   { toolset: "milestones", pattern: /milestone/ },
   { toolset: "releases", pattern: /(?:release|_tag|tags$)/ },
