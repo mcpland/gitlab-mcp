@@ -319,7 +319,7 @@ GITLAB_DENIED_TOOLS_REGEX=^gitlab_(delete|create)_
 GITLAB_ALLOWED_PROJECT_IDS=123,456
 ```
 
-Unsafe `GITLAB_DENIED_TOOLS_REGEX` patterns are ignored instead of failing startup.
+Unsafe or invalid `GITLAB_DENIED_TOOLS_REGEX` patterns fail startup rather than being ignored. `tests/regex.test.ts` verifies rejection of oversized, nested-quantifier, and syntactically invalid patterns.
 
 ---
 
