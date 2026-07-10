@@ -1058,6 +1058,38 @@ describe("GitLabClient", () => {
   });
 
   describe("specific API methods", () => {
+    it("preserves release arrays and nested assets in JSON request bodies", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ tag_name: "v1.0.0" }));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      const createPayload = {
+        tag_name: "v1.0.0",
+        milestones: ["M1", "M2"],
+        assets: {
+          links: [{ name: "package", url: "https://example.test/package.tgz" }]
+        }
+      };
+      const updatePayload = {
+        milestones: ["M2"],
+        assets: { links: [] }
+      };
+
+      await client.createRelease("group/project", createPayload);
+      await client.updateRelease("group/project", "v1.0.0", updatePayload);
+
+      const [createUrl, createInit] = fetchMock.mock.calls[0] as [URL | string, RequestInit];
+      expect(new URL(String(createUrl)).pathname).toBe(
+        "/api/v4/projects/group%2Fproject/releases"
+      );
+      expect(JSON.parse(String(createInit.body))).toEqual(createPayload);
+
+      const [updateUrl, updateInit] = fetchMock.mock.calls[1] as [URL | string, RequestInit];
+      expect(new URL(String(updateUrl)).pathname).toBe(
+        "/api/v4/projects/group%2Fproject/releases/v1.0.0"
+      );
+      expect(JSON.parse(String(updateInit.body))).toEqual(updatePayload);
+    });
+
     it("encodes project ID in URLs", async () => {
       fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({})));
 

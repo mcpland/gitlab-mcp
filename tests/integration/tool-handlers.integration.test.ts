@@ -4410,6 +4410,55 @@ describe("Tool handler: gitlab_list_milestones", () => {
   });
 });
 
+describe("Release mutation handlers", () => {
+  it("preserves milestone arrays and nested assets", async () => {
+    const createRelease = vi.fn().mockResolvedValue({ tag_name: "v1.0.0" });
+    const updateRelease = vi.fn().mockResolvedValue({ tag_name: "v1.0.0" });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { createRelease, updateRelease } })
+    );
+
+    try {
+      const assets = {
+        links: [{ name: "package", url: "https://example.test/package.tgz" }]
+      };
+      const created = await client.callTool({
+        name: "gitlab_create_release",
+        arguments: {
+          project_id: "group/project",
+          tag_name: "v1.0.0",
+          milestones: ["M1", "M2"],
+          assets
+        }
+      });
+      const updated = await client.callTool({
+        name: "gitlab_update_release",
+        arguments: {
+          project_id: "group/project",
+          tag_name: "v1.0.0",
+          milestones: ["M2"],
+          assets: { links: [] }
+        }
+      });
+
+      expect(created.isError).toBeFalsy();
+      expect(updated.isError).toBeFalsy();
+      expect(createRelease).toHaveBeenCalledWith("group/project", {
+        tag_name: "v1.0.0",
+        milestones: ["M1", "M2"],
+        assets
+      });
+      expect(updateRelease).toHaveBeenCalledWith("group/project", "v1.0.0", {
+        milestones: ["M2"],
+        assets: { links: [] }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  Pipeline artifact and deployment tools                             */
 /* ------------------------------------------------------------------ */

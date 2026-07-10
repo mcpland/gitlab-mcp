@@ -4290,7 +4290,16 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: async (args, context) =>
         context.gitlab.createRelease(
           resolveProjectId(args, context, true),
-          toQuery(omit(args, ["project_id"]))
+          pickPresentFields(args, [
+            "name",
+            "tag_name",
+            "tag_message",
+            "description",
+            "ref",
+            "released_at",
+            "milestones",
+            "assets"
+          ])
         )
     },
     {
@@ -4312,7 +4321,13 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         context.gitlab.updateRelease(
           resolveProjectId(args, context, true),
           getString(args, "tag_name"),
-          toQuery(omit(args, ["project_id", "tag_name"]))
+          pickPresentFields(args, [
+            "name",
+            "description",
+            "released_at",
+            "milestones",
+            "assets"
+          ])
         )
     },
     {
@@ -8175,6 +8190,16 @@ function omit(args: ToolArgs, keys: string[]): ToolArgs {
     }
   }
 
+  return result;
+}
+
+function pickPresentFields(args: ToolArgs, fields: readonly string[]): ToolArgs {
+  const result: ToolArgs = {};
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(args, field) && args[field] !== undefined) {
+      result[field] = args[field];
+    }
+  }
   return result;
 }
 
