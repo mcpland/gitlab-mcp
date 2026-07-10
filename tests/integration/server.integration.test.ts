@@ -66,6 +66,7 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
       const result = await client.listTools();
       const names = result.tools.map((t) => t.name);
       expect(names).toContain("health_check");
+      expect(names).toContain("gitlab_discover_tools");
     });
 
     it("includes core gitlab tools", async () => {
@@ -196,6 +197,37 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
         expect(properties?.project_id, `${tool.name} must declare project_id`).toBeDefined();
       }
     });
+  });
+
+  it("discovers disabled tools without mutating the current registry", async () => {
+    const context = buildContext({
+      toolsets: ["wiki"],
+      allowedProjectIds: ["group/project"]
+    });
+    const pair = await createLinkedPair(context);
+
+    try {
+      const before = (await pair.client.listTools()).tools.map((tool) => tool.name);
+      const result = await pair.client.callTool({
+        name: "gitlab_discover_tools",
+        arguments: { query: "group wiki", include_disabled: true, limit: 10 }
+      });
+      const structured = result.structuredContent as {
+        result?: { tools?: Array<{ name: string; enabled: boolean; disabled_reasons?: string[] }> };
+      };
+      const groupWiki = structured.result?.tools?.find(
+        (tool) => tool.name === "gitlab_list_group_wiki_pages"
+      );
+
+      expect(groupWiki).toMatchObject({
+        enabled: false,
+        disabled_reasons: expect.arrayContaining(["project_scope"])
+      });
+      expect((await pair.client.listTools()).tools.map((tool) => tool.name)).toEqual(before);
+    } finally {
+      await pair.clientTransport.close();
+      await pair.serverTransport.close();
+    }
   });
 
   describe("tools/call - health_check", () => {

@@ -36,9 +36,14 @@ import {
   refLikeSchema,
   slugSchema
 } from "../lib/tool-schema.js";
-import type { ToolCapability } from "../lib/tool-capabilities.js";
+import { TOOL_CAPABILITIES, type ToolCapability } from "../lib/tool-capabilities.js";
 import { annotationsForCapabilities } from "../lib/tool-annotations.js";
-import { isToolEnabledByToolsets } from "../lib/toolsets.js";
+import {
+  GITLAB_TOOLSETS,
+  isToolEnabledByToolsets,
+  toolsetsForTool,
+  type GitLabToolset
+} from "../lib/toolsets.js";
 import { getSessionAuth } from "../lib/auth-context.js";
 import { createDownloadToken, type DownloadTokenResource } from "../lib/download-token.js";
 import { filterDiffRecords, filterDiffResponse } from "../lib/diff-filter.js";
@@ -96,6 +101,7 @@ const RAW_GRAPHQL_TOOL_NAMES = new Set([
 ]);
 
 const GLOBAL_TOOL_PROJECT_SCOPE_MODES = new Map<string, "allow" | "filter" | "deny">([
+  ["gitlab_discover_tools", "allow"],
   ["gitlab_list_projects", "filter"],
   ["gitlab_search_repositories", "filter"],
   ["gitlab_search_code", "filter"],
@@ -294,6 +300,21 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
 
 export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
   const definitions: GitLabToolDefinitionInput[] = [
+    {
+      name: "gitlab_discover_tools",
+      title: "Discover GitLab Tools",
+      description:
+        "Search the complete tool registry without mutating session state. Results explain whether each tool is currently enabled.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        query: optionalString,
+        toolset: z.enum(GITLAB_TOOLSETS).optional(),
+        capability: z.enum(TOOL_CAPABILITIES).optional(),
+        include_disabled: z.boolean().default(true),
+        limit: z.number().int().min(1).max(100).default(20)
+      },
+      handler: async (args, context) => discoverGitLabTools(args, context)
+    },
     {
       name: "gitlab_get_project",
       title: "Get Project",
@@ -5221,6 +5242,88 @@ function recordMatchesAllowedProject(
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function discoverGitLabTools(args: ToolArgs, context: AppContext): Record<string, unknown> {
+  const query = getOptionalString(args, "query")?.toLowerCase();
+  const requestedToolset = getOptionalString(args, "toolset") as GitLabToolset | undefined;
+  const requestedCapability = getOptionalString(args, "capability") as ToolCapability | undefined;
+  const includeDisabled = getBoolean(args, "include_disabled");
+  const limit = getNumber(args, "limit");
+
+  const matches = getGitLabToolDefinitions()
+    .filter((definition) => definition.name !== "gitlab_discover_tools")
+    .map((definition) => {
+      const toolsets = toolsetsForTool(definition.name);
+      const disabledReasons = getToolDisabledReasons(definition, context);
+      return {
+        name: definition.name,
+        title: definition.title,
+        description: definition.description,
+        capabilities: definition.capabilities,
+        scope: definition.scope.kind,
+        toolsets,
+        enabled: disabledReasons.length === 0,
+        ...(disabledReasons.length > 0 ? { disabled_reasons: disabledReasons } : {})
+      };
+    })
+    .filter((tool) => {
+      if (!includeDisabled && !tool.enabled) {
+        return false;
+      }
+      if (
+        requestedToolset &&
+        requestedToolset !== "all" &&
+        !tool.toolsets.includes(requestedToolset)
+      ) {
+        return false;
+      }
+      if (requestedCapability && !tool.capabilities.includes(requestedCapability)) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      return `${tool.name} ${tool.title} ${tool.description}`.toLowerCase().includes(query);
+    })
+    .sort(
+      (left, right) =>
+        Number(right.enabled) - Number(left.enabled) || left.name.localeCompare(right.name)
+    );
+
+  return {
+    total_matches: matches.length,
+    returned: Math.min(matches.length, limit),
+    tools: matches.slice(0, limit),
+    note: "Discovery is read-only. Change GITLAB_TOOLSETS or the policy configuration and reconnect to expose disabled tools."
+  };
+}
+
+function getToolDisabledReasons(definition: GitLabToolDefinition, context: AppContext): string[] {
+  const reasons: string[] = [];
+  const policyMeta = {
+    name: definition.name,
+    capabilities: definition.capabilities,
+    requiresFeature: definition.requiresFeature
+  };
+
+  if (!context.policy.isToolEnabled(policyMeta)) {
+    reasons.push("policy");
+  }
+  if (!isToolEnabledByToolsets(definition.name, context.env.GITLAB_TOOLSETS)) {
+    reasons.push("toolset");
+  }
+  if (!isToolVisibleForProjectScope(definition, context.env.GITLAB_ALLOWED_PROJECT_IDS)) {
+    reasons.push("project_scope");
+  }
+  if (definition.requiresLocalFileTools && !context.allowLocalFileTools) {
+    reasons.push("transport");
+  }
+  if (definition.compatibilityAlias && !context.env.GITLAB_ENABLE_COMPATIBILITY_ALIASES) {
+    reasons.push("compatibility_alias");
+  }
+
+  return reasons;
 }
 
 async function assertTodoProjectAllowed(todoId: string, context: AppContext): Promise<void> {

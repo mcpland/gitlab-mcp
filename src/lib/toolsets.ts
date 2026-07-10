@@ -111,6 +111,10 @@ export function parseGitLabToolsets(entries: readonly string[]): GitLabToolset[]
 export function toolsetsForTool(toolName: string): GitLabToolset[] {
   const toolsets = new Set<GitLabToolset>();
 
+  if (toolName === "gitlab_discover_tools") {
+    toolsets.add("core");
+  }
+
   if (CORE_TOOLS.has(toolName)) {
     toolsets.add("core");
   }
@@ -128,6 +132,10 @@ export function isToolEnabledByToolsets(
   toolName: string,
   enabledToolsets: readonly GitLabToolset[]
 ): boolean {
+  if (toolName === "gitlab_discover_tools") {
+    return true;
+  }
+
   if (enabledToolsets.length === 0 || enabledToolsets.includes("all")) {
     return true;
   }
