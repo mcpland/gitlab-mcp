@@ -412,7 +412,7 @@ Requires `USE_RELEASE=true` (default).
 
 ## Work Items
 
-These tools use GitLab GraphQL but remain available when `GITLAB_ALLOWED_PROJECT_IDS` is configured because they are project-bound. Their source, target, and parent project arguments must all be allowed.
+These tools use GitLab GraphQL. Without a project allowlist, a path-like `project_id` may also identify a group namespace: the server checks the project first, then falls back to the matching group only after a project `404`. Numeric IDs never fall back to groups. When `GITLAB_ALLOWED_PROJECT_IDS` is configured, group fallback is disabled and every source, target, and parent ID remains strictly project-bound and must be allowed.
 
 | Tool                                          | Mutating | Description                                                                                                                                                |
 | --------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |

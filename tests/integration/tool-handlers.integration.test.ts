@@ -2398,6 +2398,74 @@ describe("Tool handlers: emoji reaction tools", () => {
 /* ------------------------------------------------------------------ */
 
 describe("Tool handlers: work item GraphQL tools", () => {
+  it("falls back to a path-like group namespace after a project 404", async () => {
+    const getProject = vi.fn().mockRejectedValue(new GitLabApiError("Not Found", 404));
+    const getGroup = vi.fn().mockResolvedValue({ full_path: "group/subgroup" });
+    const executeGraphql = vi.fn().mockResolvedValue({
+      data: {
+        namespace: {
+          workItem: {
+            id: "gid://gitlab/WorkItem/5",
+            iid: "5",
+            title: "Group objective",
+            state: "opened",
+            workItemType: { name: "Objective" },
+            widgets: []
+          }
+        }
+      }
+    });
+    const pair = await createLinkedPair(
+      buildContext({ gitlabStub: { getProject, getGroup, executeGraphql } })
+    );
+
+    try {
+      const result = await pair.client.callTool({
+        name: "gitlab_get_work_item",
+        arguments: { project_id: "group%2Fsubgroup", iid: 5 }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getProject).toHaveBeenCalledWith("group%2Fsubgroup");
+      expect(getGroup).toHaveBeenCalledWith("group/subgroup");
+      expect(executeGraphql).toHaveBeenCalledWith(
+        expect.stringContaining("workItem(iid: $iid)"),
+        expect.objectContaining({ path: "group/subgroup", iid: "5" })
+      );
+    } finally {
+      await pair.clientTransport.close();
+      await pair.serverTransport.close();
+    }
+  });
+
+  it("does not use group fallback for numeric IDs or strict project scope", async () => {
+    for (const testCase of [
+      { projectId: "123", allowedProjectIds: [] as string[] },
+      { projectId: "group/subgroup", allowedProjectIds: ["group/subgroup"] }
+    ]) {
+      const getProject = vi.fn().mockRejectedValue(new GitLabApiError("Not Found", 404));
+      const getGroup = vi.fn();
+      const pair = await createLinkedPair(
+        buildContext({
+          allowedProjectIds: testCase.allowedProjectIds,
+          gitlabStub: { getProject, getGroup, executeGraphql: vi.fn() }
+        })
+      );
+
+      try {
+        const result = await pair.client.callTool({
+          name: "gitlab_get_work_item",
+          arguments: { project_id: testCase.projectId, iid: 5 }
+        });
+        expect(result.isError).toBe(true);
+        expect(getGroup).not.toHaveBeenCalled();
+      } finally {
+        await pair.clientTransport.close();
+        await pair.serverTransport.close();
+      }
+    }
+  });
+
   it("gets and flattens a work item", async () => {
     const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
     const executeGraphql = vi.fn().mockResolvedValue({

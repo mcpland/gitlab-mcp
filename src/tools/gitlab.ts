@@ -6240,7 +6240,41 @@ async function resolveProjectPathForWorkItem(
   context: AppContext,
   projectId: string
 ): Promise<string> {
-  const project = (await context.gitlab.getProject(projectId)) as Record<string, unknown>;
+  let project: unknown;
+  try {
+    project = await context.gitlab.getProject(projectId);
+  } catch (error) {
+    if (
+      !(error instanceof GitLabApiError) ||
+      error.status !== 404 ||
+      context.env.GITLAB_ALLOWED_PROJECT_IDS.length > 0
+    ) {
+      throw error;
+    }
+
+    let decodedId: string;
+    try {
+      decodedId = decodeURIComponent(projectId);
+    } catch {
+      throw error;
+    }
+
+    // Numeric project and group IDs occupy separate namespaces. Falling back
+    // could silently resolve an unrelated group that happens to share the ID.
+    if (/^\d+$/u.test(decodedId)) {
+      throw error;
+    }
+
+    const group = await context.gitlab.getGroup(decodedId);
+    if (!isObjectRecord(group) || typeof group.full_path !== "string" || !group.full_path) {
+      throw new Error(`GitLab group '${decodedId}' did not return a full_path`);
+    }
+    return group.full_path;
+  }
+
+  if (!isObjectRecord(project)) {
+    throw new Error(`Project '${projectId}' returned an invalid response`);
+  }
   const pathWithNamespace = project.path_with_namespace;
 
   if (typeof pathWithNamespace === "string" && pathWithNamespace.length > 0) {
