@@ -33,6 +33,7 @@ import { annotationsForCapabilities } from "../lib/tool-annotations.js";
 import { isToolEnabledByToolsets } from "../lib/toolsets.js";
 import { getSessionAuth } from "../lib/auth-context.js";
 import { createDownloadToken, type DownloadTokenResource } from "../lib/download-token.js";
+import { redactSuccessfulResponse } from "../lib/redact-success.js";
 import { stripNullsDeep } from "../lib/sanitize.js";
 import type { AppContext } from "../types/context.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
@@ -233,7 +234,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
 
           const args = stripNullsDeep((rawArgs ?? {}) as ToolArgs);
           assertToolCanExecuteInProjectScope(definition, args, context);
-          const result = await definition.handler(args, context);
+          const result = redactSuccessfulResponse(await definition.handler(args, context));
           const formatted = context.formatter.format(result);
           const structuredResult = formatted.truncated
             ? { truncated: true }
