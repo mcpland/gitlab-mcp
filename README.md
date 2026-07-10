@@ -366,6 +366,9 @@ GITLAB_ENABLE_CI_VARIABLE_TOOLS=true
 # Optional second gate; callers must also pass include_value=true
 GITLAB_ALLOW_CI_VARIABLE_VALUES=false
 
+# Group Dependency Proxy administration is also opt-in
+GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS=true
+
 # Block tools by regex pattern
 GITLAB_DENIED_TOOLS_REGEX=^gitlab_(delete|create)_
 
@@ -419,6 +422,7 @@ node dist/http.js --env-file=.env.production
 | Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                           |
 | Policy          | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | `false`                     | Expose project/group CI/CD variable tools.                                                                  |
 | Policy          | `GITLAB_ALLOW_CI_VARIABLE_VALUES`         | `false`                     | Allow values only when a list/get call also passes `include_value=true`.                                    |
+| Policy          | `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS`    | `false`                     | Expose group Dependency Proxy administration tools.                                                         |
 | Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                                              |
 | Policy          | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | `false`                     | Deprecated compatibility setting; raw GraphQL stays disabled in project-scoped mode.                        |
 | Auth Extensions | `GITLAB_USE_OAUTH`                        | `false`                     | Enable OAuth 2.0 PKCE flow.                                                                                 |

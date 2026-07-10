@@ -329,6 +329,19 @@ Variable values are omitted by default. A list/get response includes `value` onl
 
 ---
 
+## Dependency Proxy
+
+Requires `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS=true` (default: `false`) and the `admin` capability. These group-wide tools are all hidden when `GITLAB_ALLOWED_PROJECT_IDS` enables strict project scope. GraphQL-backed list/get/update operations also require the `graphql` capability.
+
+| Tool                                      | Mutating | Description                                                                  |
+| ----------------------------------------- | -------- | ---------------------------------------------------------------------------- |
+| `gitlab_get_dependency_proxy_settings`    | No       | Get settings, cache usage, image prefix, and TTL policy for a group.         |
+| `gitlab_update_dependency_proxy_settings` | **Yes**  | Update enablement or Docker Hub credentials; secrets are never returned.     |
+| `gitlab_list_dependency_proxy_blobs`      | No       | List cached blobs with `first`/`after` GraphQL cursor pagination.            |
+| `gitlab_purge_dependency_proxy_cache`     | **Yes**  | Schedule deletion of every cached manifest and blob for the specified group. |
+
+---
+
 ## Milestones
 
 Requires `USE_MILESTONE=true` (default).

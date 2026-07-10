@@ -22,7 +22,8 @@ describe("Tool schema contract", () => {
     const { client, clientTransport, serverTransport } = await createLinkedPair(
       buildContext({
         enableCompatibilityAliases: true,
-        enableCiVariableTools: true
+        enableCiVariableTools: true,
+        enableDependencyProxyTools: true
       })
     );
 

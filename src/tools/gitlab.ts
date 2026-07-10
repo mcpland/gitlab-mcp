@@ -70,7 +70,7 @@ export interface GitLabToolDefinition {
   scope: GitLabToolScopeMetadata;
   requiresAuth?: boolean;
   requiresFeature?: "wiki" | "milestone" | "pipeline" | "release";
-  requiresExplicitEnable?: "ciVariables";
+  requiresExplicitEnable?: "ciVariables" | "dependencyProxy";
   requiresLocalFileTools?: boolean;
   compatibilityAlias?: boolean;
   sensitiveArguments?: readonly string[];
@@ -103,7 +103,11 @@ const GROUP_SCOPED_TOOL_NAMES = new Set([
   "gitlab_get_group_variable",
   "gitlab_create_group_variable",
   "gitlab_update_group_variable",
-  "gitlab_delete_group_variable"
+  "gitlab_delete_group_variable",
+  "gitlab_get_dependency_proxy_settings",
+  "gitlab_update_dependency_proxy_settings",
+  "gitlab_list_dependency_proxy_blobs",
+  "gitlab_purge_dependency_proxy_cache"
 ]);
 
 const RAW_GRAPHQL_TOOL_NAMES = new Set([
@@ -155,6 +159,8 @@ const readCapabilities: ToolCapability[] = ["read"];
 const writeCapabilities: ToolCapability[] = ["write"];
 const deleteCapabilities: ToolCapability[] = ["delete"];
 const adminCapabilities: ToolCapability[] = ["admin"];
+const adminGraphqlCapabilities: ToolCapability[] = ["admin", "graphql"];
+const adminDeleteCapabilities: ToolCapability[] = ["admin", "delete"];
 const readGraphqlCapabilities: ToolCapability[] = ["read", "graphql"];
 const writeGraphqlCapabilities: ToolCapability[] = ["write", "graphql"];
 
@@ -255,6 +261,10 @@ const ciVariableSensitiveArguments = ["value"] as const;
 function isExplicitlyEnabled(definition: GitLabToolDefinition, context: AppContext): boolean {
   if (definition.requiresExplicitEnable === "ciVariables") {
     return context.env.GITLAB_ENABLE_CI_VARIABLE_TOOLS;
+  }
+
+  if (definition.requiresExplicitEnable === "dependencyProxy") {
+    return context.env.GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS;
   }
 
   return true;
@@ -3724,6 +3734,63 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_get_dependency_proxy_settings",
+      title: "Get Dependency Proxy Settings",
+      description:
+        "Get group Dependency Proxy settings, cache usage, image prefix, and TTL policy.",
+      capabilities: adminGraphqlCapabilities,
+      requiresExplicitEnable: "dependencyProxy",
+      inputSchema: {
+        group_id: projectIdSchema
+      },
+      handler: getDependencyProxySettings
+    },
+    {
+      name: "gitlab_update_dependency_proxy_settings",
+      title: "Update Dependency Proxy Settings",
+      description:
+        "Update group Dependency Proxy enablement or Docker Hub credentials. Requires at least one setting.",
+      capabilities: adminGraphqlCapabilities,
+      requiresExplicitEnable: "dependencyProxy",
+      sensitiveArguments: ["secret"],
+      inputSchema: {
+        group_id: projectIdSchema,
+        enabled: optionalBoolean,
+        identity: z.string().optional(),
+        secret: z.string().optional()
+      },
+      handler: updateDependencyProxySettings
+    },
+    {
+      name: "gitlab_list_dependency_proxy_blobs",
+      title: "List Dependency Proxy Blobs",
+      description: "List cached group Dependency Proxy blobs with cursor pagination.",
+      capabilities: adminGraphqlCapabilities,
+      requiresExplicitEnable: "dependencyProxy",
+      inputSchema: {
+        group_id: projectIdSchema,
+        first: z.coerce.number().int().min(1).max(100).optional(),
+        after: optionalString
+      },
+      handler: listDependencyProxyBlobs
+    },
+    {
+      name: "gitlab_purge_dependency_proxy_cache",
+      title: "Purge Dependency Proxy Cache",
+      description:
+        "Schedule permanent deletion of all cached Dependency Proxy manifests and blobs for a group.",
+      capabilities: adminDeleteCapabilities,
+      requiresExplicitEnable: "dependencyProxy",
+      inputSchema: {
+        group_id: projectIdSchema
+      },
+      handler: async (args, context) => {
+        const groupId = getString(args, "group_id");
+        await context.gitlab.purgeDependencyProxyCache(groupId);
+        return { status: "scheduled", scope: "group", group_id: groupId };
+      }
+    },
+    {
       name: "gitlab_list_job_artifacts",
       title: "List Job Artifacts",
       description: "List files and directories inside a job artifacts archive.",
@@ -5790,6 +5857,176 @@ function ciVariablePayload(args: ToolArgs, includeCreateOnlyFields: boolean): To
     }
   }
   return payload;
+}
+
+interface DependencyProxyGroupData {
+  dependencyProxySetting?: { enabled?: boolean; identity?: string | null } | null;
+  dependencyProxyBlobCount?: number | null;
+  dependencyProxyImageCount?: number | null;
+  dependencyProxyTotalSize?: string | null;
+  dependencyProxyTotalSizeBytes?: string | number | null;
+  dependencyProxyImagePrefix?: string | null;
+  dependencyProxyImageTtlPolicy?: {
+    enabled?: boolean;
+    ttl?: number | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
+}
+
+async function getDependencyProxySettings(args: ToolArgs, context: AppContext): Promise<unknown> {
+  const fullPath = await resolveDependencyProxyGroupFullPath(getString(args, "group_id"), context);
+  return getDependencyProxySettingsForFullPath(fullPath, context);
+}
+
+async function getDependencyProxySettingsForFullPath(
+  fullPath: string,
+  context: AppContext
+): Promise<unknown> {
+  const data = await executeGraphqlData<{ group?: DependencyProxyGroupData | null }>(
+    context,
+    `query GetDependencyProxySettings($fullPath: ID!) {
+      group(fullPath: $fullPath) {
+        dependencyProxySetting { enabled identity }
+        dependencyProxyBlobCount
+        dependencyProxyImageCount
+        dependencyProxyTotalSize
+        dependencyProxyTotalSizeBytes
+        dependencyProxyImagePrefix
+        dependencyProxyImageTtlPolicy { enabled ttl createdAt updatedAt }
+      }
+    }`,
+    { fullPath }
+  );
+  const group = data.group;
+  if (!group) {
+    throw new Error(`Group not found: ${fullPath}`);
+  }
+
+  return {
+    enabled: group.dependencyProxySetting?.enabled ?? false,
+    identity: group.dependencyProxySetting?.identity ?? null,
+    blob_count: group.dependencyProxyBlobCount ?? 0,
+    image_count: group.dependencyProxyImageCount ?? 0,
+    total_size: group.dependencyProxyTotalSize ?? null,
+    total_size_bytes: group.dependencyProxyTotalSizeBytes ?? null,
+    image_prefix: group.dependencyProxyImagePrefix ?? null,
+    ttl_policy: group.dependencyProxyImageTtlPolicy ?? null
+  };
+}
+
+async function updateDependencyProxySettings(
+  args: ToolArgs,
+  context: AppContext
+): Promise<unknown> {
+  const settingNames = ["enabled", "identity", "secret"] as const;
+  if (!settingNames.some((name) => Object.prototype.hasOwnProperty.call(args, name))) {
+    throw new Error("Provide at least one of 'enabled', 'identity', or 'secret'");
+  }
+
+  const fullPath = await resolveDependencyProxyGroupFullPath(getString(args, "group_id"), context);
+  const input: Record<string, unknown> = { groupPath: fullPath };
+  for (const name of settingNames) {
+    if (Object.prototype.hasOwnProperty.call(args, name)) {
+      input[name] = args[name];
+    }
+  }
+
+  const data = await executeGraphqlData<{
+    updateDependencyProxySettings?: { errors?: string[] | null } | null;
+  }>(
+    context,
+    `mutation UpdateDependencyProxySettings($input: UpdateDependencyProxySettingsInput!) {
+      updateDependencyProxySettings(input: $input) {
+        errors
+      }
+    }`,
+    { input }
+  );
+  const errors = data.updateDependencyProxySettings?.errors ?? [];
+  if (errors.length > 0) {
+    throw new Error(`Failed to update Dependency Proxy settings: ${errors.join(", ")}`);
+  }
+
+  return getDependencyProxySettingsForFullPath(fullPath, context);
+}
+
+async function listDependencyProxyBlobs(args: ToolArgs, context: AppContext): Promise<unknown> {
+  const fullPath = await resolveDependencyProxyGroupFullPath(getString(args, "group_id"), context);
+  const data = await executeGraphqlData<{
+    group?: {
+      dependencyProxyBlobs?: {
+        nodes?: Array<{
+          fileName?: string;
+          size?: string;
+          createdAt?: string | null;
+          updatedAt?: string | null;
+        } | null> | null;
+        pageInfo?: Record<string, unknown> | null;
+      } | null;
+    } | null;
+  }>(
+    context,
+    `query ListDependencyProxyBlobs($fullPath: ID!, $first: Int, $after: String) {
+      group(fullPath: $fullPath) {
+        dependencyProxyBlobs(first: $first, after: $after) {
+          nodes { fileName size createdAt updatedAt }
+          pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
+        }
+      }
+    }`,
+    {
+      fullPath,
+      first: getOptionalNumber(args, "first") ?? 20,
+      after: getOptionalString(args, "after")
+    }
+  );
+  if (!data.group) {
+    throw new Error(`Group not found: ${fullPath}`);
+  }
+  const connection = data.group.dependencyProxyBlobs;
+  if (!connection) {
+    throw new Error(`Dependency Proxy is unavailable for group: ${fullPath}`);
+  }
+
+  return {
+    blobs: (connection.nodes ?? [])
+      .filter((node): node is NonNullable<typeof node> => node !== null)
+      .map((node) => ({
+        file_name: node.fileName,
+        size: node.size,
+        created_at: node.createdAt ?? null,
+        updated_at: node.updatedAt ?? null
+      })),
+    pageInfo: connection.pageInfo ?? null
+  };
+}
+
+async function resolveDependencyProxyGroupFullPath(
+  groupId: string,
+  context: AppContext
+): Promise<string> {
+  let decodedGroupId: string;
+  try {
+    decodedGroupId = decodeURIComponent(groupId);
+  } catch {
+    throw new Error("'group_id' must be a valid group ID or URL-encoded path");
+  }
+
+  if (!/^\d+$/.test(decodedGroupId)) {
+    return decodedGroupId;
+  }
+
+  const group = await context.gitlab.getGroup(decodedGroupId);
+  if (!group || typeof group !== "object" || Array.isArray(group)) {
+    throw new Error(`Group not found: ${decodedGroupId}`);
+  }
+  const fullPath = (group as Record<string, unknown>).full_path;
+  if (typeof fullPath !== "string" || fullPath.length === 0) {
+    throw new Error(`GitLab group '${decodedGroupId}' did not return a full_path`);
+  }
+
+  return fullPath;
 }
 
 function resolveExplicitProjectId(context: AppContext, projectId: string): string {

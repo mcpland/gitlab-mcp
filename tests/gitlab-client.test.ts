@@ -2274,6 +2274,22 @@ describe("GitLabClient", () => {
       expect(deleteInit.method).toBe("DELETE");
     });
 
+    it("gets groups and purges the encoded Dependency Proxy cache endpoint", async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ full_path: "group/subgroup" }));
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+
+      await client.getGroup("group/subgroup");
+      await client.purgeDependencyProxyCache("group/subgroup");
+
+      const [getUrl, getInit] = fetchMock.mock.calls[0] as [URL, RequestInit];
+      expect(String(getUrl)).toContain("/groups/group%2Fsubgroup");
+      expect(getInit.method).toBe("GET");
+
+      const [purgeUrl, purgeInit] = fetchMock.mock.calls[1] as [URL, RequestInit];
+      expect(String(purgeUrl)).toContain("/groups/group%2Fsubgroup/dependency_proxy/cache");
+      expect(purgeInit.method).toBe("DELETE");
+    });
+
     it("bounds job traces by line count and marks them as untrusted", async () => {
       const trace = Array.from({ length: 1_100 }, (_, index) => `line-${index}`).join("\n");
       fetchMock.mockResolvedValue(textResponse(trace));

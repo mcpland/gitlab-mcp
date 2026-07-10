@@ -26,6 +26,7 @@ describe("GitLab toolsets", () => {
     expect(toolsetsForTool("gitlab_get_project_variable")).toEqual(
       expect.arrayContaining(["ci-variables", "projects"])
     );
+    expect(toolsetsForTool("gitlab_list_dependency_proxy_blobs")).toEqual(["dependency-proxy"]);
   });
 
   it("treats an empty selection and all as the complete registry", () => {

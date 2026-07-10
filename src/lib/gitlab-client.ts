@@ -332,6 +332,10 @@ export class GitLabClient {
     return this.get(`/groups/${encode(groupId)}/projects`, options);
   }
 
+  getGroup(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/groups/${encode(groupId)}`, options);
+  }
+
   listGroupVariables(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/groups/${encode(groupId)}/variables`, options);
   }
@@ -381,6 +385,10 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.delete(`/groups/${encode(groupId)}/variables/${encode(key)}`, options);
+  }
+
+  purgeDependencyProxyCache(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.delete(`/groups/${encode(groupId)}/dependency_proxy/cache`, options);
   }
 
   forkRepository(
