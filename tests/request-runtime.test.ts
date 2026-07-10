@@ -389,6 +389,7 @@ describe("GitLabRequestRuntime OAuth retry", () => {
       created_at: Date.now()
     });
     const seenAuthorizations: string[] = [];
+    const onRequestCompleted = vi.fn();
 
     fetchMock.mockImplementation(async (input: URL | string, init?: RequestInit) => {
       const url = new URL(String(input));
@@ -420,12 +421,24 @@ describe("GitLabRequestRuntime OAuth retry", () => {
       buildLogger()
     );
     const client = new GitLabClient("https://gitlab.example.com/api/v4", undefined, {
-      beforeRequest: (context) => runtime.beforeRequest(context)
+      beforeRequest: (context) => runtime.beforeRequest(context),
+      onRequestCompleted
     });
 
     await expect(client.listProjects()).resolves.toEqual([{ id: 1, name: "project" }]);
     expect(seenAuthorizations).toEqual(["Bearer old-oauth-token", "Bearer new-oauth-token"]);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(
+      onRequestCompleted.mock.calls.map(([metric]) => ({
+        method: metric.method,
+        statusCode: metric.statusCode
+      }))
+    ).toEqual([
+      { method: "GET", statusCode: 401 },
+      { method: "GET", statusCode: 200 }
+    ]);
+    expect(onRequestCompleted.mock.calls[0]?.[0].durationMs).toEqual(expect.any(Number));
+    expect(onRequestCompleted.mock.calls[1]?.[0].durationMs).toEqual(expect.any(Number));
   });
 
   it("does not retry OAuth 401 responses for FormData request bodies", async () => {
@@ -438,6 +451,7 @@ describe("GitLabRequestRuntime OAuth retry", () => {
     });
 
     fetchMock.mockResolvedValue(jsonResponse({ message: "expired" }, 401));
+    const onRequestCompleted = vi.fn();
 
     const runtime = new GitLabRequestRuntime(
       buildEnv({
@@ -449,13 +463,20 @@ describe("GitLabRequestRuntime OAuth retry", () => {
       buildLogger()
     );
     const client = new GitLabClient("https://gitlab.example.com/api/v4", undefined, {
-      beforeRequest: (context) => runtime.beforeRequest(context)
+      beforeRequest: (context) => runtime.beforeRequest(context),
+      onRequestCompleted
     });
 
     await expect(client.uploadMarkdown("project", "# Title", "readme.md")).rejects.toMatchObject({
       status: 401
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onRequestCompleted).toHaveBeenCalledTimes(1);
+    expect(onRequestCompleted).toHaveBeenCalledWith({
+      method: "POST",
+      statusCode: 401,
+      durationMs: expect.any(Number)
+    });
   });
 });
 

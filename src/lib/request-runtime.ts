@@ -10,7 +10,11 @@ import { Cookie, CookieJar } from "tough-cookie";
 
 import type { AppEnv } from "../config/env.js";
 import type { GitLabAuthHeader } from "../types/auth.js";
-import type { GitLabBeforeRequestContext, GitLabBeforeRequestResult } from "./gitlab-client.js";
+import type {
+  GitLabBeforeRequestContext,
+  GitLabBeforeRequestResult,
+  GitLabRequestMetric
+} from "./gitlab-client.js";
 import { resolveOauthScopes } from "./oauth-scopes.js";
 import { deriveGitLabBaseUrl, GitLabOAuthManager } from "./oauth.js";
 import { OAuthGroupAuthorizer } from "./oauth-group-authorizer.js";
@@ -110,8 +114,10 @@ export class GitLabRequestRuntime {
       authHeader,
       fetchImpl:
         authSource === "oauth" && token
-          ? this.withOAuthRetry(this.fetchImpl, token)
-          : this.fetchImpl
+          ? this.withOAuthRetry(this.fetchImpl, token, context.reportRequestMetric)
+          : this.fetchImpl,
+      requestMetricsHandled:
+        authSource === "oauth" && Boolean(token) && Boolean(context.reportRequestMetric)
     };
   }
 
@@ -159,9 +165,16 @@ export class GitLabRequestRuntime {
     return {};
   }
 
-  private withOAuthRetry(baseFetch: typeof fetch, initialToken: string): typeof fetch {
+  private withOAuthRetry(
+    baseFetch: typeof fetch,
+    initialToken: string,
+    reportRequestMetric?: (metric: GitLabRequestMetric) => void
+  ): typeof fetch {
+    const fetchAttempt = reportRequestMetric
+      ? observeFetchAttempts(baseFetch, reportRequestMetric)
+      : baseFetch;
     return (async (input, init) => {
-      const response = await baseFetch(input, init);
+      const response = await fetchAttempt(input, init);
       if (response.status !== 401 || !this.oauthManager || isNonReplayableBody(init?.body)) {
         return response;
       }
@@ -176,7 +189,7 @@ export class GitLabRequestRuntime {
           ...init,
           headers: setAuthorizationHeader(init?.headers, refreshedToken)
         };
-        return baseFetch(input, retryInit);
+        return fetchAttempt(input, retryInit);
       } catch (error) {
         this.logger.warn({ err: error }, "OAuth token refresh after 401 failed");
         return response;
@@ -328,6 +341,48 @@ export class GitLabRequestRuntime {
     } catch (error) {
       this.logger.debug({ err: error, warmupUrl: warmupUrl.toString() }, "Cookie warmup failed");
     }
+  }
+}
+
+function observeFetchAttempts(
+  baseFetch: typeof fetch,
+  reportRequestMetric: (metric: GitLabRequestMetric) => void
+): typeof fetch {
+  return (async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1]
+  ): Promise<Response> => {
+    const method = init?.method ?? (input instanceof Request ? input.method : "GET");
+    const startedAt = performance.now();
+    let response: Response;
+    try {
+      response = await baseFetch(input, init);
+    } catch (error) {
+      reportRequestMetricSafely(reportRequestMetric, {
+        method,
+        statusCode: "network_error",
+        durationMs: performance.now() - startedAt
+      });
+      throw error;
+    }
+
+    reportRequestMetricSafely(reportRequestMetric, {
+      method,
+      statusCode: response.status,
+      durationMs: performance.now() - startedAt
+    });
+    return response;
+  }) as typeof fetch;
+}
+
+function reportRequestMetricSafely(
+  reportRequestMetric: (metric: GitLabRequestMetric) => void,
+  metric: GitLabRequestMetric
+): void {
+  try {
+    reportRequestMetric(metric);
+  } catch {
+    // Observability must never alter GitLab request behavior.
   }
 }
 

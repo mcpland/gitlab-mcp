@@ -61,6 +61,7 @@ export interface GitLabBeforeRequestContext {
   body?: BodyInit;
   token?: string;
   authHeader?: GitLabAuthHeader;
+  reportRequestMetric?: (metric: GitLabRequestMetric) => void;
 }
 
 export interface GitLabBeforeRequestResult {
@@ -69,6 +70,7 @@ export interface GitLabBeforeRequestResult {
   token?: string;
   authHeader?: GitLabAuthHeader;
   fetchImpl?: typeof fetch;
+  requestMetricsHandled?: boolean;
 }
 
 export interface GitLabProject {
@@ -2871,6 +2873,7 @@ export class GitLabClient {
     let token = options.token;
     let authHeader = options.authHeader;
     let fetchImpl: typeof fetch = fetch;
+    let requestMetricsHandled = false;
 
     if (this.beforeRequest) {
       const override = await this.beforeRequest({
@@ -2879,7 +2882,10 @@ export class GitLabClient {
         headers,
         body: requestBody,
         token,
-        authHeader: options.authHeader
+        authHeader: options.authHeader,
+        reportRequestMetric: this.onRequestCompleted
+          ? (metric) => this.reportRequestMetric(metric)
+          : undefined
       });
 
       if (override?.headers) {
@@ -2897,16 +2903,20 @@ export class GitLabClient {
       if (override?.fetchImpl) {
         fetchImpl = override.fetchImpl;
       }
+      requestMetricsHandled = override?.requestMetricsHandled === true;
     }
 
     this.attachAuth(headers, token, authHeader);
 
-    return this.fetchWithMetrics(fetchImpl, url, {
+    const requestInit: RequestInit = {
       method: options.method,
       body: requestBody,
       headers,
       signal: AbortSignal.timeout(this.timeoutMs)
-    });
+    };
+    return requestMetricsHandled
+      ? fetchImpl(url, requestInit)
+      : this.fetchWithMetrics(fetchImpl, url, requestInit);
   }
 
   private async toDownloadError(response: Response, label: string): Promise<GitLabApiError> {
@@ -2980,6 +2990,7 @@ export class GitLabClient {
     let token = options.token;
     let authHeader = options.authHeader;
     let fetchImpl: typeof fetch = fetch;
+    let requestMetricsHandled = false;
 
     if (this.beforeRequest) {
       const override = await this.beforeRequest({
@@ -2988,7 +2999,10 @@ export class GitLabClient {
         headers,
         body: requestBody,
         token,
-        authHeader: options.authHeader
+        authHeader: options.authHeader,
+        reportRequestMetric: this.onRequestCompleted
+          ? (metric) => this.reportRequestMetric(metric)
+          : undefined
       });
 
       if (override?.headers) {
@@ -3006,6 +3020,7 @@ export class GitLabClient {
       if (override?.fetchImpl) {
         fetchImpl = override.fetchImpl;
       }
+      requestMetricsHandled = override?.requestMetricsHandled === true;
     }
 
     this.attachAuth(headers, token, authHeader);
@@ -3013,7 +3028,8 @@ export class GitLabClient {
     const response = await this.fetchGenericResponse(fetchImpl, url, {
       method: options.method,
       body: requestBody,
-      headers
+      headers,
+      requestMetricsHandled
     });
 
     let body: unknown;
@@ -3049,15 +3065,23 @@ export class GitLabClient {
   private async fetchGenericResponse(
     fetchImpl: typeof fetch,
     url: URL,
-    options: { method: string; body?: BodyInit; headers: Headers }
+    options: {
+      method: string;
+      body?: BodyInit;
+      headers: Headers;
+      requestMetricsHandled: boolean;
+    }
   ): Promise<Response> {
     for (let retry = 0; ; retry += 1) {
-      const response = await this.fetchWithMetrics(fetchImpl, url, {
+      const requestInit: RequestInit = {
         method: options.method,
         body: options.body,
         headers: options.headers,
         signal: AbortSignal.timeout(this.timeoutMs)
-      });
+      };
+      const response = options.requestMetricsHandled
+        ? await fetchImpl(url, requestInit)
+        : await this.fetchWithMetrics(fetchImpl, url, requestInit);
 
       if (
         options.method !== "GET" ||
