@@ -1189,6 +1189,95 @@ describe("Tool handler: gitlab_list_merge_request_pipelines", () => {
 /* ------------------------------------------------------------------ */
 
 describe("Tool handlers: MR large diff workflow", () => {
+  it("filters branch diffs locally without forwarding exclusion patterns", async () => {
+    const getBranchDiffs = vi.fn().mockResolvedValue({
+      commit: { id: "abc" },
+      diffs: [
+        { new_path: "src/index.ts", old_path: "src/index.ts", diff: "source" },
+        {
+          new_path: "vendor/generated.js",
+          old_path: "vendor/generated.js",
+          diff: "generated"
+        }
+      ]
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getBranchDiffs } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_branch_diffs",
+        arguments: {
+          project_id: "group/project",
+          from: "main",
+          to: "feature",
+          straight: true,
+          excluded_file_patterns: ["^vendor/"]
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getBranchDiffs).toHaveBeenCalledWith("group/project", {
+        from: "main",
+        to: "feature",
+        straight: true
+      });
+      expect(
+        (result as { structuredContent?: { result?: unknown } }).structuredContent?.result
+      ).toEqual({
+        commit: { id: "abc" },
+        diffs: [{ new_path: "src/index.ts", old_path: "src/index.ts", diff: "source" }]
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("filters MR diffs locally and only forwards supported GitLab query fields", async () => {
+    const getMergeRequestDiffs = vi.fn().mockResolvedValue({
+      changes: [
+        { new_path: "src/index.ts", old_path: "src/index.ts", diff: "source" },
+        {
+          new_path: "vendor/generated.js",
+          old_path: "vendor/generated.js",
+          diff: "generated"
+        }
+      ]
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getMergeRequestDiffs } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_merge_request_diffs",
+        arguments: {
+          project_id: "group/project",
+          merge_request_iid: "11",
+          view: "inline",
+          excluded_file_patterns: ["^vendor/"]
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(getMergeRequestDiffs).toHaveBeenCalledWith("group/project", "11", {
+        query: { view: "inline" }
+      });
+      expect(
+        (result as { structuredContent?: { result?: unknown } }).structuredContent?.result
+      ).toEqual({
+        changes: [{ new_path: "src/index.ts", old_path: "src/index.ts", diff: "source" }]
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
   it("lists changed files without diff content and applies exclusions", async () => {
     const getMergeRequestDiffs = vi.fn().mockResolvedValue({
       changes: [

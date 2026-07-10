@@ -39,6 +39,7 @@ import { annotationsForCapabilities } from "../lib/tool-annotations.js";
 import { isToolEnabledByToolsets } from "../lib/toolsets.js";
 import { getSessionAuth } from "../lib/auth-context.js";
 import { createDownloadToken, type DownloadTokenResource } from "../lib/download-token.js";
+import { filterDiffRecords, filterDiffResponse } from "../lib/diff-filter.js";
 import { redactSuccessfulResponse } from "../lib/redact-success.js";
 import { sanitizeToolArguments } from "../lib/sanitize.js";
 import type { AppContext } from "../types/context.js";
@@ -150,6 +151,7 @@ const pipelineInputValueSchema = z.union([
 const optionalPipelineInputsRecord = nullableOptional(
   z.record(z.string(), pipelineInputValueSchema)
 );
+const excludedFilePatternsSchema = nullableOptional(z.array(z.string().min(1).max(200)).max(20));
 
 const paginationShape = {
   page: optionalNumber,
@@ -827,22 +829,16 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         from: refLikeSchema,
         to: refLikeSchema,
         straight: optionalBoolean,
-        excluded_file_patterns: optionalStringArray
+        excluded_file_patterns: excludedFilePatternsSchema
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
-        const query = toQuery({ excluded_file_patterns: args.excluded_file_patterns });
-        return context.gitlab.getBranchDiffs(
-          projectId,
-          {
-            from: getString(args, "from"),
-            to: getString(args, "to"),
-            straight: getOptionalBoolean(args, "straight")
-          },
-          {
-            query
-          }
-        );
+        const response = await context.gitlab.getBranchDiffs(projectId, {
+          from: getString(args, "from"),
+          to: getString(args, "to"),
+          straight: getOptionalBoolean(args, "straight")
+        });
+        return filterDiffResponse(response, getOptionalStringArray(args, "excluded_file_patterns"));
       }
     },
     {
@@ -1001,10 +997,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, false);
         const query = toQuery(
-          normalizeIdUsernameFilters(
-            omit(args, ["project_id"]),
-            MERGE_REQUEST_ID_USERNAME_PAIRS
-          )
+          normalizeIdUsernameFilters(omit(args, ["project_id"]), MERGE_REQUEST_ID_USERNAME_PAIRS)
         );
 
         if (projectId) {
@@ -1243,14 +1236,16 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: optionalProjectIdSchema,
         merge_request_iid: z.string().min(1),
         view: z.enum(["inline", "parallel"]).optional(),
-        excluded_file_patterns: optionalStringArray
+        excluded_file_patterns: excludedFilePatternsSchema
       },
-      handler: async (args, context) =>
-        context.gitlab.getMergeRequestDiffs(
+      handler: async (args, context) => {
+        const response = await context.gitlab.getMergeRequestDiffs(
           resolveProjectId(args, context, true),
           getString(args, "merge_request_iid"),
-          { query: toQuery(omit(args, ["project_id", "merge_request_iid"])) }
-        )
+          { query: toQuery({ view: args.view }) }
+        );
+        return filterDiffResponse(response, getOptionalStringArray(args, "excluded_file_patterns"));
+      }
     },
     {
       name: "gitlab_list_merge_request_changed_files",
@@ -1261,7 +1256,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: optionalProjectIdSchema,
         merge_request_iid: optionalString,
         source_branch: optionalRefLikeSchema,
-        excluded_file_patterns: optionalStringArray
+        excluded_file_patterns: excludedFilePatternsSchema
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
@@ -1277,7 +1272,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           renamed_file: item.renamed_file
         }));
 
-        return filterChangedFiles(files, getOptionalStringArray(args, "excluded_file_patterns"));
+        return filterDiffRecords(files, getOptionalStringArray(args, "excluded_file_patterns"));
       }
     },
     {
@@ -6840,23 +6835,6 @@ function extractMergeRequestDiffRecords(value: unknown): Array<Record<string, un
   return value.filter(
     (item): item is Record<string, unknown> => typeof item === "object" && item !== null
   );
-}
-
-function filterChangedFiles(
-  files: Array<Record<string, unknown>>,
-  patterns: string[] | undefined
-): Array<Record<string, unknown>> {
-  if (!patterns || patterns.length === 0) {
-    return files;
-  }
-
-  const regexes = patterns.map((pattern) => new RegExp(pattern));
-  return files.filter((file) => {
-    const paths = [file.new_path, file.old_path].filter(
-      (value): value is string => typeof value === "string"
-    );
-    return !regexes.some((regex) => paths.some((filePath) => regex.test(filePath)));
-  });
 }
 
 function resolveWebhookScope(
