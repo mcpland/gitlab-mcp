@@ -24,6 +24,30 @@ describe("HTTP request origin policy", () => {
     expect(isRequestOriginAllowed(undefined, policy)).toBe(true);
   });
 
+  it.each([
+    "http://localhost:5173",
+    "https://localhost:8443",
+    "http://127.0.0.1:49152",
+    "https://[::1]:9443"
+  ])("allows loopback Origin %s on a mapped port", (origin) => {
+    const policy = buildHttpRequestPolicy({ HTTP_HOST: "127.0.0.1", HTTP_PORT: 3333 });
+    expect(isRequestOriginAllowed(origin, policy)).toBe(true);
+  });
+
+  it("keeps non-loopback Origins on an exact allowlist", () => {
+    const policy = buildHttpRequestPolicy({
+      HTTP_HOST: "0.0.0.0",
+      HTTP_PORT: 3333,
+      MCP_ALLOWED_HOSTS: ["mcp.example.com"],
+      MCP_ALLOWED_ORIGINS: ["https://mcp.example.com:8443"]
+    });
+
+    expect(isRequestOriginAllowed("https://mcp.example.com:8443", policy)).toBe(true);
+    expect(isRequestOriginAllowed("https://mcp.example.com:9443", policy)).toBe(false);
+    expect(isRequestOriginAllowed("https://localhost.example.com:8443", policy)).toBe(false);
+    expect(isRequestOriginAllowed("http://127.0.0.2:3333", policy)).toBe(false);
+  });
+
   it.each(["*", "https://user@example.com", "example.com/path"])(
     "rejects unsafe allowed Host entry %s",
     (entry) => {

@@ -1,4 +1,5 @@
 const LOCAL_HOSTNAMES = ["localhost", "127.0.0.1", "[::1]"] as const;
+const LOOPBACK_HOSTNAMES = new Set<string>(LOCAL_HOSTNAMES);
 const WILDCARD_BIND_HOSTS = new Set(["0.0.0.0", "::", "[::]"]);
 
 export interface HttpRequestPolicyConfig {
@@ -75,10 +76,15 @@ export function isRequestOriginAllowed(
   }
 
   try {
-    return policy.allowedOrigins.has(parseAllowedOrigin(originHeader));
+    const origin = parseAllowedOrigin(originHeader);
+    return isLoopbackOrigin(origin) || policy.allowedOrigins.has(origin);
   } catch {
     return false;
   }
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(new URL(origin).hostname.toLowerCase());
 }
 
 function parseAllowedHostname(value: string): string {
