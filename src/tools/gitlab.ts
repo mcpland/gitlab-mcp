@@ -297,7 +297,12 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         min_access_level: optionalNumber,
         ...paginationShape
       },
-      handler: async (args, context) => context.gitlab.listProjects({ query: toQuery(args) })
+      handler: async (args, context) =>
+        filterProjectScopedResponse(
+          await context.gitlab.listProjects({ query: toQuery(args) }),
+          context,
+          "project"
+        )
     },
     {
       name: "gitlab_create_repository",
@@ -442,9 +447,13 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         ...paginationShape
       },
       handler: async (args, context) =>
-        context.gitlab.searchRepositories(getString(args, "search"), {
-          query: toQuery(omit(args, ["search"]))
-        })
+        filterProjectScopedResponse(
+          await context.gitlab.searchRepositories(getString(args, "search"), {
+            query: toQuery(omit(args, ["search"]))
+          }),
+          context,
+          "project"
+        )
     },
     {
       name: "gitlab_search_code_blobs",
@@ -480,10 +489,19 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         extension: optionalString,
         ...paginationShape
       },
-      handler: async (args, context) =>
-        context.gitlab.searchCode(getString(args, "search"), {
-          query: toQuery(omit(args, ["search"]))
-        })
+      handler: async (args, context) => {
+        const search = getString(args, "search");
+        const query = toQuery(omit(args, ["search"]));
+        const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
+        if (allowed.length === 0) {
+          return context.gitlab.searchCode(search, { query });
+        }
+
+        const results = await Promise.all(
+          allowed.map((projectId) => context.gitlab.searchCodeBlobs(projectId, search, { query }))
+        );
+        return results.flatMap((result) => extractRecords(result));
+      }
     },
     {
       name: "gitlab_search_project_code",
@@ -2124,7 +2142,12 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           .optional(),
         ...paginationShape
       },
-      handler: async (args, context) => context.gitlab.listTodos({ query: toQuery(args) })
+      handler: async (args, context) =>
+        filterProjectScopedResponse(
+          await context.gitlab.listTodos({ query: toQuery(args) }),
+          context,
+          "resource"
+        )
     },
     {
       name: "gitlab_mark_todo_done",
@@ -2134,7 +2157,11 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       inputSchema: {
         todo_id: z.string().min(1)
       },
-      handler: async (args, context) => context.gitlab.markTodoDone(getString(args, "todo_id"))
+      handler: async (args, context) => {
+        const todoId = getString(args, "todo_id");
+        await assertTodoProjectAllowed(todoId, context);
+        return context.gitlab.markTodoDone(todoId);
+      }
     },
     {
       name: "gitlab_mark_all_todos_done",
@@ -4863,6 +4890,108 @@ function resolveOptionalExplicitProjectId(
   projectId: string | undefined
 ): string | undefined {
   return projectId ? resolveExplicitProjectId(context, projectId) : undefined;
+}
+
+function filterProjectScopedResponse(
+  value: unknown,
+  context: AppContext,
+  identityKind: "project" | "resource"
+): unknown {
+  const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
+  if (allowed.length === 0) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is Record<string, unknown> =>
+        isObjectRecord(item) && recordMatchesAllowedProject(item, allowed, identityKind)
+    );
+  }
+
+  if (isObjectRecord(value) && Array.isArray(value.items)) {
+    const items = value.items.filter(
+      (item): item is Record<string, unknown> =>
+        isObjectRecord(item) && recordMatchesAllowedProject(item, allowed, identityKind)
+    );
+    return {
+      ...value,
+      items,
+      count: items.length
+    };
+  }
+
+  return [];
+}
+
+function recordMatchesAllowedProject(
+  record: Record<string, unknown>,
+  allowedProjectIds: readonly string[],
+  identityKind: "project" | "resource" = "resource"
+): boolean {
+  const project = isObjectRecord(record.project) ? record.project : undefined;
+  const target = isObjectRecord(record.target) ? record.target : undefined;
+  const targetProject = target && isObjectRecord(target.project) ? target.project : undefined;
+  const candidates = [
+    ...(identityKind === "project"
+      ? [record.id, record.path_with_namespace, record.full_path]
+      : []),
+    record.project_id,
+    project?.id,
+    project?.path_with_namespace,
+    project?.full_path,
+    target?.project_id,
+    targetProject?.id,
+    targetProject?.path_with_namespace,
+    targetProject?.full_path
+  ];
+
+  return candidates.some(
+    (candidate) =>
+      (typeof candidate === "string" || typeof candidate === "number") &&
+      allowedProjectIds.includes(String(candidate))
+  );
+}
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function assertTodoProjectAllowed(todoId: string, context: AppContext): Promise<void> {
+  const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
+  if (allowed.length === 0) {
+    return;
+  }
+
+  const perPage = 100;
+  for (let page = 1; page <= 100; page += 1) {
+    const todos = extractRecords(
+      await context.gitlab.listTodos({
+        query: {
+          state: "pending",
+          page,
+          per_page: perPage
+        }
+      })
+    );
+    const todo = todos.find((item) => String(item.id) === todoId);
+    if (todo) {
+      if (!recordMatchesAllowedProject(todo, allowed)) {
+        throw new Error(
+          `Todo '${todoId}' does not belong to a project in GITLAB_ALLOWED_PROJECT_IDS`
+        );
+      }
+      return;
+    }
+
+    if (todos.length < perPage) {
+      break;
+    }
+  }
+
+  throw new Error(
+    `Todo '${todoId}' could not be verified against GITLAB_ALLOWED_PROJECT_IDS and was not modified`
+  );
 }
 
 async function resolveProjectPathForWorkItem(

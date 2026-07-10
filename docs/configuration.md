@@ -94,7 +94,19 @@ The client will normalize each entry and rotate across them for load distributio
 | `GITLAB_ALLOWED_TOOLS`                    | string  | —       | Comma-separated tool allowlist. Accepts names with or without `gitlab_` prefix (e.g. `get_project` or `gitlab_get_project`). Empty = all tools enabled. |
 | `GITLAB_DISABLED_CAPABILITIES`            | string  | —       | Comma-separated capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                                                       |
 | `GITLAB_DENIED_TOOLS_REGEX`               | string  | —       | Regex pattern to deny tools by name (example: `^gitlab_delete_`). Unsafe nested-quantifier, overly long, or invalid patterns fail startup.              |
-| `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | boolean | `false` | Keep GraphQL tools enabled when `GITLAB_ALLOWED_PROJECT_IDS` is set. By default, GraphQL tools are disabled in project-scoped mode.                     |
+| `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | boolean | `false` | Deprecated compatibility setting. Raw GraphQL tools stay disabled whenever `GITLAB_ALLOWED_PROJECT_IDS` is set.                                         |
+
+### Strict Project Scope
+
+When `GITLAB_ALLOWED_PROJECT_IDS` is non-empty, it is enforced as a strict resource boundary:
+
+- Every explicit `project_id`, `target_project_id`, and `parent_project_id` must be in the allowlist. With one allowed project, an omitted primary `project_id` can be inferred; with multiple allowed projects, callers must select one where the tool requires it.
+- `list_projects`, `search_repositories`, and `list_todos` filter out results whose project cannot be proven allowed. Unscoped `search_code` is replaced with one project search per allowed project.
+- Project-form webhook operations remain available, but their group form is rejected. Group-wide wiki, search, iteration, and project-list tools are hidden.
+- Namespace/user/event-wide operations, unscoped repository creation and forking, and bulk todo mutation are hidden because their affected project cannot be proven before execution. A single todo is verified against the allowlist before it is marked done.
+- Raw GraphQL query/mutation executors are always hidden. Project-bound Work Item tools remain available because their source, target, and parent project arguments are validated.
+
+`GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` is retained so existing deployments still parse, but setting it to `true` does not expose raw GraphQL tools.
 
 ## Feature Toggles
 

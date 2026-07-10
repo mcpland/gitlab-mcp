@@ -85,19 +85,22 @@ config/env.ts
 ### `tools/gitlab.ts` — Tool Definitions
 
 - Defines 80+ tools as a `GitLabToolDefinition[]` array
-- Each definition specifies: `name`, `title`, `description`, `capabilities`, optional `requiresFeature`, `inputSchema` (Zod), and `handler`
-- Tools are filtered by the policy engine at registration time
+- Each definition specifies: `name`, `title`, `description`, `capabilities`, optional `requiresFeature`, project/group/global/raw-GraphQL scope metadata, `inputSchema` (Zod), and `handler`
+- Tools are filtered by project-scope metadata and the policy engine at registration time
 - Tool execution wraps results through the output formatter
 - Error handling converts `GitLabApiError` to structured MCP error responses
 
 **Tool execution flow:**
 
 ```
-Raw args ──▶ stripNullsDeep ──▶ handler(args, context) ──▶ formatter.format() ──▶ MCP response
-                                       │
-                                       └── assertAuthReady()  (check token exists)
-                                       └── resolveProjectId() (apply project allowlist)
+Raw args ──▶ stripNullsDeep ──▶ scope guard ──▶ handler(args, context) ──▶ formatter.format() ──▶ MCP response
+                                      │                  │
+                                      │                  └── assertAuthReady()  (check token exists)
+                                      │                  └── resolveProjectId() (defense in depth)
+                                      └── validate source/target/parent project arguments
 ```
+
+When `GITLAB_ALLOWED_PROJECT_IDS` is configured, registration keeps project-bound tools and explicitly safe/filterable global tools. Group-wide, unprovable global, and raw GraphQL tools are removed. Execution repeats project/group argument checks so a stale or direct tool call cannot bypass registration filtering. Handlers additionally filter list responses and verify resources such as todos before mutation.
 
 ### `tools/mr-code-context.ts` — MR Code Context
 

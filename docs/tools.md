@@ -368,7 +368,7 @@ Requires `USE_RELEASE=true` (default).
 
 ## Work Items
 
-These tools use GitLab GraphQL and are hidden when `GITLAB_ALLOWED_PROJECT_IDS` is configured unless `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE=true`.
+These tools use GitLab GraphQL but remain available when `GITLAB_ALLOWED_PROJECT_IDS` is configured because they are project-bound. Their source, target, and parent project arguments must all be allowed.
 
 | Tool                                          | Mutating | Description                                                                                                                                                |
 | --------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -403,4 +403,4 @@ These tools use GitLab GraphQL and are hidden when `GITLAB_ALLOWED_PROJECT_IDS` 
 
 \* `gitlab_execute_graphql` is registered with read + graphql capability and dynamically requires write + graphql capability when the payload contains a mutation.
 
-When `GITLAB_ALLOWED_PROJECT_IDS` is configured, GraphQL tools are disabled by default. Set `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE=true` to enable them explicitly.
+When `GITLAB_ALLOWED_PROJECT_IDS` is configured, all raw GraphQL tools are hidden because arbitrary GraphQL documents cannot be proven project-safe. The legacy `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` setting is retained for compatibility but does not override this restriction. Use the project-bound Work Item tools above for supported GraphQL operations.

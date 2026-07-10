@@ -360,8 +360,8 @@ GITLAB_DENIED_TOOLS_REGEX=^gitlab_(delete|create)_
 # Restrict to specific projects
 GITLAB_ALLOWED_PROJECT_IDS=123,456,789
 
-# Keep GraphQL tools enabled in project-scoped mode (disabled by default)
-GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE=true
+# Legacy compatibility setting; raw GraphQL remains disabled in project-scoped mode
+GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE=false
 
 # Disable feature groups
 USE_PIPELINE=false
@@ -369,6 +369,8 @@ USE_GITLAB_WIKI=false
 ```
 
 Unsafe or invalid `GITLAB_DENIED_TOOLS_REGEX` patterns fail startup.
+
+`GITLAB_ALLOWED_PROJECT_IDS` is a strict resource boundary, not just a default project. Project-scoped tools validate every supplied source, target, and parent project ID. Safe global list/search tools return only allowed projects (global code search is executed once per allowed project), while group-wide, namespace-wide, user-wide, event-wide, fork, and unscoped create operations are hidden. Todo reads are filtered and a single todo is verified before mutation. Raw GraphQL executors are always hidden because an arbitrary document cannot be proven project-safe; project-bound Work Item tools remain available and enforce the same allowlist. The legacy `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` variable is retained for configuration compatibility but cannot override this boundary.
 
 ## Configuration
 
@@ -403,7 +405,7 @@ node dist/http.js --env-file=.env.production
 | Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                        |
 | Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.        |
 | Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                           |
-| Policy          | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | `false`                     | Keep GraphQL tools enabled when project scope restriction is active.                     |
+| Policy          | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | `false`                     | Deprecated compatibility setting; raw GraphQL stays disabled in project-scoped mode.     |
 | Auth Extensions | `GITLAB_USE_OAUTH`                        | `false`                     | Enable OAuth 2.0 PKCE flow.                                                              |
 | Auth Extensions | `GITLAB_OAUTH_SCOPES`                     | mode-dependent              | OAuth scopes advertised/requested by local OAuth and MCP OAuth.                          |
 | Auth Extensions | `GITLAB_TOKEN_SCRIPT`                     | —                           | Resolve token from an external script.                                                   |

@@ -2926,6 +2926,128 @@ describe("resolveProjectId with GITLAB_ALLOWED_PROJECT_IDS", () => {
       await serverTransport.close();
     }
   });
+
+  it("filters global project and repository lists to allowed projects", async () => {
+    const projects = [
+      { id: 1, path_with_namespace: "group/by-id" },
+      { id: 2, path_with_namespace: "group/by-path" },
+      { id: 3, path_with_namespace: "group/forbidden" },
+      { name: "missing-project-identity" }
+    ];
+    const listProjects = vi.fn().mockResolvedValue(projects);
+    const searchRepositories = vi.fn().mockResolvedValue(projects);
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["1", "group/by-path"],
+        gitlabStub: { listProjects, searchRepositories }
+      })
+    );
+
+    try {
+      for (const call of [
+        { name: "gitlab_list_projects", arguments: {} },
+        { name: "gitlab_search_repositories", arguments: { search: "group" } }
+      ]) {
+        const result = await client.callTool(call);
+        expect(result.isError).toBeFalsy();
+        const structured = result.structuredContent as {
+          result?: { items?: Array<Record<string, unknown>>; count?: number };
+        };
+        expect(structured.result?.items).toEqual(projects.slice(0, 2));
+        expect(structured.result?.count).toBe(2);
+      }
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("runs global code search separately for each allowed project", async () => {
+    const searchCode = vi.fn();
+    const searchCodeBlobs = vi
+      .fn()
+      .mockImplementation((projectId: string) =>
+        Promise.resolve([{ project_id: projectId, path: `${projectId}/file.ts` }])
+      );
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["1", "group/project"],
+        gitlabStub: { searchCode, searchCodeBlobs }
+      })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_search_code",
+        arguments: { search: "needle", filename: "file.ts" }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(searchCode).not.toHaveBeenCalled();
+      expect(searchCodeBlobs).toHaveBeenCalledTimes(2);
+      expect(searchCodeBlobs).toHaveBeenCalledWith(
+        "1",
+        "needle",
+        expect.objectContaining({ query: expect.objectContaining({ filename: "file.ts" }) })
+      );
+      expect(searchCodeBlobs).toHaveBeenCalledWith(
+        "group/project",
+        "needle",
+        expect.objectContaining({ query: expect.objectContaining({ filename: "file.ts" }) })
+      );
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("filters todos and verifies ownership before marking one done", async () => {
+    const todos = [
+      { id: 7, project: { id: 1, path_with_namespace: "group/allowed" } },
+      { id: 8, project: { id: 2, path_with_namespace: "group/forbidden" } },
+      { id: 9, target: { project_id: 2 } },
+      { id: 1, project: { id: 2, path_with_namespace: "group/forbidden" } }
+    ];
+    const listTodos = vi.fn().mockResolvedValue(todos);
+    const markTodoDone = vi.fn().mockResolvedValue({ id: 7, state: "done" });
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        allowedProjectIds: ["1"],
+        gitlabStub: { listTodos, markTodoDone }
+      })
+    );
+
+    try {
+      const listed = await client.callTool({ name: "gitlab_list_todos", arguments: {} });
+      const listedContent = listed.structuredContent as {
+        result?: { items?: Array<Record<string, unknown>>; count?: number };
+      };
+      expect(listedContent.result?.items).toEqual([todos[0]]);
+      expect(listedContent.result?.count).toBe(1);
+
+      const allowed = await client.callTool({
+        name: "gitlab_mark_todo_done",
+        arguments: { todo_id: "7" }
+      });
+      const forbidden = await client.callTool({
+        name: "gitlab_mark_todo_done",
+        arguments: { todo_id: "8" }
+      });
+      const collidingId = await client.callTool({
+        name: "gitlab_mark_todo_done",
+        arguments: { todo_id: "1" }
+      });
+
+      expect(allowed.isError).toBeFalsy();
+      expect(forbidden.isError).toBe(true);
+      expect(collidingId.isError).toBe(true);
+      expect(markTodoDone).toHaveBeenCalledTimes(1);
+      expect(markTodoDone).toHaveBeenCalledWith("7");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
