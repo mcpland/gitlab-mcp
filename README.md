@@ -469,6 +469,7 @@ See [docs/architecture.md](docs/architecture.md) for detailed design documentati
 - [Configuration Reference](docs/configuration.md) — All environment variables
 - [Tools Reference](docs/tools.md) — Complete list of MCP tools
 - [Generated Tool Index](docs/tools-index.md) — Registry inventory checked by CI
+- [Security Policy](SECURITY.md) — Private vulnerability reporting and deployment baseline
 - [Authentication Guide](docs/authentication.md) — Auth methods and setup
 - [Deployment Guide](docs/deployment.md) — Docker, production, and multi-instance
 - [Architecture](docs/architecture.md) — Internal design and patterns
