@@ -10,6 +10,7 @@ import {
   type GitLabPipelineInputValue,
   type PushFileAction
 } from "../lib/gitlab-client.js";
+import { encodeGitLabProjectId } from "../lib/gitlab-path.js";
 import {
   applySearchReplace,
   applyUnifiedDiff,
@@ -4099,7 +4100,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
               );
             }
 
-            const apiRelativePath = `api/v4/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
+            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
             return context.gitlab.downloadAttachment(apiRelativePath);
           }
 
@@ -4119,7 +4120,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
               );
             }
 
-            const apiRelativePath = `api/v4/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
+            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
             return context.gitlab.downloadAttachment(apiRelativePath);
           }
 
@@ -4135,7 +4136,7 @@ function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         }
 
         const projectId = resolveProjectId(args, context, true);
-        const apiRelativePath = `api/v4/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(secret)}/${encodeURIComponent(filename)}`;
+        const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(secret)}/${encodeURIComponent(filename)}`;
         if (shouldReturnDownloadProxy(context)) {
           return buildDownloadProxyResult(
             context,

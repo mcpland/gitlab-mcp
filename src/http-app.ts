@@ -29,6 +29,7 @@ import {
   downloadTokenResourceMatches,
   type DownloadTokenResource
 } from "./lib/download-token.js";
+import { encodeGitLabProjectId } from "./lib/gitlab-path.js";
 import { hasReachedSessionCapacity } from "./lib/session-capacity.js";
 import { createGitLabMcpOAuthProvider } from "./lib/mcp-oauth-provider.js";
 import { resolveOauthScopes } from "./lib/oauth-scopes.js";
@@ -1150,7 +1151,7 @@ function buildDownloadGitLabPath(resource: DownloadTokenResource, env: AppContex
       if (!jobId) {
         throw new DownloadClientError("job_id is required");
       }
-      return `/projects/${encodeURIComponent(projectId)}/jobs/${encodeURIComponent(jobId)}/artifacts`;
+      return `/projects/${encodeGitLabProjectId(projectId)}/jobs/${encodeURIComponent(jobId)}/artifacts`;
     }
 
     case "release-asset": {
@@ -1159,7 +1160,7 @@ function buildDownloadGitLabPath(resource: DownloadTokenResource, env: AppContex
       if (!tagName || !directAssetPath) {
         throw new DownloadClientError("tag_name and direct_asset_path are required");
       }
-      return `/projects/${encodeURIComponent(projectId)}/releases/${encodeURIComponent(
+      return `/projects/${encodeGitLabProjectId(projectId)}/releases/${encodeURIComponent(
         tagName
       )}/downloads/${encodeSlashPath(directAssetPath)}`;
     }
@@ -1170,7 +1171,7 @@ function buildDownloadGitLabPath(resource: DownloadTokenResource, env: AppContex
       if (!secret || !filename) {
         throw new DownloadClientError("secret and filename are required");
       }
-      return `/projects/${encodeURIComponent(projectId)}/uploads/${encodeURIComponent(
+      return `/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(
         secret
       )}/${encodeURIComponent(filename)}`;
     }

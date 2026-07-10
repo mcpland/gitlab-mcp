@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { getSessionAuth, type SessionAuth } from "./auth-context.js";
+import { encodeGitLabProjectId } from "./gitlab-path.js";
 import type { GitLabAuthHeader } from "../types/auth.js";
 
 export interface GitLabClientOptions {
@@ -144,7 +145,7 @@ export class GitLabClient {
 
   // projects
   getProject(projectId: string, options?: GitLabRequestOptions): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}`, options);
   }
 
   listProjects(options: GitLabRequestOptions = {}): Promise<unknown> {
@@ -194,7 +195,7 @@ export class GitLabClient {
   }
 
   listProjectMembers(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/members/all`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/members/all`, options);
   }
 
   listGroupProjects(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
@@ -214,7 +215,7 @@ export class GitLabClient {
     } = {},
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/fork`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/fork`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -263,7 +264,7 @@ export class GitLabClient {
     search: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/search`, {
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/search`, {
       ...options,
       query: {
         scope: "blobs",
@@ -291,7 +292,7 @@ export class GitLabClient {
   // repository/files
   async getRepositoryTree(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     const config = this.resolveRequestConfig(options);
-    const url = new URL(`projects/${encode(projectId)}/repository/tree`, `${config.apiUrl}/`);
+    const url = new URL(`projects/${encodeGitLabProjectId(projectId)}/repository/tree`, `${config.apiUrl}/`);
 
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined && value !== null) {
@@ -364,7 +365,7 @@ export class GitLabClient {
     ref: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/repository/files/${encode(filePath)}`, {
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/repository/files/${encode(filePath)}`, {
       ...options,
       query: {
         ref,
@@ -379,7 +380,7 @@ export class GitLabClient {
     ref: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/repository/files/${encode(filePath)}/blame`, {
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/repository/files/${encode(filePath)}/blame`, {
       ...options,
       query: {
         ref,
@@ -404,7 +405,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/projects/${encode(projectId)}/repository/files/${encode(filePath)}`, {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}/repository/files/${encode(filePath)}`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -427,7 +428,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/repository/commits`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/repository/commits`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -445,14 +446,14 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/repository/branches`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/repository/branches`, {
       ...options,
       query: payload
     });
   }
 
   listBranches(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/repository/branches`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/repository/branches`, options);
   }
 
   getBranch(
@@ -461,7 +462,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/repository/branches/${encode(branch)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/repository/branches/${encode(branch)}`,
       options
     );
   }
@@ -472,7 +473,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.delete(
-      `/projects/${encode(projectId)}/repository/branches/${encode(branch)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/repository/branches/${encode(branch)}`,
       options
     );
   }
@@ -486,18 +487,18 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/repository/compare`, {
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/repository/compare`, {
       ...options,
       query: payload
     });
   }
 
   listCommits(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/repository/commits`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/repository/commits`, options);
   }
 
   getCommit(projectId: string, sha: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/repository/commits/${encode(sha)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/repository/commits/${encode(sha)}`, options);
   }
 
   getCommitDiff(
@@ -506,7 +507,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/repository/commits/${encode(sha)}/diff`,
+      `/projects/${encodeGitLabProjectId(projectId)}/repository/commits/${encode(sha)}/diff`,
       options
     );
   }
@@ -517,7 +518,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/repository/commits/${encode(sha)}/statuses`,
+      `/projects/${encodeGitLabProjectId(projectId)}/repository/commits/${encode(sha)}/statuses`,
       options
     );
   }
@@ -528,7 +529,7 @@ export class GitLabClient {
     payload: Record<string, string | number | boolean | null | undefined>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/statuses/${encode(sha)}`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/statuses/${encode(sha)}`, {
       ...options,
       query: {
         ...payload,
@@ -539,7 +540,7 @@ export class GitLabClient {
 
   // merge requests
   listMergeRequests(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/merge_requests`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/merge_requests`, options);
   }
 
   listGlobalMergeRequests(options: GitLabRequestOptions = {}): Promise<unknown> {
@@ -551,7 +552,7 @@ export class GitLabClient {
     mergeRequestIid: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}`, {
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}`, {
       ...options,
       query: {
         include_diverged_commits_count: true,
@@ -571,7 +572,7 @@ export class GitLabClient {
 
     while (true) {
       const url = new URL(
-        `projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/commits`,
+        `projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/commits`,
         `${config.apiUrl}/`
       );
       for (const [key, value] of Object.entries(options.query ?? {})) {
@@ -618,7 +619,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/commits`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/commits`,
       options
     );
   }
@@ -629,7 +630,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/pipelines`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/pipelines`,
       options
     );
   }
@@ -652,7 +653,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/merge_requests`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/merge_requests`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -668,7 +669,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}`, {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -685,7 +686,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.put(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/merge`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/merge`,
       {
         ...options,
         body: JSON.stringify(payload),
@@ -703,7 +704,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/changes`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/changes`,
       options
     );
   }
@@ -714,7 +715,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/diffs`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/diffs`,
       options
     );
   }
@@ -725,7 +726,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/versions`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/versions`,
       options
     );
   }
@@ -737,7 +738,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/versions/${encode(versionId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/versions/${encode(versionId)}`,
       options
     );
   }
@@ -749,7 +750,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/approve`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/approve`,
       {
         ...options,
         body: JSON.stringify(payload),
@@ -767,7 +768,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/unapprove`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/unapprove`,
       {
         ...options,
         body: JSON.stringify({}),
@@ -786,7 +787,7 @@ export class GitLabClient {
   ): Promise<unknown> {
     const config = this.resolveRequestConfig(options);
     const url = new URL(
-      `projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/approval_state`,
+      `projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/approval_state`,
       `${config.apiUrl}/`
     );
     for (const [key, value] of Object.entries(options.query ?? {})) {
@@ -807,7 +808,7 @@ export class GitLabClient {
 
     if (response.status === 404) {
       const approvals = await this.get(
-        `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/approvals`,
+        `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/approvals`,
         options
       );
       return normalizeMergeRequestApprovalsFallback(approvals);
@@ -822,7 +823,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/conflicts`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/conflicts`,
       options
     );
   }
@@ -833,7 +834,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions`,
       options
     );
   }
@@ -849,7 +850,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions/${encode(discussionId)}/notes`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions/${encode(discussionId)}/notes`,
       {
         ...options,
         body: JSON.stringify(payload),
@@ -872,7 +873,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions`,
       {
         ...options,
         body: JSON.stringify(payload),
@@ -896,7 +897,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.put(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions/${encode(discussionId)}/notes/${encode(noteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions/${encode(discussionId)}/notes/${encode(noteId)}`,
       {
         ...options,
         body: JSON.stringify(payload),
@@ -916,7 +917,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.delete(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions/${encode(discussionId)}/notes/${encode(noteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions/${encode(discussionId)}/notes/${encode(noteId)}`,
       options
     );
   }
@@ -930,7 +931,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.put(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions/${encode(discussionId)}/notes/${encode(noteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions/${encode(discussionId)}/notes/${encode(noteId)}`,
       {
         ...options,
         body: JSON.stringify({ resolved }),
@@ -948,7 +949,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes`,
       options
     );
   }
@@ -960,7 +961,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes/${encode(noteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes/${encode(noteId)}`,
       options
     );
   }
@@ -972,7 +973,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes`,
       {
         ...options,
         body: JSON.stringify({ body }),
@@ -1074,7 +1075,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}`,
       options
     );
   }
@@ -1085,7 +1086,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes`,
       options
     );
   }
@@ -1101,7 +1102,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes`,
       {
         ...options,
         body: JSON.stringify({
@@ -1129,7 +1130,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.put(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}`,
       {
         ...options,
         body: JSON.stringify({
@@ -1152,7 +1153,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.delete(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}`,
       options
     );
   }
@@ -1164,7 +1165,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.put(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}/publish`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/${encode(draftNoteId)}/publish`,
       {
         ...options,
         body: JSON.stringify({}),
@@ -1182,7 +1183,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/bulk_publish`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/bulk_publish`,
       {
         ...options,
         body: JSON.stringify({}),
@@ -1202,7 +1203,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/${noteableType}s/${encode(noteableIid)}/notes`,
+      `/projects/${encodeGitLabProjectId(projectId)}/${noteableType}s/${encode(noteableIid)}/notes`,
       {
         ...options,
         body: JSON.stringify({ body }),
@@ -1222,7 +1223,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.put(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes/${encode(noteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes/${encode(noteId)}`,
       {
         ...options,
         body: JSON.stringify({ body }),
@@ -1241,14 +1242,14 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.delete(
-      `/projects/${encode(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes/${encode(noteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/notes/${encode(noteId)}`,
       options
     );
   }
 
   // issues
   listIssues(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/issues`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/issues`, options);
   }
 
   listGlobalIssues(options: GitLabRequestOptions = {}): Promise<unknown> {
@@ -1260,7 +1261,7 @@ export class GitLabClient {
     issueIid: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/issues/${encode(issueIid)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}`, options);
   }
 
   createIssue(
@@ -1277,7 +1278,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/issues`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/issues`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1293,7 +1294,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/projects/${encode(projectId)}/issues/${encode(issueIid)}`, {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1308,7 +1309,7 @@ export class GitLabClient {
     issueIid: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.delete(`/projects/${encode(projectId)}/issues/${encode(issueIid)}`, options);
+    return this.delete(`/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}`, options);
   }
 
   myIssues(
@@ -1329,7 +1330,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     const { project_id: projectId, ...queryPayload } = payload;
-    const path = projectId ? `/projects/${encode(projectId)}/issues` : "/issues";
+    const path = projectId ? `/projects/${encodeGitLabProjectId(projectId)}/issues` : "/issues";
 
     return this.get(path, {
       ...options,
@@ -1359,7 +1360,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/issues/${encode(issueIid)}/discussions`,
+      `/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}/discussions`,
       options
     );
   }
@@ -1377,7 +1378,7 @@ export class GitLabClient {
     const discussionPath = payload.discussion_id
       ? `/discussions/${encode(payload.discussion_id)}/notes`
       : "/notes";
-    return this.post(`/projects/${encode(projectId)}/issues/${encode(issueIid)}${discussionPath}`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}${discussionPath}`, {
       ...options,
       body: JSON.stringify({
         body: payload.body,
@@ -1478,7 +1479,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.put(
-      `/projects/${encode(projectId)}/issues/${encode(issueIid)}/discussions/${encode(discussionId)}/notes/${encode(noteId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}/discussions/${encode(discussionId)}/notes/${encode(noteId)}`,
       {
         ...options,
         body: JSON.stringify(payload),
@@ -1495,7 +1496,7 @@ export class GitLabClient {
     issueIid: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/issues/${encode(issueIid)}/links`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}/links`, options);
   }
 
   getIssueLink(
@@ -1505,7 +1506,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/issues/${encode(issueIid)}/links/${encode(issueLinkId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}/links/${encode(issueLinkId)}`,
       options
     );
   }
@@ -1520,7 +1521,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/issues/${encode(issueIid)}/links`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}/links`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1537,14 +1538,14 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.delete(
-      `/projects/${encode(projectId)}/issues/${encode(issueIid)}/links/${encode(issueLinkId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/issues/${encode(issueIid)}/links/${encode(issueLinkId)}`,
       options
     );
   }
 
   // wiki
   listWikiPages(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/wikis`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/wikis`, options);
   }
 
   getWikiPage(
@@ -1552,7 +1553,7 @@ export class GitLabClient {
     slug: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/wikis/${encode(slug)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/wikis/${encode(slug)}`, options);
   }
 
   createWikiPage(
@@ -1564,7 +1565,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/wikis`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/wikis`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1584,7 +1585,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/projects/${encode(projectId)}/wikis/${encode(slug)}`, {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}/wikis/${encode(slug)}`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1599,7 +1600,7 @@ export class GitLabClient {
     slug: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.delete(`/projects/${encode(projectId)}/wikis/${encode(slug)}`, options);
+    return this.delete(`/projects/${encodeGitLabProjectId(projectId)}/wikis/${encode(slug)}`, options);
   }
 
   listGroupWikiPages(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
@@ -1655,7 +1656,7 @@ export class GitLabClient {
 
   // pipelines
   listPipelines(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/pipelines`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/pipelines`, options);
   }
 
   getPipeline(
@@ -1663,11 +1664,11 @@ export class GitLabClient {
     pipelineId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/pipelines/${encode(pipelineId)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/pipelines/${encode(pipelineId)}`, options);
   }
 
   listDeployments(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/deployments`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/deployments`, options);
   }
 
   getDeployment(
@@ -1675,11 +1676,11 @@ export class GitLabClient {
     deploymentId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/deployments/${encode(deploymentId)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/deployments/${encode(deploymentId)}`, options);
   }
 
   listEnvironments(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/environments`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/environments`, options);
   }
 
   getEnvironment(
@@ -1688,7 +1689,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/environments/${encode(environmentId)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/environments/${encode(environmentId)}`,
       options
     );
   }
@@ -1698,7 +1699,7 @@ export class GitLabClient {
     pipelineId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/pipelines/${encode(pipelineId)}/jobs`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/pipelines/${encode(pipelineId)}/jobs`, options);
   }
 
   listPipelineTriggerJobs(
@@ -1707,7 +1708,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/pipelines/${encode(pipelineId)}/bridges`,
+      `/projects/${encodeGitLabProjectId(projectId)}/pipelines/${encode(pipelineId)}/bridges`,
       options
     );
   }
@@ -1717,7 +1718,7 @@ export class GitLabClient {
     jobId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/jobs/${encode(jobId)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}`, options);
   }
 
   getPipelineJobOutput(
@@ -1725,7 +1726,7 @@ export class GitLabClient {
     jobId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/jobs/${encode(jobId)}/trace`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/trace`, options);
   }
 
   validateCiLint(
@@ -1733,7 +1734,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/ci/lint`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/ci/lint`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1744,7 +1745,7 @@ export class GitLabClient {
   }
 
   validateProjectCiLint(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/ci/lint`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/ci/lint`, options);
   }
 
   listJobArtifacts(
@@ -1752,7 +1753,7 @@ export class GitLabClient {
     jobId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/jobs/${encode(jobId)}/artifacts/tree`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/artifacts/tree`, options);
   }
 
   async downloadJobArtifacts(
@@ -1762,7 +1763,7 @@ export class GitLabClient {
   ): Promise<GitLabDownloadedFile> {
     const requestConfig = this.resolveRequestConfig(options);
     const url = new URL(
-      `projects/${encode(projectId)}/jobs/${encode(jobId)}/artifacts`,
+      `projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/artifacts`,
       `${requestConfig.apiUrl}/`
     );
 
@@ -1786,7 +1787,7 @@ export class GitLabClient {
   ): Promise<GitLabSavedFile> {
     const requestConfig = this.resolveRequestConfig(options);
     const url = new URL(
-      `projects/${encode(projectId)}/jobs/${encode(jobId)}/artifacts`,
+      `projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/artifacts`,
       `${requestConfig.apiUrl}/`
     );
 
@@ -1812,7 +1813,7 @@ export class GitLabClient {
     const requestConfig = this.resolveRequestConfig(options);
     const encodedArtifactPath = encodeSlashPath(artifactPath);
     const url = new URL(
-      `projects/${encode(projectId)}/jobs/${encode(jobId)}/artifacts/${encodedArtifactPath}`,
+      `projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/artifacts/${encodedArtifactPath}`,
       `${requestConfig.apiUrl}/`
     );
 
@@ -1838,7 +1839,7 @@ export class GitLabClient {
     const requestConfig = this.resolveRequestConfig(options);
     const encodedArtifactPath = encodeSlashPath(artifactPath);
     const url = new URL(
-      `projects/${encode(projectId)}/jobs/${encode(jobId)}/artifacts/${encodedArtifactPath}`,
+      `projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/artifacts/${encodedArtifactPath}`,
       `${requestConfig.apiUrl}/`
     );
 
@@ -1864,7 +1865,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/pipeline`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/pipeline`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1880,7 +1881,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/pipelines/${encode(pipelineId)}/retry`,
+      `/projects/${encodeGitLabProjectId(projectId)}/pipelines/${encode(pipelineId)}/retry`,
       options
     );
   }
@@ -1891,7 +1892,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/pipelines/${encode(pipelineId)}/cancel`,
+      `/projects/${encodeGitLabProjectId(projectId)}/pipelines/${encode(pipelineId)}/cancel`,
       options
     );
   }
@@ -1901,7 +1902,7 @@ export class GitLabClient {
     jobId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/jobs/${encode(jobId)}/retry`, options);
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/retry`, options);
   }
 
   cancelPipelineJob(
@@ -1909,7 +1910,7 @@ export class GitLabClient {
     jobId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/jobs/${encode(jobId)}/cancel`, options);
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/cancel`, options);
   }
 
   playPipelineJob(
@@ -1917,12 +1918,12 @@ export class GitLabClient {
     jobId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/jobs/${encode(jobId)}/play`, options);
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/play`, options);
   }
 
   // milestones
   listMilestones(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/milestones`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/milestones`, options);
   }
 
   getMilestone(
@@ -1930,7 +1931,7 @@ export class GitLabClient {
     milestoneId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/milestones/${encode(milestoneId)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/milestones/${encode(milestoneId)}`, options);
   }
 
   createMilestone(
@@ -1943,7 +1944,7 @@ export class GitLabClient {
     },
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/milestones`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/milestones`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1959,7 +1960,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/projects/${encode(projectId)}/milestones/${encode(milestoneId)}`, {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}/milestones/${encode(milestoneId)}`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -1974,7 +1975,7 @@ export class GitLabClient {
     milestoneId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.delete(`/projects/${encode(projectId)}/milestones/${encode(milestoneId)}`, options);
+    return this.delete(`/projects/${encodeGitLabProjectId(projectId)}/milestones/${encode(milestoneId)}`, options);
   }
 
   getMilestoneIssues(
@@ -1983,7 +1984,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/milestones/${encode(milestoneId)}/issues`,
+      `/projects/${encodeGitLabProjectId(projectId)}/milestones/${encode(milestoneId)}/issues`,
       options
     );
   }
@@ -1994,7 +1995,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/milestones/${encode(milestoneId)}/merge_requests`,
+      `/projects/${encodeGitLabProjectId(projectId)}/milestones/${encode(milestoneId)}/merge_requests`,
       options
     );
   }
@@ -2005,7 +2006,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/milestones/${encode(milestoneId)}/promote`,
+      `/projects/${encodeGitLabProjectId(projectId)}/milestones/${encode(milestoneId)}/promote`,
       options
     );
   }
@@ -2016,14 +2017,14 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/milestones/${encode(milestoneId)}/burndown_events`,
+      `/projects/${encodeGitLabProjectId(projectId)}/milestones/${encode(milestoneId)}/burndown_events`,
       options
     );
   }
 
   // releases
   listReleases(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/releases`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/releases`, options);
   }
 
   getRelease(
@@ -2031,7 +2032,7 @@ export class GitLabClient {
     tagName: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/releases/${encode(tagName)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/releases/${encode(tagName)}`, options);
   }
 
   createRelease(
@@ -2039,7 +2040,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/releases`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/releases`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -2055,7 +2056,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/projects/${encode(projectId)}/releases/${encode(tagName)}`, {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}/releases/${encode(tagName)}`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -2070,7 +2071,7 @@ export class GitLabClient {
     tagName: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.delete(`/projects/${encode(projectId)}/releases/${encode(tagName)}`, options);
+    return this.delete(`/projects/${encodeGitLabProjectId(projectId)}/releases/${encode(tagName)}`, options);
   }
 
   createReleaseEvidence(
@@ -2079,7 +2080,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
-      `/projects/${encode(projectId)}/releases/${encode(tagName)}/evidence`,
+      `/projects/${encodeGitLabProjectId(projectId)}/releases/${encode(tagName)}/evidence`,
       options
     );
   }
@@ -2093,7 +2094,7 @@ export class GitLabClient {
     const requestConfig = this.resolveRequestConfig(options);
     const safePath = encodeSlashPath(directAssetPath);
     const url = new URL(
-      `projects/${encode(projectId)}/releases/${encode(tagName)}/downloads/${safePath}`,
+      `projects/${encodeGitLabProjectId(projectId)}/releases/${encode(tagName)}/downloads/${safePath}`,
       `${requestConfig.apiUrl}/`
     );
 
@@ -2111,11 +2112,11 @@ export class GitLabClient {
 
   // tags
   listTags(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/repository/tags`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/repository/tags`, options);
   }
 
   getTag(projectId: string, tagName: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/repository/tags/${encode(tagName)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/repository/tags/${encode(tagName)}`, options);
   }
 
   createTag(
@@ -2123,7 +2124,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/repository/tags`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/repository/tags`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -2139,7 +2140,7 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.delete(
-      `/projects/${encode(projectId)}/repository/tags/${encode(tagName)}`,
+      `/projects/${encodeGitLabProjectId(projectId)}/repository/tags/${encode(tagName)}`,
       options
     );
   }
@@ -2150,14 +2151,14 @@ export class GitLabClient {
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.get(
-      `/projects/${encode(projectId)}/repository/tags/${encode(tagName)}/signature`,
+      `/projects/${encodeGitLabProjectId(projectId)}/repository/tags/${encode(tagName)}/signature`,
       options
     );
   }
 
   // labels
   listLabels(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/labels`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/labels`, options);
   }
 
   getLabel(
@@ -2165,7 +2166,7 @@ export class GitLabClient {
     labelId: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/labels/${encode(labelId)}`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/labels/${encode(labelId)}`, options);
   }
 
   createLabel(
@@ -2173,7 +2174,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(`/projects/${encode(projectId)}/labels`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/labels`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -2188,7 +2189,7 @@ export class GitLabClient {
     payload: Record<string, unknown>,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.put(`/projects/${encode(projectId)}/labels`, {
+    return this.put(`/projects/${encodeGitLabProjectId(projectId)}/labels`, {
       ...options,
       body: JSON.stringify(payload),
       headers: {
@@ -2203,7 +2204,7 @@ export class GitLabClient {
     labelName: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.delete(`/projects/${encode(projectId)}/labels`, {
+    return this.delete(`/projects/${encodeGitLabProjectId(projectId)}/labels`, {
       ...options,
       query: {
         name: labelName,
@@ -2246,7 +2247,7 @@ export class GitLabClient {
   }
 
   getProjectEvents(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/projects/${encode(projectId)}/events`, options);
+    return this.get(`/projects/${encodeGitLabProjectId(projectId)}/events`, options);
   }
 
   listWebhooks(
@@ -2274,7 +2275,7 @@ export class GitLabClient {
     const form = new FormData();
     form.append("file", new Blob([content], { type: "text/markdown" }), filename);
 
-    return this.post(`/projects/${encode(projectId)}/uploads`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/uploads`, {
       ...options,
       body: form,
       headers: {
@@ -2294,7 +2295,7 @@ export class GitLabClient {
     const form = new FormData();
     form.append("file", new Blob([content], { type: "application/octet-stream" }), filename);
 
-    return this.post(`/projects/${encode(projectId)}/uploads`, {
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/uploads`, {
       ...options,
       body: form,
       headers: {
@@ -2757,7 +2758,7 @@ export class GitLabClient {
     entityIid: string,
     options: { noteId?: string; discussionId?: string; awardId?: string } = {}
   ): string {
-    let path = `/projects/${encode(projectId)}/${entity}/${encode(entityIid)}`;
+    let path = `/projects/${encodeGitLabProjectId(projectId)}/${entity}/${encode(entityIid)}`;
 
     if (options.noteId) {
       path += options.discussionId
