@@ -390,46 +390,46 @@ node dist/index.js --env-file .env.local
 node dist/http.js --env-file=.env.production
 ```
 
-| Area            | Variable                                  | Default                     | Description                                                                              |
-| --------------- | ----------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------- |
-| GitLab API      | `GITLAB_API_URL`                          | `https://gitlab.com/api/v4` | Base API URL. Supports comma-separated multi-instance URLs.                              |
-| GitLab API      | `GITLAB_PERSONAL_ACCESS_TOKEN`            | —                           | Static default token used when `REMOTE_AUTHORIZATION=false`.                             |
-| GitLab API      | `GITLAB_JOB_TOKEN`                        | —                           | Static CI job token fallback when no personal access token is configured.                |
-| Remote Auth     | `REMOTE_AUTHORIZATION`                    | `false`                     | Require per-request token headers in HTTP mode (disables fallback token chain).          |
-| Remote Auth     | `ENABLE_DYNAMIC_API_URL`                  | `false`                     | Require `X-GitLab-API-URL` per request. Requires `REMOTE_AUTHORIZATION=true`.            |
-| Remote Auth     | `GITLAB_MCP_OAUTH`                        | `false`                     | Enable MCP OAuth discovery/proxy endpoints for HTTP mode. Requires `MCP_SERVER_URL`.     |
-| HTTP Server     | `HTTP_HOST`                               | `127.0.0.1`                 | HTTP bind host (`0.0.0.0` for external access).                                          |
-| HTTP Server     | `HTTP_PORT`                               | `3333`                      | HTTP server port.                                                                        |
-| HTTP Server     | `MCP_SERVER_URL`                          | —                           | Public base URL used when HTTP download tools return proxy URLs.                         |
-| HTTP Server     | `HTTP_JSON_ONLY`                          | `false`                     | Force JSON-only responses (no streaming framing).                                        |
-| HTTP Server     | `SSE`                                     | `false`                     | Enable legacy SSE endpoints (`/sse`, `/messages`). Not compatible with remote auth.      |
-| Sessions        | `SESSION_TIMEOUT_SECONDS`                 | `3600`                      | Idle session timeout in HTTP mode.                                                       |
-| Sessions        | `OAUTH_STATELESS_MODE`                    | `false`                     | Use stateless Streamable HTTP transports; clients must send auth on every request.       |
-| Sessions        | `MAX_SESSIONS`                            | `1000`                      | Maximum concurrent sessions (`503` when reached).                                        |
-| Sessions        | `MAX_REQUESTS_PER_MINUTE`                 | `300`                       | Per-session rate limit (`429` when exceeded).                                            |
-| Policy          | `GITLAB_READ_ONLY_MODE`                   | `false`                     | Disable tools that require `write`, `delete`, or `admin` capabilities.                   |
-| Policy          | `GITLAB_ALLOWED_PROJECT_IDS`              | —                           | Restrict access to specific GitLab project IDs.                                          |
-| Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                        |
-| Policy          | `GITLAB_TOOLSETS`                         | —                           | Domain presets such as `core`, `merge-requests`, `issues`, or `pipelines`.               |
-| Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.        |
-| Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                           |
-| Policy          | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | `false`                     | Deprecated compatibility setting; raw GraphQL stays disabled in project-scoped mode.     |
-| Auth Extensions | `GITLAB_USE_OAUTH`                        | `false`                     | Enable OAuth 2.0 PKCE flow.                                                              |
-| Auth Extensions | `GITLAB_OAUTH_SCOPES`                     | mode-dependent              | OAuth scopes advertised/requested by local OAuth and MCP OAuth.                          |
-| Auth Extensions | `GITLAB_TOKEN_SCRIPT`                     | —                           | Resolve token from an external script.                                                   |
-| Auth Extensions | `GITLAB_TOKEN_FILE`                       | —                           | Resolve token from a local file.                                                         |
-| Auth Extensions | `GITLAB_AUTH_COOKIE_PATH`                 | —                           | Enable cookie-jar based session auth from Netscape cookie file.                          |
-| Output          | `GITLAB_RESPONSE_MODE`                    | `json`                      | Response format: `json`, `compact-json`, `yaml`.                                         |
-| Output          | `GITLAB_MAX_RESPONSE_BYTES`               | `200000`                    | Max response payload (1KB–2MB), oversized payloads are truncated safely.                 |
-| Output          | `GITLAB_MAX_LOCAL_FILE_BYTES`             | `250000000`                 | Max size for files saved locally by download tools such as job artifacts.                |
-| Output          | `GITLAB_DOWNLOAD_TOKEN_SECRET`            | random per process          | Secret for short-lived HTTP download proxy URLs; set this for multi-replica deployments. |
-| Output          | `GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS`       | `300`                       | Lifetime of generated HTTP download proxy URLs.                                          |
-| Output          | `GITLAB_HTTP_TIMEOUT_MS`                  | `20000`                     | Upstream GitLab HTTP timeout (1s–120s).                                                  |
-| Output          | `GITLAB_ERROR_DETAIL_MODE`                | `safe/full`                 | Error verbosity (`safe` by default in production, `full` otherwise).                     |
-| Network/TLS     | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`   | —                           | Proxy settings for outbound GitLab requests, including per-host proxy bypass rules.      |
-| Network/TLS     | `GITLAB_CA_CERT_PATH`                     | —                           | Custom CA certificate path (PEM).                                                        |
-| Network/TLS     | `GITLAB_CLOUDFLARE_BYPASS`                | `false`                     | Add browser-like headers for Cloudflare-protected instances.                             |
-| Network/TLS     | `GITLAB_USER_AGENT`                       | —                           | Custom User-Agent for GitLab requests.                                                   |
+| Area            | Variable                                  | Default                     | Description                                                                                                 |
+| --------------- | ----------------------------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| GitLab API      | `GITLAB_API_URL`                          | `https://gitlab.com/api/v4` | Base API URL. Supports comma-separated multi-instance URLs.                                                 |
+| GitLab API      | `GITLAB_PERSONAL_ACCESS_TOKEN`            | —                           | Static default token used when `REMOTE_AUTHORIZATION=false`.                                                |
+| GitLab API      | `GITLAB_JOB_TOKEN`                        | —                           | Static CI job token fallback when no personal access token is configured.                                   |
+| Remote Auth     | `REMOTE_AUTHORIZATION`                    | `false`                     | Require per-request token headers in HTTP mode (disables fallback token chain).                             |
+| Remote Auth     | `ENABLE_DYNAMIC_API_URL`                  | `false`                     | Require `X-GitLab-API-URL` per request. Requires `REMOTE_AUTHORIZATION=true`.                               |
+| Remote Auth     | `GITLAB_MCP_OAUTH`                        | `false`                     | Enable MCP OAuth discovery/proxy endpoints for HTTP mode. Requires `MCP_SERVER_URL`.                        |
+| HTTP Server     | `HTTP_HOST`                               | `127.0.0.1`                 | HTTP bind host (`0.0.0.0` for external access).                                                             |
+| HTTP Server     | `HTTP_PORT`                               | `3333`                      | HTTP server port.                                                                                           |
+| HTTP Server     | `MCP_SERVER_URL`                          | —                           | Public base URL used when HTTP download tools return proxy URLs.                                            |
+| HTTP Server     | `HTTP_JSON_ONLY`                          | `false`                     | Force JSON-only responses (no streaming framing).                                                           |
+| HTTP Server     | `SSE`                                     | `false`                     | Enable legacy SSE endpoints (`/sse`, `/messages`). Not compatible with remote auth.                         |
+| Sessions        | `SESSION_TIMEOUT_SECONDS`                 | `3600`                      | Idle session timeout in HTTP mode.                                                                          |
+| Sessions        | `OAUTH_STATELESS_MODE`                    | `false`                     | Use stateless Streamable HTTP transports; clients must send auth on every request.                          |
+| Sessions        | `MAX_SESSIONS`                            | `1000`                      | Maximum concurrent sessions (`503` when reached).                                                           |
+| Sessions        | `MAX_REQUESTS_PER_MINUTE`                 | `300`                       | Per-session rate limit (`429` when exceeded).                                                               |
+| Policy          | `GITLAB_READ_ONLY_MODE`                   | `false`                     | Disable tools that require `write`, `delete`, or `admin` capabilities.                                      |
+| Policy          | `GITLAB_ALLOWED_PROJECT_IDS`              | —                           | Restrict access to specific GitLab project IDs.                                                             |
+| Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                                           |
+| Policy          | `GITLAB_TOOLSETS`                         | `core`                      | Domain presets such as `core`, `merge-requests`, `issues`, or `pipelines`; use `all` for the full registry. |
+| Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                           |
+| Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                                              |
+| Policy          | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | `false`                     | Deprecated compatibility setting; raw GraphQL stays disabled in project-scoped mode.                        |
+| Auth Extensions | `GITLAB_USE_OAUTH`                        | `false`                     | Enable OAuth 2.0 PKCE flow.                                                                                 |
+| Auth Extensions | `GITLAB_OAUTH_SCOPES`                     | mode-dependent              | OAuth scopes advertised/requested by local OAuth and MCP OAuth.                                             |
+| Auth Extensions | `GITLAB_TOKEN_SCRIPT`                     | —                           | Resolve token from an external script.                                                                      |
+| Auth Extensions | `GITLAB_TOKEN_FILE`                       | —                           | Resolve token from a local file.                                                                            |
+| Auth Extensions | `GITLAB_AUTH_COOKIE_PATH`                 | —                           | Enable cookie-jar based session auth from Netscape cookie file.                                             |
+| Output          | `GITLAB_RESPONSE_MODE`                    | `json`                      | Response format: `json`, `compact-json`, `yaml`.                                                            |
+| Output          | `GITLAB_MAX_RESPONSE_BYTES`               | `200000`                    | Max response payload (1KB–2MB), oversized payloads are truncated safely.                                    |
+| Output          | `GITLAB_MAX_LOCAL_FILE_BYTES`             | `250000000`                 | Max size for files saved locally by download tools such as job artifacts.                                   |
+| Output          | `GITLAB_DOWNLOAD_TOKEN_SECRET`            | random per process          | Secret for short-lived HTTP download proxy URLs; set this for multi-replica deployments.                    |
+| Output          | `GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS`       | `300`                       | Lifetime of generated HTTP download proxy URLs.                                                             |
+| Output          | `GITLAB_HTTP_TIMEOUT_MS`                  | `20000`                     | Upstream GitLab HTTP timeout (1s–120s).                                                                     |
+| Output          | `GITLAB_ERROR_DETAIL_MODE`                | `safe/full`                 | Error verbosity (`safe` by default in production, `full` otherwise).                                        |
+| Network/TLS     | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`   | —                           | Proxy settings for outbound GitLab requests, including per-host proxy bypass rules.                         |
+| Network/TLS     | `GITLAB_CA_CERT_PATH`                     | —                           | Custom CA certificate path (PEM).                                                                           |
+| Network/TLS     | `GITLAB_CLOUDFLARE_BYPASS`                | `false`                     | Add browser-like headers for Cloudflare-protected instances.                                                |
+| Network/TLS     | `GITLAB_USER_AGENT`                       | —                           | Custom User-Agent for GitLab requests.                                                                      |
 
 See [docs/configuration.md](docs/configuration.md) for the complete reference.
 

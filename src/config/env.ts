@@ -78,7 +78,7 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   GITLAB_ALLOWED_PROJECT_IDS: z.string().optional(),
   GITLAB_ALLOWED_TOOLS: z.string().optional(),
-  GITLAB_TOOLSETS: z.string().optional(),
+  GITLAB_TOOLSETS: z.string().default("core"),
   GITLAB_ENABLE_COMPATIBILITY_ALIASES: z.enum(["true", "false"]).default("false"),
   GITLAB_DISABLED_CAPABILITIES: z.string().optional(),
   GITLAB_DENIED_TOOLS_REGEX: z.string().optional(),

@@ -94,16 +94,16 @@ Dynamic API URLs are allowlisted by canonical `host:port`. Hosts from `GITLAB_AP
 
 ## Policy
 
-| Variable                                  | Type    | Default | Description                                                                                                                                                        |
-| ----------------------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GITLAB_READ_ONLY_MODE`                   | boolean | `false` | Disable tools that require `write`, `delete`, or `admin` capabilities.                                                                                             |
-| `GITLAB_ALLOWED_PROJECT_IDS`              | string  | —       | Comma-separated project IDs. If set, only these projects can be accessed. Empty = no restriction.                                                                  |
-| `GITLAB_ALLOWED_TOOLS`                    | string  | —       | Comma-separated tool allowlist. Accepts names with or without `gitlab_` prefix (e.g. `get_project` or `gitlab_get_project`). Empty = all tools enabled.            |
-| `GITLAB_TOOLSETS`                         | string  | —       | Comma-separated domain presets. Empty or `all` exposes the full registry; `core` is a curated compact set. Presets combine as a union before other policy filters. |
-| `GITLAB_ENABLE_COMPATIBILITY_ALIASES`     | boolean | `false` | Expose legacy duplicate names for older clients. Canonical tools remain available when aliases are hidden.                                                         |
-| `GITLAB_DISABLED_CAPABILITIES`            | string  | —       | Comma-separated capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                                                                  |
-| `GITLAB_DENIED_TOOLS_REGEX`               | string  | —       | Regex pattern to deny tools by name (example: `^gitlab_delete_`). Unsafe nested-quantifier, overly long, or invalid patterns fail startup.                         |
-| `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | boolean | `false` | Deprecated compatibility setting. Raw GraphQL tools stay disabled whenever `GITLAB_ALLOWED_PROJECT_IDS` is set.                                                    |
+| Variable                                  | Type    | Default | Description                                                                                                                                             |
+| ----------------------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GITLAB_READ_ONLY_MODE`                   | boolean | `false` | Disable tools that require `write`, `delete`, or `admin` capabilities.                                                                                  |
+| `GITLAB_ALLOWED_PROJECT_IDS`              | string  | —       | Comma-separated project IDs. If set, only these projects can be accessed. Empty = no restriction.                                                       |
+| `GITLAB_ALLOWED_TOOLS`                    | string  | —       | Comma-separated tool allowlist. Accepts names with or without `gitlab_` prefix (e.g. `get_project` or `gitlab_get_project`). Empty = all tools enabled. |
+| `GITLAB_TOOLSETS`                         | string  | `core`  | Comma-separated domain presets. Empty or `all` exposes the full registry; presets combine as a union before other policy filters.                       |
+| `GITLAB_ENABLE_COMPATIBILITY_ALIASES`     | boolean | `false` | Expose legacy duplicate names for older clients. Canonical tools remain available when aliases are hidden.                                              |
+| `GITLAB_DISABLED_CAPABILITIES`            | string  | —       | Comma-separated capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                                                       |
+| `GITLAB_DENIED_TOOLS_REGEX`               | string  | —       | Regex pattern to deny tools by name (example: `^gitlab_delete_`). Unsafe nested-quantifier, overly long, or invalid patterns fail startup.              |
+| `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | boolean | `false` | Deprecated compatibility setting. Raw GraphQL tools stay disabled whenever `GITLAB_ALLOWED_PROJECT_IDS` is set.                                         |
 
 ### Strict Project Scope
 
