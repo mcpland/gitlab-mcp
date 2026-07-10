@@ -39,6 +39,25 @@ describe("ToolPolicyEngine", () => {
       ).toEqual([tool("read", ["read"]), tool("graphql_query", ["read", "graphql"])]);
     });
 
+    it("allows read, write, and admin but blocks delete capabilities in modify mode", () => {
+      const engine = new ToolPolicyEngine({
+        permissionMode: "modify",
+        disabledCapabilities: [],
+        allowedTools: [],
+        enabledFeatures: defaultFeatures
+      });
+
+      expect(
+        engine.filterTools([
+          tool("read", ["read"]),
+          tool("write", ["write"]),
+          tool("admin", ["admin"]),
+          tool("admin_delete", ["admin", "delete"]),
+          tool("delete", ["delete"])
+        ])
+      ).toEqual([tool("read", ["read"]), tool("write", ["write"]), tool("admin", ["admin"])]);
+    });
+
     it("allows all tools when no restrictions are set", () => {
       const engine = new ToolPolicyEngine({
         readOnlyMode: false,
@@ -152,6 +171,22 @@ describe("ToolPolicyEngine", () => {
       expect(() => {
         engine.assertCanExecute(tool("create_issue", ["write"]));
       }).toThrow("disabled by policy");
+    });
+
+    it("guards direct delete execution in modify mode", () => {
+      const engine = new ToolPolicyEngine({
+        permissionMode: "modify",
+        disabledCapabilities: [],
+        allowedTools: [],
+        enabledFeatures: defaultFeatures
+      });
+
+      expect(() => {
+        engine.assertCanExecute(tool("delete_issue", ["delete"]));
+      }).toThrow("disabled by policy");
+      expect(() => {
+        engine.assertCanExecute(tool("update_project", ["admin"]));
+      }).not.toThrow();
     });
 
     it("throws for explicitly disabled capabilities", () => {

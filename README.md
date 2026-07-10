@@ -11,7 +11,7 @@ A production-ready [MCP](https://modelcontextprotocol.io/) server for GitLab. It
 - **Comprehensive GitLab coverage** — projects, merge requests (with code-context analysis), issues, pipelines, wikis, milestones, releases, labels, commits, branches, GraphQL, and file management
 - **Multiple transports** — stdio for local CLI usage, Streamable HTTP for remote deployments, optional SSE
 - **Flexible authentication** — personal access tokens, OAuth 2.0 PKCE, external token scripts, token files, cookie-based auth, and per-request remote authorization
-- **Policy engine** — read-only mode, tool allowlist/denylist, feature toggles, and project-scoped restrictions
+- **Policy engine** — readonly/modify/full modes, tool allowlist/denylist, feature toggles, and project-scoped restrictions
 - **Enterprise networking** — HTTP/HTTPS proxy, custom CA certificates, Cloudflare bypass, multi-instance API rotation
 - **Output control** — JSON, compact JSON, or YAML formatting with configurable response size limits
 
@@ -56,7 +56,7 @@ The server supports three auth patterns:
         "GITLAB_OAUTH_REDIRECT_URI": "http://127.0.0.1:8765/callback",
         "GITLAB_API_URL": "https://gitlab.com/api/v4",
         "GITLAB_ALLOWED_PROJECT_IDS": "",
-        "GITLAB_READ_ONLY_MODE": "false",
+        "GITLAB_PERMISSION_MODE": "full",
         "USE_GITLAB_WIKI": "true",
         "USE_MILESTONE": "true",
         "USE_PIPELINE": "true"
@@ -80,7 +80,7 @@ If your OAuth app is confidential, also set `GITLAB_OAUTH_CLIENT_SECRET`.
         "GITLAB_PERSONAL_ACCESS_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
         "GITLAB_API_URL": "https://gitlab.com/api/v4",
         "GITLAB_ALLOWED_PROJECT_IDS": "",
-        "GITLAB_READ_ONLY_MODE": "false",
+        "GITLAB_PERMISSION_MODE": "full",
         "USE_GITLAB_WIKI": "true",
         "USE_MILESTONE": "true",
         "USE_PIPELINE": "true"
@@ -112,7 +112,7 @@ PAT with secure prompt input:
       "env": {
         "GITLAB_PERSONAL_ACCESS_TOKEN": "${input:gitlab_token}",
         "GITLAB_API_URL": "https://gitlab.com/api/v4",
-        "GITLAB_READ_ONLY_MODE": "false"
+        "GITLAB_PERMISSION_MODE": "full"
       }
     }
   }
@@ -346,7 +346,13 @@ See [docs/tools.md](docs/tools.md) for usage details and
 The policy engine controls which tools are available at registration time:
 
 ```bash
-# Read-only mode — disables write/delete/admin capabilities
+# Read-only mode — exposes only read and GraphQL query capabilities
+GITLAB_PERMISSION_MODE=readonly
+
+# Modify mode — allows read/write/admin, but hides delete-capability tools
+GITLAB_PERMISSION_MODE=modify
+
+# Deprecated legacy kill switch; true takes precedence and forces readonly
 GITLAB_READ_ONLY_MODE=true
 
 # Disable specific capability classes without going fully read-only
@@ -385,6 +391,8 @@ USE_GITLAB_WIKI=false
 
 Unsafe or invalid `GITLAB_DENIED_TOOLS_REGEX` patterns fail startup.
 
+In `modify` mode, raw GraphQL mutation tools remain available for updates, but the server parses each document and blocks mutation-root fields containing `delete`, `destroy`, `remove`, `prune`, or `purge`. Aliases and fragment expansion cannot bypass the check, and documents that cannot be verified fail closed.
+
 `GITLAB_ALLOWED_PROJECT_IDS` is a strict resource boundary, not just a default project. Project-scoped tools validate every supplied source, target, and parent project ID. Safe global list/search tools return only allowed projects (global code search is executed once per allowed project), while group-wide, namespace-wide, user-wide, event-wide, fork, and unscoped create operations are hidden. Todo reads are filtered and a single todo is verified before mutation. Raw GraphQL executors are always hidden because an arbitrary document cannot be proven project-safe; project-bound Work Item tools remain available and enforce the same allowlist. The legacy `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` variable is retained for configuration compatibility but cannot override this boundary.
 
 ## Configuration
@@ -415,7 +423,8 @@ node dist/http.js --env-file=.env.production
 | Sessions        | `OAUTH_STATELESS_MODE`                    | `false`                     | Use stateless Streamable HTTP transports; clients must send auth on every request.                          |
 | Sessions        | `MAX_SESSIONS`                            | `1000`                      | Maximum concurrent sessions (`503` when reached).                                                           |
 | Sessions        | `MAX_REQUESTS_PER_MINUTE`                 | `300`                       | Per-session rate limit (`429` when exceeded).                                                               |
-| Policy          | `GITLAB_READ_ONLY_MODE`                   | `false`                     | Disable tools that require `write`, `delete`, or `admin` capabilities.                                      |
+| Policy          | `GITLAB_PERMISSION_MODE`                  | `full`                      | `readonly` allows reads only; `modify` blocks delete capabilities; `full` allows all capabilities.          |
+| Policy          | `GITLAB_READ_ONLY_MODE`                   | `false`                     | Deprecated kill switch. When `true`, overrides `GITLAB_PERMISSION_MODE` and forces `readonly`.              |
 | Policy          | `GITLAB_ALLOWED_PROJECT_IDS`              | —                           | Restrict access to specific GitLab project IDs.                                                             |
 | Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                                           |
 | Policy          | `GITLAB_TOOLSETS`                         | `core`                      | Domain presets such as `core`, `merge-requests`, `issues`, or `pipelines`; use `all` for the full registry. |

@@ -297,7 +297,7 @@ Several tools have backward-compatible aliases to support existing integrations:
 - `gitlab_mr_discussions` → alias of `gitlab_list_merge_request_discussions`
 - `gitlab_get_merge_request_notes` → alias of `gitlab_list_merge_request_notes`
 - `gitlab_edit_milestone` → alias of `gitlab_update_milestone`
-- `gitlab_execute_graphql` → backward-compatible executor honoring read-only policy
+- `gitlab_execute_graphql` → backward-compatible executor honoring permission-mode policy
 
 ### Structured Content in Responses
 

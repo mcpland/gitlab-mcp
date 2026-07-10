@@ -82,6 +82,34 @@ describe("GraphQL tools: Registration", () => {
       await serverTransport.close();
     }
   });
+
+  it("modify mode keeps write/admin and raw mutation tools but hides delete tools", async () => {
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ permissionMode: "modify" })
+    );
+
+    try {
+      const names = await listToolNames(client);
+      expect(names).toContain("gitlab_create_issue");
+      expect(names).toContain("gitlab_update_project");
+      expect(names).toContain("gitlab_execute_graphql_mutation");
+      expect(names).not.toContain("gitlab_delete_issue");
+
+      const discovery = await client.callTool({
+        name: "gitlab_discover_tools",
+        arguments: { query: "gitlab_delete_issue", include_disabled: true, limit: 10 }
+      });
+      const discoveryResult = JSON.parse(getErrorText(discovery as never)) as {
+        tools: Array<{ name: string; disabled_reasons?: string[] }>;
+      };
+      expect(
+        discoveryResult.tools.find((tool) => tool.name === "gitlab_delete_issue")
+      ).toMatchObject({ disabled_reasons: ["policy"] });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -150,6 +178,53 @@ describe("GraphQL tools: Query/Mutation enforcement", () => {
 
       expect(result.isError).toBeFalsy();
       expect(executeGraphql).toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("modify mode allows non-destructive raw mutations", async () => {
+    const executeGraphql = vi.fn().mockResolvedValue({ data: { updateProject: { errors: [] } } });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ permissionMode: "modify", gitlabStub: { executeGraphql } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_execute_graphql_mutation",
+        arguments: {
+          query: "mutation { updateProject(input: {}) { errors } }"
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(executeGraphql).toHaveBeenCalledOnce();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("modify mode blocks destructive raw mutations before GitLab is called", async () => {
+    const executeGraphql = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ permissionMode: "modify", gitlabStub: { executeGraphql } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_execute_graphql_mutation",
+        arguments: {
+          query: "mutation { safeAlias: destroyProject(input: {}) { errors } }"
+        }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getErrorText(result as never)).toContain("destroyProject");
+      expect(executeGraphql).not.toHaveBeenCalled();
     } finally {
       await clientTransport.close();
       await serverTransport.close();
@@ -244,6 +319,34 @@ describe("GraphQL tools: Compat (gitlab_execute_graphql)", () => {
 
       expect(result.isError).toBeFalsy();
       expect(executeGraphql).toHaveBeenCalled();
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("compat applies the destructive mutation guard in modify mode", async () => {
+    const executeGraphql = vi.fn();
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({
+        permissionMode: "modify",
+        enableCompatibilityAliases: true,
+        gitlabStub: { executeGraphql }
+      })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_execute_graphql",
+        arguments: {
+          query: "mutation { pruneContainerRepository(input: {}) { errors } }"
+        }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getErrorText(result as never)).toContain("pruneContainerRepository");
+      expect(executeGraphql).not.toHaveBeenCalled();
     } finally {
       await clientTransport.close();
       await serverTransport.close();

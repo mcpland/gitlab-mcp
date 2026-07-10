@@ -50,19 +50,19 @@ The client will normalize each entry and rotate across them for load distributio
 
 ### OAuth 2.0 PKCE
 
-| Variable                               | Type         | Default                              | Description                                                                                                                              |
-| -------------------------------------- | ------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `GITLAB_USE_OAUTH`                     | boolean      | `false`                              | Enable OAuth PKCE flow.                                                                                                                  |
-| `GITLAB_OAUTH_CLIENT_ID`               | string       | —                                    | **Required** when OAuth is enabled. Application ID from GitLab OAuth settings.                                                           |
-| `GITLAB_OAUTH_CLIENT_SECRET`           | string       | —                                    | Optional. Required only for confidential OAuth applications.                                                                             |
-| `GITLAB_OAUTH_GITLAB_URL`              | string       | derived from `GITLAB_API_URL`        | GitLab base URL for OAuth endpoints (e.g. `https://gitlab.com`).                                                                         |
-| `GITLAB_OAUTH_REDIRECT_URI`            | string (URL) | `http://127.0.0.1:8765/callback`     | Local callback URL for the OAuth flow.                                                                                                   |
-| `GITLAB_OAUTH_SCOPES`                  | string       | `api` (`read_api` in read-only mode) | Space or comma-separated OAuth scopes. If omitted, gitlab-mcp defaults to `read_api` when `GITLAB_READ_ONLY_MODE=true`, otherwise `api`. |
-| `GITLAB_OAUTH_ALLOWED_GROUPS`          | CSV string   | —                                    | OAuth user allowlist by GitLab group `full_path`. A parent path also permits its subgroups.                                              |
-| `GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS` | number       | `60`                                 | Positive and negative membership cache TTL (1–300s).                                                                                     |
-| `GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES` | number       | `1000`                               | Maximum token-digest membership cache entries (1–10000).                                                                                 |
-| `GITLAB_OAUTH_TOKEN_PATH`              | string       | `~/.gitlab-mcp-oauth-token.json`     | File path for persisting OAuth tokens. Stored with `chmod 600`.                                                                          |
-| `GITLAB_OAUTH_AUTO_OPEN_BROWSER`       | boolean      | `true`                               | Automatically open the browser for authorization.                                                                                        |
+| Variable                               | Type         | Default                             | Description                                                                                                                                             |
+| -------------------------------------- | ------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GITLAB_USE_OAUTH`                     | boolean      | `false`                             | Enable OAuth PKCE flow.                                                                                                                                 |
+| `GITLAB_OAUTH_CLIENT_ID`               | string       | —                                   | **Required** when OAuth is enabled. Application ID from GitLab OAuth settings.                                                                          |
+| `GITLAB_OAUTH_CLIENT_SECRET`           | string       | —                                   | Optional. Required only for confidential OAuth applications.                                                                                            |
+| `GITLAB_OAUTH_GITLAB_URL`              | string       | derived from `GITLAB_API_URL`       | GitLab base URL for OAuth endpoints (e.g. `https://gitlab.com`).                                                                                        |
+| `GITLAB_OAUTH_REDIRECT_URI`            | string (URL) | `http://127.0.0.1:8765/callback`    | Local callback URL for the OAuth flow.                                                                                                                  |
+| `GITLAB_OAUTH_SCOPES`                  | string       | `api` (`read_api` in readonly mode) | Space or comma-separated OAuth scopes. If omitted, gitlab-mcp defaults to `read_api` when the effective permission mode is `readonly`, otherwise `api`. |
+| `GITLAB_OAUTH_ALLOWED_GROUPS`          | CSV string   | —                                   | OAuth user allowlist by GitLab group `full_path`. A parent path also permits its subgroups.                                                             |
+| `GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS` | number       | `60`                                | Positive and negative membership cache TTL (1–300s).                                                                                                    |
+| `GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES` | number       | `1000`                              | Maximum token-digest membership cache entries (1–10000).                                                                                                |
+| `GITLAB_OAUTH_TOKEN_PATH`              | string       | `~/.gitlab-mcp-oauth-token.json`    | File path for persisting OAuth tokens. Stored with `chmod 600`.                                                                                         |
+| `GITLAB_OAUTH_AUTO_OPEN_BROWSER`       | boolean      | `true`                              | Automatically open the browser for authorization.                                                                                                       |
 
 ### External Token Script
 
@@ -99,7 +99,8 @@ Dynamic API URLs are allowlisted by canonical `host:port`. Hosts from `GITLAB_AP
 
 | Variable                                  | Type    | Default | Description                                                                                                                                                            |
 | ----------------------------------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GITLAB_READ_ONLY_MODE`                   | boolean | `false` | Disable tools that require `write`, `delete`, or `admin` capabilities.                                                                                                 |
+| `GITLAB_PERMISSION_MODE`                  | enum    | `full`  | Permission profile: `readonly` exposes read operations, `modify` permits read/write/admin but blocks `delete`, and `full` permits every capability.                    |
+| `GITLAB_READ_ONLY_MODE`                   | boolean | `false` | Deprecated compatibility switch. `true` takes precedence over `GITLAB_PERMISSION_MODE` and forces `readonly`.                                                          |
 | `GITLAB_ALLOWED_PROJECT_IDS`              | string  | —       | Comma-separated project IDs. If set, only these projects can be accessed. Empty = no restriction.                                                                      |
 | `GITLAB_ALLOWED_TOOLS`                    | string  | —       | Comma-separated tool allowlist. Accepts names with or without `gitlab_` prefix (e.g. `get_project` or `gitlab_get_project`). Empty = all tools enabled.                |
 | `GITLAB_TOOLSETS`                         | string  | `core`  | Comma-separated domain presets. Empty or `all` exposes the full registry; presets such as `ci-catalog` combine as a union before other policy filters.                 |
@@ -110,6 +111,8 @@ Dynamic API URLs are allowlisted by canonical `host:port`. Hosts from `GITLAB_AP
 | `GITLAB_DISABLED_CAPABILITIES`            | string  | —       | Comma-separated capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                                                                      |
 | `GITLAB_DENIED_TOOLS_REGEX`               | string  | —       | Regex pattern to deny tools by name (example: `^gitlab_delete_`). Unsafe nested-quantifier, overly long, or invalid patterns fail startup.                             |
 | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | boolean | `false` | Deprecated compatibility setting. Raw GraphQL tools stay disabled whenever `GITLAB_ALLOWED_PROJECT_IDS` is set.                                                        |
+
+In `modify` mode, the raw GraphQL mutation executor remains available for non-destructive updates. Before execution, gitlab-mcp parses the document AST and rejects mutation-root field names containing `delete`, `destroy`, `remove`, `prune`, or `purge`, including fields reached through aliases, inline fragments, and fragment spreads. Documents that cannot be verified are rejected.
 
 ### Strict Project Scope
 

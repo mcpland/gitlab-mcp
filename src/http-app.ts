@@ -382,7 +382,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         timeoutMs: appEnv.GITLAB_HTTP_TIMEOUT_MS
       })
     : undefined;
-  const oauthScopes = resolveOauthScopes(appEnv.GITLAB_OAUTH_SCOPES, appEnv.GITLAB_READ_ONLY_MODE);
+  const oauthScopes = resolveOauthScopes(
+    appEnv.GITLAB_OAUTH_SCOPES,
+    appEnv.GITLAB_PERMISSION_MODE === "readonly"
+  );
   const oauthBearerAuth =
     appEnv.GITLAB_MCP_OAUTH && oauthProvider && oauthIssuerUrl
       ? requireBearerAuth({
@@ -422,7 +425,8 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       remoteAuthorization: appEnv.REMOTE_AUTHORIZATION,
       mcpOAuth: appEnv.GITLAB_MCP_OAUTH,
       statelessMode: appEnv.OAUTH_STATELESS_MODE,
-      readOnlyMode: appEnv.GITLAB_READ_ONLY_MODE,
+      permissionMode: appEnv.GITLAB_PERMISSION_MODE,
+      readOnlyMode: appEnv.GITLAB_PERMISSION_MODE === "readonly",
       sseEnabled: appEnv.SSE
     });
   });

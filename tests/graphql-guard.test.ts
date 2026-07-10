@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { containsGraphqlMutation, resolveToolScopeMetadata } from "../src/tools/gitlab.js";
+import {
+  assertGraphqlDocumentAllowedByPermissionMode,
+  containsGraphqlMutation,
+  resolveToolScopeMetadata
+} from "../src/tools/gitlab.js";
 
 describe("containsGraphqlMutation", () => {
   it("detects mutation operations", () => {
@@ -106,6 +110,108 @@ describe("containsGraphqlMutation", () => {
 
   it("detects mutation with leading whitespace/newlines", () => {
     expect(containsGraphqlMutation("\n\n  mutation { deleteIssue { id } }")).toBeTruthy();
+  });
+});
+
+describe("modify-mode raw GraphQL guard", () => {
+  it("allows non-destructive top-level mutation fields", () => {
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        'mutation { updateProject(input: { description: "delete/destroy/remove" }) { project { id } } }',
+        "modify"
+      )
+    ).not.toThrow();
+  });
+
+  it("blocks destructive field names while ignoring a safe field's alias", () => {
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        "mutation { keepProject: deleteProject(input: {}) { errors } }",
+        "modify"
+      )
+    ).toThrow("deleteProject");
+
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        "mutation { deleteProject: createProject(input: {}) { errors } }",
+        "modify"
+      )
+    ).not.toThrow();
+  });
+
+  it("checks fields exposed through inline fragments and fragment spreads", () => {
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        "mutation { ... on Mutation { purgeCaches(input: {}) { errors } } }",
+        "modify"
+      )
+    ).toThrow("purgeCaches");
+
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        `mutation { ...DestructiveMutation }
+         fragment DestructiveMutation on Mutation {
+           removeMember(input: {}) { errors }
+         }`,
+        "modify"
+      )
+    ).toThrow("removeMember");
+  });
+
+  it("does not inspect response fields below the mutation root", () => {
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        "mutation { updateProject(input: {}) { project { deleteProtectionRule } } }",
+        "modify"
+      )
+    ).not.toThrow();
+  });
+
+  it("fails closed when a document or referenced fragment cannot be verified", () => {
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode("mutation { updateProject(", "modify")
+    ).toThrow("could not be verified safely");
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        "mutation { ...MissingMutationFields }",
+        "modify"
+      )
+    ).toThrow("could not be verified safely");
+  });
+
+  it("fails closed for a referenced fragment cycle", () => {
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        `mutation { ...FirstMutationFields }
+         fragment FirstMutationFields on Mutation { ...SecondMutationFields }
+         fragment SecondMutationFields on Mutation { ...FirstMutationFields }`,
+        "modify"
+      )
+    ).toThrow("could not be verified safely");
+  });
+
+  it("ignores destructive fields in fragments that no mutation references", () => {
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        `mutation { updateProject(input: {}) { errors } }
+         fragment UnusedMutationFields on Mutation {
+           deleteProject(input: {}) { errors }
+         }`,
+        "modify"
+      )
+    ).not.toThrow();
+  });
+
+  it("does not apply the destructive-name guard in full mode", () => {
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode(
+        "mutation { destroyProject(input: {}) { errors } }",
+        "full"
+      )
+    ).not.toThrow();
+    expect(() =>
+      assertGraphqlDocumentAllowedByPermissionMode("mutation { destroyProject(", "full")
+    ).not.toThrow();
   });
 });
 

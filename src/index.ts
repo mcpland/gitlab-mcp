@@ -39,7 +39,7 @@ async function main(): Promise<void> {
       beforeRequest: (requestContext) => requestRuntime.beforeRequest(requestContext)
     }),
     policy: new ToolPolicyEngine({
-      readOnlyMode: env.GITLAB_READ_ONLY_MODE,
+      permissionMode: env.GITLAB_PERMISSION_MODE,
       disabledCapabilities: env.GITLAB_DISABLED_CAPABILITIES,
       allowedTools: env.GITLAB_ALLOWED_TOOLS,
       deniedToolsRegex,

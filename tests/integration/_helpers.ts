@@ -11,7 +11,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import { createMcpServer } from "../../src/server/build-server.js";
 import { OutputFormatter } from "../../src/lib/output.js";
-import type { ToolCapability } from "../../src/lib/tool-capabilities.js";
+import type { GitLabPermissionMode, ToolCapability } from "../../src/lib/tool-capabilities.js";
 import { ToolPolicyEngine } from "../../src/lib/policy.js";
 import type { AppContext } from "../../src/types/context.js";
 
@@ -50,6 +50,7 @@ const defaultEnv: AppContext["env"] = {
   GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS: 60,
   GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES: 1_000,
   GITLAB_READ_ONLY_MODE: false,
+  GITLAB_PERMISSION_MODE: "full",
   GITLAB_ALLOWED_PROJECT_IDS: [],
   GITLAB_ALLOWED_TOOLS: [],
   GITLAB_TOOLSETS: [],
@@ -118,6 +119,7 @@ const defaultEnv: AppContext["env"] = {
 
 export interface BuildContextOptions {
   readOnlyMode?: boolean;
+  permissionMode?: GitLabPermissionMode;
   remoteAuthorization?: boolean;
   allowLocalFileTools?: boolean;
   allowedTools?: string[];
@@ -139,7 +141,9 @@ export interface BuildContextOptions {
 
 export function buildContext(overrides?: BuildContextOptions): AppContext {
   const features = overrides?.enabledFeatures ?? defaultFeatures;
-  const readOnlyMode = overrides?.readOnlyMode ?? false;
+  const permissionMode = overrides?.readOnlyMode
+    ? "readonly"
+    : (overrides?.permissionMode ?? "full");
   const token = overrides?.token === null ? undefined : (overrides?.token ?? "test-token");
 
   return {
@@ -147,7 +151,8 @@ export function buildContext(overrides?: BuildContextOptions): AppContext {
       ...defaultEnv,
       MCP_SERVER_NAME: overrides?.serverName ?? defaultEnv.MCP_SERVER_NAME,
       GITLAB_PERSONAL_ACCESS_TOKEN: token,
-      GITLAB_READ_ONLY_MODE: readOnlyMode,
+      GITLAB_READ_ONLY_MODE: overrides?.readOnlyMode ?? false,
+      GITLAB_PERMISSION_MODE: permissionMode,
       REMOTE_AUTHORIZATION: overrides?.remoteAuthorization ?? defaultEnv.REMOTE_AUTHORIZATION,
       GITLAB_ALLOWED_PROJECT_IDS: overrides?.allowedProjectIds ?? [],
       GITLAB_ALLOWED_TOOLS: overrides?.allowedTools ?? [],
@@ -177,7 +182,7 @@ export function buildContext(overrides?: BuildContextOptions): AppContext {
       ...overrides?.gitlabStub
     } as AppContext["gitlab"],
     policy: new ToolPolicyEngine({
-      readOnlyMode,
+      permissionMode,
       disabledCapabilities: overrides?.disabledCapabilities ?? [],
       allowedTools: overrides?.allowedTools ?? [],
       deniedToolsRegex: overrides?.deniedToolsRegex,

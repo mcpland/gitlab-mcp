@@ -1,4 +1,8 @@
-import { READ_ONLY_BLOCKED_CAPABILITIES, type ToolCapability } from "./tool-capabilities.js";
+import {
+  PERMISSION_MODE_BLOCKED_CAPABILITIES,
+  type GitLabPermissionMode,
+  type ToolCapability
+} from "./tool-capabilities.js";
 
 export interface ToolPolicyMeta {
   name: string;
@@ -7,7 +11,8 @@ export interface ToolPolicyMeta {
 }
 
 export interface ToolPolicyConfig {
-  readOnlyMode: boolean;
+  permissionMode?: GitLabPermissionMode;
+  readOnlyMode?: boolean;
   disabledCapabilities: ToolCapability[];
   allowedTools: string[];
   deniedToolsRegex?: RegExp;
@@ -22,12 +27,14 @@ export interface ToolPolicyConfig {
 export class ToolPolicyEngine {
   private readonly normalizedAllowedTools: Set<string>;
   private readonly disabledCapabilities: Set<ToolCapability>;
+  private readonly permissionMode: GitLabPermissionMode;
 
   constructor(private readonly config: ToolPolicyConfig) {
     this.normalizedAllowedTools = new Set(
       config.allowedTools.flatMap((name) => normalizeAllowedToolName(name))
     );
     this.disabledCapabilities = new Set(config.disabledCapabilities);
+    this.permissionMode = config.readOnlyMode ? "readonly" : (config.permissionMode ?? "full");
   }
 
   filterTools(tools: ToolPolicyMeta[]): ToolPolicyMeta[] {
@@ -69,10 +76,8 @@ export class ToolPolicyEngine {
   }
 
   private hasBlockedCapabilities(tool: ToolPolicyMeta): boolean {
-    if (
-      this.config.readOnlyMode &&
-      tool.capabilities.some((capability) => READ_ONLY_BLOCKED_CAPABILITIES.has(capability))
-    ) {
+    const permissionBlockedCapabilities = PERMISSION_MODE_BLOCKED_CAPABILITIES[this.permissionMode];
+    if (tool.capabilities.some((capability) => permissionBlockedCapabilities.has(capability))) {
       return true;
     }
 

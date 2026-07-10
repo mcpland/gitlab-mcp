@@ -253,17 +253,19 @@ The server uses [Pino](https://getpino.io/) for structured JSON logging:
 LOG_LEVEL=info   # Options: fatal, error, warn, info, debug, trace, silent
 ```
 
-### Read-Only Mode
+### Permission Modes
 
 For safety in production environments:
 
 ```bash
-GITLAB_READ_ONLY_MODE=true
+GITLAB_PERMISSION_MODE=readonly
 ```
 
-This disables tools that require `write`, `delete`, or `admin` capabilities at registration time.
+`readonly` disables tools that require `write`, `delete`, or `admin` capabilities at registration time. `modify` allows read, write, and admin capabilities while blocking delete-capability tools; `full` is the default and permits all capabilities.
 
-To disable only specific capability classes instead of going fully read-only:
+The deprecated `GITLAB_READ_ONLY_MODE=true` switch takes precedence over `GITLAB_PERMISSION_MODE` and forces `readonly` for existing deployments.
+
+To disable only specific capability classes instead of selecting a permission profile:
 
 ```bash
 GITLAB_DISABLED_CAPABILITIES=delete,graphql

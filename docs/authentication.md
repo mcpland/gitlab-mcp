@@ -75,7 +75,7 @@ GITLAB_OAUTH_REDIRECT_URI=http://127.0.0.1:8765/callback
 GITLAB_OAUTH_SCOPES=api
 ```
 
-If `GITLAB_OAUTH_SCOPES` is omitted, gitlab-mcp defaults to `api`, or `read_api` when `GITLAB_READ_ONLY_MODE=true`.
+If `GITLAB_OAUTH_SCOPES` is omitted, gitlab-mcp defaults to `api`, or `read_api` when the effective `GITLAB_PERMISSION_MODE` is `readonly`. The legacy `GITLAB_READ_ONLY_MODE=true` switch also forces this readonly behavior.
 
 ### Optional Settings
 

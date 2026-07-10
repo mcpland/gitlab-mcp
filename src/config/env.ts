@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 
 import { z } from "zod";
 
-import { TOOL_CAPABILITIES, type ToolCapability } from "../lib/tool-capabilities.js";
+import {
+  GITLAB_PERMISSION_MODES,
+  TOOL_CAPABILITIES,
+  type ToolCapability
+} from "../lib/tool-capabilities.js";
 import { parseOAuthAllowedGroups } from "../lib/oauth-group-authorizer.js";
 import {
   assertOAuthGroupConfiguration,
@@ -86,6 +90,7 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  GITLAB_PERMISSION_MODE: z.enum(GITLAB_PERMISSION_MODES).default("full"),
   GITLAB_ALLOWED_PROJECT_IDS: z.string().optional(),
   GITLAB_ALLOWED_TOOLS: z.string().optional(),
   GITLAB_TOOLSETS: z.string().default("core"),
@@ -159,6 +164,7 @@ if (!parsed.success) {
 }
 
 const data = parsed.data;
+const permissionMode = data.GITLAB_READ_ONLY_MODE ? "readonly" : data.GITLAB_PERMISSION_MODE;
 const rawApiUrls = parseCsv(data.GITLAB_API_URL);
 
 if (rawApiUrls.length === 0) {
@@ -215,6 +221,7 @@ if (data.NODE_TLS_REJECT_UNAUTHORIZED === "0" && data.GITLAB_ALLOW_INSECURE_TLS 
 export const env = {
   ...data,
   GITLAB_READ_ONLY_MODE: data.GITLAB_READ_ONLY_MODE,
+  GITLAB_PERMISSION_MODE: permissionMode,
   GITLAB_ERROR_DETAIL_MODE:
     data.GITLAB_ERROR_DETAIL_MODE ?? (data.NODE_ENV === "production" ? "safe" : "full"),
   GITLAB_USE_OAUTH: parseBoolean(data.GITLAB_USE_OAUTH, false),

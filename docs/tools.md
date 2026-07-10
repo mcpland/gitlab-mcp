@@ -1,6 +1,6 @@
 # Tools Reference
 
-This document lists all MCP tools provided by gitlab-mcp. Each tool is prefixed with `gitlab_` (except `health_check`). The **Mutating** column is a legacy shorthand for read-only mode visibility; runtime policy additionally classifies tools by capability (`read`, `write`, `delete`, `admin`, `graphql`).
+This document lists all MCP tools provided by gitlab-mcp. Each tool is prefixed with `gitlab_` (except `health_check`). The **Mutating** column is a legacy shorthand for permission-mode visibility; runtime policy additionally classifies tools by capability (`read`, `write`, `delete`, `admin`, `graphql`).
 
 All project-scoped tools accept an optional `project_id` parameter. When `GITLAB_ALLOWED_PROJECT_IDS` is configured with a single project, `project_id` is automatically inferred.
 
@@ -439,12 +439,12 @@ These tools use GitLab GraphQL. Without a project allowlist, a path-like `projec
 
 ## GraphQL
 
-| Tool                              | Mutating | Description                                                                                  |
-| --------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
-| `gitlab_execute_graphql_query`    | No       | Execute a read-only GraphQL query. Rejects mutations.                                        |
-| `gitlab_execute_graphql_mutation` | **Yes**  | Execute a GraphQL mutation. Disabled in read-only mode.                                      |
-| `gitlab_execute_graphql`          | No\*     | Backward-compatible executor. Automatically detects mutations and enforces read-only policy. |
+| Tool                              | Mutating | Description                                                                                                                          |
+| --------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `gitlab_execute_graphql_query`    | No       | Execute a read-only GraphQL query. Rejects mutations.                                                                                |
+| `gitlab_execute_graphql_mutation` | **Yes**  | Execute a GraphQL mutation. Hidden in `readonly`; `modify` rejects destructive mutation-root field names.                            |
+| `gitlab_execute_graphql`          | No\*     | Backward-compatible executor. Automatically detects mutations and applies the same permission-mode and destructive-operation guards. |
 
-\* `gitlab_execute_graphql` is registered with read + graphql capability and dynamically requires write + graphql capability when the payload contains a mutation.
+\* `gitlab_execute_graphql` is registered with read + graphql capability and dynamically requires write + graphql capability when the payload contains a mutation. In `modify`, raw mutation documents are parsed and fields containing `delete`, `destroy`, `remove`, `prune`, or `purge` at the mutation root are rejected. Aliases, inline fragments, and fragment spreads are resolved; unparseable or structurally ambiguous documents fail closed.
 
 When `GITLAB_ALLOWED_PROJECT_IDS` is configured, all raw GraphQL tools are hidden because arbitrary GraphQL documents cannot be proven project-safe. The legacy `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` setting is retained for compatibility but does not override this restriction. Use the project-bound Work Item tools above for supported GraphQL operations.

@@ -61,7 +61,10 @@ export class GitLabRequestRuntime {
           clientSecret: env.GITLAB_OAUTH_CLIENT_SECRET,
           gitlabUrl: env.GITLAB_OAUTH_GITLAB_URL || deriveGitLabBaseUrl(env.GITLAB_API_URL),
           redirectUri: env.GITLAB_OAUTH_REDIRECT_URI || "http://127.0.0.1:8765/callback",
-          scopes: resolveOauthScopes(env.GITLAB_OAUTH_SCOPES, env.GITLAB_READ_ONLY_MODE),
+          scopes: resolveOauthScopes(
+            env.GITLAB_OAUTH_SCOPES,
+            env.GITLAB_PERMISSION_MODE === "readonly"
+          ),
           tokenStoragePath: resolveHomePath(env.GITLAB_OAUTH_TOKEN_PATH),
           autoOpenBrowser: env.GITLAB_OAUTH_AUTO_OPEN_BROWSER
         },

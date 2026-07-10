@@ -41,6 +41,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS: 60,
       GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES: 1_000,
       GITLAB_READ_ONLY_MODE: false,
+      GITLAB_PERMISSION_MODE: "full",
       GITLAB_ALLOWED_PROJECT_IDS: [],
       GITLAB_ALLOWED_TOOLS: [],
       GITLAB_TOOLSETS: [],
@@ -113,7 +114,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
     } as unknown as AppContext["logger"],
     gitlab: {} as AppContext["gitlab"],
     policy: new ToolPolicyEngine({
-      readOnlyMode: false,
+      permissionMode: "full",
       disabledCapabilities: [],
       allowedTools: [],
       enabledFeatures: defaultFeatures
@@ -299,6 +300,21 @@ describe("http app pending session handling", () => {
     const body = (await response.json()) as { status: string };
 
     expect(body.status).toBe("degraded");
+  });
+
+  it("reports the effective permission mode", async () => {
+    const context = buildContext();
+    context.env.GITLAB_PERMISSION_MODE = "modify";
+    running = await startServerForContext(context);
+
+    const response = await fetch(`${running.baseUrl}/healthz`);
+    const body = (await response.json()) as {
+      permissionMode: string;
+      readOnlyMode: boolean;
+    };
+
+    expect(body.permissionMode).toBe("modify");
+    expect(body.readOnlyMode).toBe(false);
   });
 
   it("shutdown closes uninitialized pending sessions", async () => {

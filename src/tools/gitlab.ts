@@ -2,7 +2,13 @@ import { Buffer } from "node:buffer";
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { Kind, parse } from "graphql";
+import {
+  Kind,
+  parse,
+  type DocumentNode,
+  type FragmentDefinitionNode,
+  type SelectionSetNode
+} from "graphql";
 import { z } from "zod";
 
 import {
@@ -36,7 +42,11 @@ import {
   refLikeSchema,
   slugSchema
 } from "../lib/tool-schema.js";
-import { TOOL_CAPABILITIES, type ToolCapability } from "../lib/tool-capabilities.js";
+import {
+  TOOL_CAPABILITIES,
+  type GitLabPermissionMode,
+  type ToolCapability
+} from "../lib/tool-capabilities.js";
 import { annotationsForCapabilities } from "../lib/tool-annotations.js";
 import {
   GITLAB_TOOLSETS,
@@ -5333,7 +5343,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_execute_graphql_mutation",
       title: "Execute GraphQL Mutation",
-      description: "Execute GraphQL mutation (disabled in read-only mode).",
+      description:
+        "Execute a GraphQL mutation. Readonly mode disables this tool; modify mode rejects destructive mutation-root fields.",
       capabilities: writeGraphqlCapabilities,
       inputSchema: {
         query: z.string().min(1),
@@ -5345,6 +5356,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         if (!containsGraphqlMutation(query)) {
           throw new Error("No mutation detected. Use gitlab_execute_graphql_query for queries.");
         }
+        assertGraphqlDocumentAllowedByPermissionMode(query, context.env.GITLAB_PERMISSION_MODE);
 
         return context.gitlab.executeGraphql(query, getOptionalRecord(args, "variables"));
       }
@@ -5354,7 +5366,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       compatibilityAlias: true,
       title: "Execute GraphQL (Compat)",
       description:
-        "Backward-compatible GraphQL executor. Mutation payloads still honor read-only policy.",
+        "Backward-compatible GraphQL executor. Mutation payloads still honor permission-mode policy.",
       capabilities: readGraphqlCapabilities,
       inputSchema: {
         query: z.string().min(1),
@@ -5362,12 +5374,14 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       },
       handler: async (args, context) => {
         const query = getString(args, "query");
-        if (containsGraphqlMutation(query)) {
+        const containsMutation = containsGraphqlMutation(query);
+        if (containsMutation) {
           context.policy.assertCanExecute({
             name: "gitlab_execute_graphql",
             capabilities: writeGraphqlCapabilities
           });
         }
+        assertGraphqlDocumentAllowedByPermissionMode(query, context.env.GITLAB_PERMISSION_MODE);
 
         return context.gitlab.executeGraphql(query, getOptionalRecord(args, "variables"));
       }
@@ -7675,6 +7689,91 @@ export function containsGraphqlMutation(query: string): boolean {
     return /\bmutation\b\s*(?:[A-Za-z_][A-Za-z0-9_]*)?\s*(?:\([^)]*\))?\s*(?:@[A-Za-z_][A-Za-z0-9_]*(?:\([^)]*\))?\s*)*\{/i.test(
       normalized
     );
+  }
+}
+
+const DESTRUCTIVE_GRAPHQL_MUTATION_FIELD_PATTERN = /(?:delete|destroy|remove|prune|purge)/iu;
+
+export function assertGraphqlDocumentAllowedByPermissionMode(
+  query: string,
+  permissionMode: GitLabPermissionMode
+): void {
+  if (permissionMode !== "modify") {
+    return;
+  }
+
+  let mutationFields: string[];
+  try {
+    mutationFields = getTopLevelGraphqlMutationFields(parse(query, { noLocation: true }));
+  } catch {
+    throw new Error(
+      "Raw GraphQL document could not be verified safely; modify permission mode blocks unverifiable operations."
+    );
+  }
+
+  const destructiveField = mutationFields.find((fieldName) =>
+    DESTRUCTIVE_GRAPHQL_MUTATION_FIELD_PATTERN.test(fieldName)
+  );
+  if (destructiveField) {
+    throw new Error(
+      `GraphQL mutation field '${destructiveField}' is blocked in modify permission mode because it is destructive.`
+    );
+  }
+}
+
+function getTopLevelGraphqlMutationFields(document: DocumentNode): string[] {
+  const fragments = new Map<string, FragmentDefinitionNode>();
+  for (const definition of document.definitions) {
+    if (definition.kind !== Kind.FRAGMENT_DEFINITION) {
+      continue;
+    }
+
+    const fragmentName = definition.name.value;
+    if (fragments.has(fragmentName)) {
+      throw new Error(`Duplicate GraphQL fragment '${fragmentName}'`);
+    }
+    fragments.set(fragmentName, definition);
+  }
+
+  const fields: string[] = [];
+  for (const definition of document.definitions) {
+    if (definition.kind === Kind.OPERATION_DEFINITION && definition.operation === "mutation") {
+      collectTopLevelGraphqlFields(definition.selectionSet, fragments, new Set(), fields);
+    }
+  }
+
+  return fields;
+}
+
+function collectTopLevelGraphqlFields(
+  selectionSet: SelectionSetNode,
+  fragments: ReadonlyMap<string, FragmentDefinitionNode>,
+  activeFragments: Set<string>,
+  fields: string[]
+): void {
+  for (const selection of selectionSet.selections) {
+    if (selection.kind === Kind.FIELD) {
+      fields.push(selection.name.value);
+      continue;
+    }
+
+    if (selection.kind === Kind.INLINE_FRAGMENT) {
+      collectTopLevelGraphqlFields(selection.selectionSet, fragments, activeFragments, fields);
+      continue;
+    }
+
+    const fragmentName = selection.name.value;
+    const fragment = fragments.get(fragmentName);
+    if (!fragment || activeFragments.has(fragmentName)) {
+      throw new Error(`GraphQL fragment '${fragmentName}' cannot be resolved safely`);
+    }
+
+    activeFragments.add(fragmentName);
+    try {
+      collectTopLevelGraphqlFields(fragment.selectionSet, fragments, activeFragments, fields);
+    } finally {
+      activeFragments.delete(fragmentName);
+    }
   }
 }
 
