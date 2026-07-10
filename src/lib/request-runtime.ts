@@ -13,6 +13,7 @@ import type { GitLabAuthHeader } from "../types/auth.js";
 import type { GitLabBeforeRequestContext, GitLabBeforeRequestResult } from "./gitlab-client.js";
 import { resolveOauthScopes } from "./oauth-scopes.js";
 import { deriveGitLabBaseUrl, GitLabOAuthManager } from "./oauth.js";
+import { OAuthGroupAuthorizer } from "./oauth-group-authorizer.js";
 
 const execAsync = promisify(execCb);
 const DEFAULT_BROWSER_UA =
@@ -35,6 +36,7 @@ export class GitLabRequestRuntime {
   private readonly tokenFilePath?: string;
   private readonly tokenScript?: string;
   private readonly oauthManager?: GitLabOAuthManager;
+  private readonly oauthGroupAuthorizer?: OAuthGroupAuthorizer;
 
   private fetchImpl: typeof fetch = fetch;
   private cookieJar: CookieJar | null = null;
@@ -65,6 +67,15 @@ export class GitLabRequestRuntime {
         },
         this.logger
       );
+      if (env.GITLAB_OAUTH_ALLOWED_GROUPS.length > 0) {
+        this.oauthGroupAuthorizer = new OAuthGroupAuthorizer({
+          apiUrl: env.GITLAB_API_URL,
+          allowedGroups: env.GITLAB_OAUTH_ALLOWED_GROUPS,
+          cacheTtlMs: env.GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS * 1_000,
+          cacheMaxEntries: env.GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES,
+          timeoutMs: env.GITLAB_HTTP_TIMEOUT_MS
+        });
+      }
     }
   }
 
@@ -108,7 +119,7 @@ export class GitLabRequestRuntime {
     }
 
     if (this.oauthManager) {
-      const token = await this.oauthManager.getAccessToken();
+      const token = await this.resolveAuthorizedOAuthToken();
       if (token) {
         return {
           token,
@@ -153,7 +164,7 @@ export class GitLabRequestRuntime {
       }
 
       try {
-        const refreshedToken = await this.oauthManager.getAccessToken({ forceRefresh: true });
+        const refreshedToken = await this.resolveAuthorizedOAuthToken(true);
         if (!refreshedToken || refreshedToken === initialToken) {
           return response;
         }
@@ -168,6 +179,18 @@ export class GitLabRequestRuntime {
         return response;
       }
     }) as typeof fetch;
+  }
+
+  private async resolveAuthorizedOAuthToken(forceRefresh = false): Promise<string | undefined> {
+    if (!this.oauthManager) {
+      return undefined;
+    }
+
+    const token = await this.oauthManager.getAccessToken({ forceRefresh });
+    if (token && this.oauthGroupAuthorizer && !(await this.oauthGroupAuthorizer.authorize(token))) {
+      throw new Error("OAuth access denied: user is not a member of an allowed GitLab group");
+    }
+    return token;
   }
 
   private async loadTokenFromScript(script: string): Promise<string | undefined> {

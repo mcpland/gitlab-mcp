@@ -3,6 +3,11 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 
 import { TOOL_CAPABILITIES, type ToolCapability } from "../lib/tool-capabilities.js";
+import { parseOAuthAllowedGroups } from "../lib/oauth-group-authorizer.js";
+import {
+  assertOAuthGroupConfiguration,
+  assertSafeMcpOAuthConfiguration
+} from "../lib/oauth-security.js";
 import { parseGitLabToolsets } from "../lib/toolsets.js";
 import { loadDotenvFromArgv } from "./dotenv.js";
 
@@ -70,6 +75,9 @@ const envSchema = z.object({
   GITLAB_OAUTH_GITLAB_URL: z.string().optional(),
   GITLAB_OAUTH_REDIRECT_URI: z.string().url().optional(),
   GITLAB_OAUTH_SCOPES: optionalNonEmptyString,
+  GITLAB_OAUTH_ALLOWED_GROUPS: z.string().optional(),
+  GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS: z.coerce.number().int().min(1).max(300).default(60),
+  GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES: z.coerce.number().int().min(1).max(10_000).default(1_000),
   GITLAB_OAUTH_TOKEN_PATH: z.string().optional(),
   GITLAB_OAUTH_AUTO_OPEN_BROWSER: z.enum(["true", "false"]).default("true"),
   GITLAB_READ_ONLY_MODE: z
@@ -171,9 +179,18 @@ if (data.GITLAB_USE_OAUTH === "true" && !data.GITLAB_OAUTH_CLIENT_ID) {
   throw new Error("GITLAB_USE_OAUTH=true requires GITLAB_OAUTH_CLIENT_ID");
 }
 
-if (data.GITLAB_MCP_OAUTH === "true" && !data.MCP_SERVER_URL) {
-  throw new Error("GITLAB_MCP_OAUTH=true requires MCP_SERVER_URL");
-}
+assertSafeMcpOAuthConfiguration({
+  enabled: data.GITLAB_MCP_OAUTH === "true",
+  serverUrl: data.MCP_SERVER_URL,
+  httpAuthToken: data.MCP_HTTP_AUTH_TOKEN
+});
+
+const oauthAllowedGroups = parseOAuthAllowedGroups(data.GITLAB_OAUTH_ALLOWED_GROUPS);
+assertOAuthGroupConfiguration({
+  allowedGroups: oauthAllowedGroups,
+  localOAuthEnabled: data.GITLAB_USE_OAUTH === "true",
+  mcpOAuthEnabled: data.GITLAB_MCP_OAUTH === "true"
+});
 
 if (data.SSE === "true" && data.REMOTE_AUTHORIZATION === "true") {
   throw new Error("SSE=true is not compatible with REMOTE_AUTHORIZATION=true");
@@ -201,6 +218,7 @@ export const env = {
   GITLAB_USE_OAUTH: parseBoolean(data.GITLAB_USE_OAUTH, false),
   GITLAB_MCP_OAUTH: parseBoolean(data.GITLAB_MCP_OAUTH, false),
   GITLAB_OAUTH_AUTO_OPEN_BROWSER: parseBoolean(data.GITLAB_OAUTH_AUTO_OPEN_BROWSER, true),
+  GITLAB_OAUTH_ALLOWED_GROUPS: oauthAllowedGroups,
   GITLAB_CLOUDFLARE_BYPASS: parseBoolean(data.GITLAB_CLOUDFLARE_BYPASS, false),
   GITLAB_ALLOW_INSECURE_TOKEN_FILE: parseBoolean(data.GITLAB_ALLOW_INSECURE_TOKEN_FILE, false),
   GITLAB_ALLOW_INSECURE_TLS: parseBoolean(data.GITLAB_ALLOW_INSECURE_TLS, false),

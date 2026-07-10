@@ -5,12 +5,20 @@ import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { OAuthClientInformationFull } from "@modelcontextprotocol/sdk/shared/auth.js";
 
 import { deriveGitLabBaseUrl } from "./oauth.js";
+import { OAuthGroupAuthorizer } from "./oauth-group-authorizer.js";
 
 interface GitLabTokenInfo {
   resource_owner_id?: number;
   scopes?: string[];
   expires_in_seconds?: number | null;
   application?: { uid?: string } | null;
+}
+
+export interface GitLabMcpOAuthProviderOptions {
+  allowedGroups?: string[];
+  groupCacheTtlMs?: number;
+  groupCacheMaxEntries?: number;
+  timeoutMs?: number;
 }
 
 class CachedGitLabOAuthProvider extends ProxyOAuthServerProvider {
@@ -39,8 +47,20 @@ class CachedGitLabOAuthProvider extends ProxyOAuthServerProvider {
   }
 }
 
-export function createGitLabMcpOAuthProvider(apiUrl: string): ProxyOAuthServerProvider {
+export function createGitLabMcpOAuthProvider(
+  apiUrl: string,
+  options: GitLabMcpOAuthProviderOptions = {}
+): ProxyOAuthServerProvider {
   const gitlabBaseUrl = deriveGitLabBaseUrl(apiUrl);
+  const groupAuthorizer = options.allowedGroups?.length
+    ? new OAuthGroupAuthorizer({
+        apiUrl,
+        allowedGroups: options.allowedGroups,
+        cacheTtlMs: options.groupCacheTtlMs ?? 60_000,
+        cacheMaxEntries: options.groupCacheMaxEntries ?? 1_000,
+        timeoutMs: options.timeoutMs ?? 20_000
+      })
+    : undefined;
 
   return new CachedGitLabOAuthProvider({
     endpoints: {
@@ -60,6 +80,9 @@ export function createGitLabMcpOAuthProvider(apiUrl: string): ProxyOAuthServerPr
       }
 
       const info = (await response.json()) as GitLabTokenInfo;
+      if (groupAuthorizer && !(await groupAuthorizer.authorize(token))) {
+        throw new InvalidTokenError("OAuth token owner is not in an allowed GitLab group");
+      }
       return {
         token,
         clientId: info.application?.uid ?? "gitlab-oauth",

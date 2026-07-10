@@ -343,7 +343,12 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     ? new URL(appEnv.MCP_SERVER_URL ?? `http://${appEnv.HTTP_HOST}:${String(appEnv.HTTP_PORT)}`)
     : undefined;
   const oauthProvider = appEnv.GITLAB_MCP_OAUTH
-    ? createGitLabMcpOAuthProvider(appEnv.GITLAB_API_URL)
+    ? createGitLabMcpOAuthProvider(appEnv.GITLAB_API_URL, {
+        allowedGroups: appEnv.GITLAB_OAUTH_ALLOWED_GROUPS,
+        groupCacheTtlMs: appEnv.GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS * 1_000,
+        groupCacheMaxEntries: appEnv.GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES,
+        timeoutMs: appEnv.GITLAB_HTTP_TIMEOUT_MS
+      })
     : undefined;
   const oauthScopes = resolveOauthScopes(appEnv.GITLAB_OAUTH_SCOPES, appEnv.GITLAB_READ_ONLY_MODE);
   const oauthBearerAuth =

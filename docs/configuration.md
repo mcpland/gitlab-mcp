@@ -50,16 +50,19 @@ The client will normalize each entry and rotate across them for load distributio
 
 ### OAuth 2.0 PKCE
 
-| Variable                         | Type         | Default                              | Description                                                                                                                              |
-| -------------------------------- | ------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `GITLAB_USE_OAUTH`               | boolean      | `false`                              | Enable OAuth PKCE flow.                                                                                                                  |
-| `GITLAB_OAUTH_CLIENT_ID`         | string       | —                                    | **Required** when OAuth is enabled. Application ID from GitLab OAuth settings.                                                           |
-| `GITLAB_OAUTH_CLIENT_SECRET`     | string       | —                                    | Optional. Required only for confidential OAuth applications.                                                                             |
-| `GITLAB_OAUTH_GITLAB_URL`        | string       | derived from `GITLAB_API_URL`        | GitLab base URL for OAuth endpoints (e.g. `https://gitlab.com`).                                                                         |
-| `GITLAB_OAUTH_REDIRECT_URI`      | string (URL) | `http://127.0.0.1:8765/callback`     | Local callback URL for the OAuth flow.                                                                                                   |
-| `GITLAB_OAUTH_SCOPES`            | string       | `api` (`read_api` in read-only mode) | Space or comma-separated OAuth scopes. If omitted, gitlab-mcp defaults to `read_api` when `GITLAB_READ_ONLY_MODE=true`, otherwise `api`. |
-| `GITLAB_OAUTH_TOKEN_PATH`        | string       | `~/.gitlab-mcp-oauth-token.json`     | File path for persisting OAuth tokens. Stored with `chmod 600`.                                                                          |
-| `GITLAB_OAUTH_AUTO_OPEN_BROWSER` | boolean      | `true`                               | Automatically open the browser for authorization.                                                                                        |
+| Variable                               | Type         | Default                              | Description                                                                                                                              |
+| -------------------------------------- | ------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `GITLAB_USE_OAUTH`                     | boolean      | `false`                              | Enable OAuth PKCE flow.                                                                                                                  |
+| `GITLAB_OAUTH_CLIENT_ID`               | string       | —                                    | **Required** when OAuth is enabled. Application ID from GitLab OAuth settings.                                                           |
+| `GITLAB_OAUTH_CLIENT_SECRET`           | string       | —                                    | Optional. Required only for confidential OAuth applications.                                                                             |
+| `GITLAB_OAUTH_GITLAB_URL`              | string       | derived from `GITLAB_API_URL`        | GitLab base URL for OAuth endpoints (e.g. `https://gitlab.com`).                                                                         |
+| `GITLAB_OAUTH_REDIRECT_URI`            | string (URL) | `http://127.0.0.1:8765/callback`     | Local callback URL for the OAuth flow.                                                                                                   |
+| `GITLAB_OAUTH_SCOPES`                  | string       | `api` (`read_api` in read-only mode) | Space or comma-separated OAuth scopes. If omitted, gitlab-mcp defaults to `read_api` when `GITLAB_READ_ONLY_MODE=true`, otherwise `api`. |
+| `GITLAB_OAUTH_ALLOWED_GROUPS`          | CSV string   | —                                    | OAuth user allowlist by GitLab group `full_path`. A parent path also permits its subgroups.                                              |
+| `GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS` | number       | `60`                                 | Positive and negative membership cache TTL (1–300s).                                                                                     |
+| `GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES` | number       | `1000`                               | Maximum token-digest membership cache entries (1–10000).                                                                                 |
+| `GITLAB_OAUTH_TOKEN_PATH`              | string       | `~/.gitlab-mcp-oauth-token.json`     | File path for persisting OAuth tokens. Stored with `chmod 600`.                                                                          |
+| `GITLAB_OAUTH_AUTO_OPEN_BROWSER`       | boolean      | `true`                               | Automatically open the browser for authorization.                                                                                        |
 
 ### External Token Script
 
@@ -195,6 +198,9 @@ The server enforces these cross-field constraints at startup:
 
 - `GITLAB_API_URL` must contain at least one valid URL
 - `GITLAB_USE_OAUTH=true` requires `GITLAB_OAUTH_CLIENT_ID`
+- `GITLAB_OAUTH_ALLOWED_GROUPS` requires local OAuth or MCP OAuth and contains group full paths, not display names or URLs
+- non-loopback `MCP_SERVER_URL` values must use HTTPS when `GITLAB_MCP_OAUTH=true`; HTTP is accepted only for `localhost`, `127.0.0.1`, and `[::1]`
+- `MCP_HTTP_AUTH_TOKEN` cannot be combined with `GITLAB_MCP_OAUTH=true` because both consume `Authorization: Bearer`
 - `ENABLE_DYNAMIC_API_URL=true` requires `REMOTE_AUTHORIZATION=true`
 - `SSE=true` is not compatible with `REMOTE_AUTHORIZATION=true`
 - wildcard `HTTP_HOST` values (`0.0.0.0` or `::`) require `MCP_SERVER_URL` or `MCP_ALLOWED_HOSTS`

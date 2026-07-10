@@ -35,6 +35,9 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_MCP_OAUTH: false,
       GITLAB_OAUTH_AUTO_OPEN_BROWSER: false,
       GITLAB_OAUTH_SCOPES: "api",
+      GITLAB_OAUTH_ALLOWED_GROUPS: [],
+      GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS: 60,
+      GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES: 1_000,
       GITLAB_READ_ONLY_MODE: false,
       GITLAB_ALLOWED_PROJECT_IDS: [],
       GITLAB_ALLOWED_TOOLS: [],
@@ -538,6 +541,65 @@ describe("http app download proxy", () => {
 });
 
 describe("http app MCP OAuth", () => {
+  it("rejects an OAuth bearer outside the configured GitLab groups", async () => {
+    const gitLabServer = createServer((req, res) => {
+      if (req.url === "/oauth/token/info") {
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ resource_owner_id: 42, scopes: ["api"] }));
+        return;
+      }
+      if (req.url?.startsWith("/api/v4/groups?")) {
+        res.setHeader("content-type", "application/json");
+        res.setHeader("x-next-page", "");
+        res.end(JSON.stringify([{ full_path: "other-org" }]));
+        return;
+      }
+      res.statusCode = 404;
+      res.end("not found");
+    });
+    await new Promise<void>((resolve) => gitLabServer.listen(0, "127.0.0.1", resolve));
+
+    try {
+      const address = gitLabServer.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Unexpected GitLab OAuth server address");
+      }
+      const context = buildContext();
+      context.env.GITLAB_API_URL = `http://127.0.0.1:${address.port}/api/v4`;
+      context.env.GITLAB_API_URLS = [context.env.GITLAB_API_URL];
+      context.env.GITLAB_MCP_OAUTH = true;
+      context.env.GITLAB_OAUTH_ALLOWED_GROUPS = ["my-org"];
+      context.env.MCP_SERVER_URL = "https://mcp.example.com";
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      running = await startServerForContext(context);
+
+      const response = await fetch(`${running.baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          authorization: "Bearer oauth-token",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-03-26",
+            capabilities: {},
+            clientInfo: { name: "group-auth-test", version: "0.0.1" }
+          }
+        })
+      });
+      expect(response.status).toBe(401);
+      expect(running.pendingSessions.size).toBe(0);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        gitLabServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("exposes OAuth metadata and rejects unauthenticated MCP requests", async () => {
     const context = buildContext();
     context.env.GITLAB_MCP_OAUTH = true;

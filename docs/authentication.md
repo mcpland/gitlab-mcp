@@ -93,6 +93,16 @@ GITLAB_OAUTH_TOKEN_PATH=~/.gitlab-mcp-oauth-token.json
 GITLAB_OAUTH_AUTO_OPEN_BROWSER=false
 ```
 
+### OAuth Group Access Control
+
+To restrict OAuth users by GitLab membership, configure group full paths:
+
+```bash
+GITLAB_OAUTH_ALLOWED_GROUPS=my-org,my-org-security
+```
+
+Membership is checked with the user's OAuth token against `GET /api/v4/groups` using at least Guest access. Matching is case-insensitive and a configured parent path includes subgroups. The same fail-closed authorizer protects local PKCE OAuth tokens and HTTP MCP OAuth bearer tokens. Successful and rejected decisions are cached by token digest for 60 seconds by default; the cache is bounded by `GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES`. The OAuth scope must permit the Groups API (`api` or `read_api`); API errors, malformed pagination, and insufficient scope deny access.
+
 ### How It Works
 
 1. On first request, the server checks for a stored token at `GITLAB_OAUTH_TOKEN_PATH`
@@ -275,6 +285,8 @@ For clients that support MCP OAuth, enable GitLab-backed discovery/proxy endpoin
 GITLAB_MCP_OAUTH=true
 MCP_SERVER_URL=https://mcp.example.com
 ```
+
+Public MCP OAuth issuers must use HTTPS. Plain HTTP is accepted only for loopback development URLs (`localhost`, `127.0.0.1`, or `[::1]`). `MCP_HTTP_AUTH_TOKEN` cannot be enabled with MCP OAuth because both authenticate through `Authorization: Bearer`; use one of these modes.
 
 The HTTP server then exposes OAuth metadata and authorize/token/register/revoke endpoints backed by the configured GitLab instance. `/mcp` accepts validated `Authorization: Bearer <oauth_token>` requests, while `Private-Token` and `Job-Token` headers remain supported as direct bypass headers.
 

@@ -43,4 +43,44 @@ describe("createGitLabMcpOAuthProvider", () => {
       expect.objectContaining({ method: "POST" })
     );
   });
+
+  it("checks allowed group membership after OAuth token validation", async () => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/oauth/token/info") {
+        return Response.json({ resource_owner_id: 42, scopes: ["api"] });
+      }
+      if (url.pathname === "/api/v4/groups") {
+        return Response.json([{ full_path: "my-org/engineering" }], {
+          headers: { "x-next-page": "" }
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = createGitLabMcpOAuthProvider("https://gitlab.example.com/api/v4", {
+      allowedGroups: ["my-org"]
+    });
+
+    await expect(provider.verifyAccessToken("oauth-token")).resolves.toMatchObject({
+      token: "oauth-token",
+      scopes: ["api"]
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed when the OAuth token owner is outside allowed groups", async () => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = new URL(String(input));
+      return url.pathname === "/oauth/token/info"
+        ? Response.json({ resource_owner_id: 42, scopes: ["api"] })
+        : Response.json([{ full_path: "other-org" }], { headers: { "x-next-page": "" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = createGitLabMcpOAuthProvider("https://gitlab.example.com/api/v4", {
+      allowedGroups: ["my-org"]
+    });
+
+    await expect(provider.verifyAccessToken("oauth-token")).rejects.toThrow("allowed GitLab group");
+  });
 });

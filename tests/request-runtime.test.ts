@@ -459,6 +459,73 @@ describe("GitLabRequestRuntime OAuth retry", () => {
   });
 });
 
+describe("GitLabRequestRuntime OAuth group authorization", () => {
+  it("authorizes a stored local OAuth token before the GitLab request", async () => {
+    const oauthTokenPath = await writeOAuthTokenFile({
+      access_token: "local-oauth-token",
+      token_type: "Bearer",
+      expires_in: 3600,
+      created_at: Date.now()
+    });
+    const paths: string[] = [];
+    fetchMock.mockImplementation(async (input: URL | string) => {
+      const url = new URL(String(input));
+      paths.push(url.pathname);
+      if (url.pathname === "/api/v4/groups") {
+        return Response.json([{ full_path: "my-org/team" }], {
+          headers: { "x-next-page": "" }
+        });
+      }
+      return jsonResponse([{ id: 1, name: "project" }]);
+    });
+
+    const runtime = new GitLabRequestRuntime(
+      buildEnv({
+        GITLAB_USE_OAUTH: true,
+        GITLAB_OAUTH_CLIENT_ID: "oauth-client-id",
+        GITLAB_OAUTH_GITLAB_URL: "https://gitlab.example.com",
+        GITLAB_OAUTH_TOKEN_PATH: oauthTokenPath,
+        GITLAB_OAUTH_ALLOWED_GROUPS: ["my-org"]
+      }),
+      buildLogger()
+    );
+    const client = new GitLabClient("https://gitlab.example.com/api/v4", undefined, {
+      beforeRequest: (context) => runtime.beforeRequest(context)
+    });
+
+    await expect(client.listProjects()).resolves.toEqual([{ id: 1, name: "project" }]);
+    expect(paths).toEqual(["/api/v4/groups", "/api/v4/projects"]);
+  });
+
+  it("fails closed before the request when local OAuth membership is absent", async () => {
+    const oauthTokenPath = await writeOAuthTokenFile({
+      access_token: "local-oauth-token",
+      token_type: "Bearer",
+      expires_in: 3600,
+      created_at: Date.now()
+    });
+    fetchMock.mockResolvedValue(
+      Response.json([{ full_path: "other-org" }], { headers: { "x-next-page": "" } })
+    );
+    const runtime = new GitLabRequestRuntime(
+      buildEnv({
+        GITLAB_USE_OAUTH: true,
+        GITLAB_OAUTH_CLIENT_ID: "oauth-client-id",
+        GITLAB_OAUTH_GITLAB_URL: "https://gitlab.example.com",
+        GITLAB_OAUTH_TOKEN_PATH: oauthTokenPath,
+        GITLAB_OAUTH_ALLOWED_GROUPS: ["my-org"]
+      }),
+      buildLogger()
+    );
+    const client = new GitLabClient("https://gitlab.example.com/api/v4", undefined, {
+      beforeRequest: (context) => runtime.beforeRequest(context)
+    });
+
+    await expect(client.listProjects()).rejects.toThrow("not a member of an allowed GitLab group");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 function buildEnv(overrides: Partial<AppEnv> = {}): AppEnv {
   return {
     GITLAB_API_URL: "https://gitlab.example.com/api/v4",
@@ -469,6 +536,9 @@ function buildEnv(overrides: Partial<AppEnv> = {}): AppEnv {
     GITLAB_OAUTH_GITLAB_URL: undefined,
     GITLAB_OAUTH_REDIRECT_URI: undefined,
     GITLAB_OAUTH_SCOPES: "api",
+    GITLAB_OAUTH_ALLOWED_GROUPS: [],
+    GITLAB_OAUTH_GROUP_CACHE_TTL_SECONDS: 60,
+    GITLAB_OAUTH_GROUP_CACHE_MAX_ENTRIES: 1_000,
     GITLAB_OAUTH_TOKEN_PATH: undefined,
     GITLAB_OAUTH_AUTO_OPEN_BROWSER: false,
     GITLAB_AUTH_COOKIE_PATH: undefined,
