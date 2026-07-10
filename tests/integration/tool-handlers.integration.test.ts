@@ -2648,6 +2648,38 @@ describe("Tool handlers: work item GraphQL tools", () => {
     }
   });
 
+  it("rejects incident weight before issuing any GitLab request", async () => {
+    const getProject = vi.fn();
+    const executeGraphql = vi.fn();
+    const pair = await createLinkedPair(
+      buildContext({ gitlabStub: { getProject, executeGraphql } })
+    );
+
+    try {
+      const result = await pair.client.callTool({
+        name: "gitlab_create_work_item",
+        arguments: {
+          project_id: "group/project",
+          title: "Incident with invalid weight",
+          type: "incident",
+          weight: 3
+        }
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ text: expect.stringContaining("do not support the weight") })
+        ])
+      );
+      expect(getProject).not.toHaveBeenCalled();
+      expect(executeGraphql).not.toHaveBeenCalled();
+    } finally {
+      await pair.clientTransport.close();
+      await pair.serverTransport.close();
+    }
+  });
+
   it("creates incident timeline events with Issue GIDs", async () => {
     const getProject = vi.fn().mockResolvedValue({ path_with_namespace: "group/project" });
     const executeGraphql = vi

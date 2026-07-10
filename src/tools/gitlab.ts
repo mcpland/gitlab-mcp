@@ -4909,22 +4909,29 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         iteration_id: optionalString,
         confidential: optionalCoercedBoolean
       },
-      handler: async (args, context) =>
-        createWorkItem(context, resolveProjectId(args, context, true), {
+      handler: async (args, context) => {
+        const type = getOptionalString(args, "type") as WorkItemType | undefined;
+        const weight = getOptionalNumber(args, "weight");
+        if (type === "incident" && weight !== undefined) {
+          throw new Error("Incident work items do not support the weight field");
+        }
+
+        return createWorkItem(context, resolveProjectId(args, context, true), {
           title: getString(args, "title"),
-          type: getOptionalString(args, "type") as WorkItemType | undefined,
+          type,
           description: getOptionalString(args, "description"),
           labels: getOptionalStringArray(args, "labels"),
           assigneeUsernames: getOptionalStringArray(args, "assignee_usernames"),
           parentIid: getOptionalNumber(args, "parent_iid"),
-          weight: getOptionalNumber(args, "weight"),
+          weight,
           healthStatus: getOptionalString(args, "health_status"),
           startDate: getOptionalString(args, "start_date"),
           dueDate: getOptionalString(args, "due_date"),
           milestoneId: getOptionalString(args, "milestone_id"),
           iterationId: getOptionalString(args, "iteration_id"),
           confidential: getOptionalBoolean(args, "confidential")
-        })
+        });
+      }
     },
     {
       name: "gitlab_update_work_item",
