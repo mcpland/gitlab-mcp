@@ -135,14 +135,16 @@ export class MetricsRegistry {
 }
 
 export function classifyHttpRoute(path: string, pathPrefix: string): HttpRouteLabel {
-  const normalizedPath =
+  const pathWithoutPrefix =
     pathPrefix && path.startsWith(`${pathPrefix}/`) ? path.slice(pathPrefix.length) : path;
+  const normalizedPath =
+    pathWithoutPrefix.length > 1 ? pathWithoutPrefix.replace(/\/$/, "") : pathWithoutPrefix;
   if (normalizedPath === "/mcp") return "mcp";
   if (normalizedPath === "/sse") return "sse";
   if (normalizedPath === "/messages") return "messages";
   if (normalizedPath.startsWith("/downloads/")) return "downloads";
   if (normalizedPath === "/healthz") return "healthz";
-  if (path === "/metrics") return "metrics";
+  if (normalizedPath === "/metrics") return "metrics";
   if (
     normalizedPath.startsWith("/.well-known/oauth-") ||
     ["/authorize", "/token", "/register", "/revoke"].includes(normalizedPath)

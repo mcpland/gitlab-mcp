@@ -970,7 +970,7 @@ describe("http app Prometheus metrics", () => {
 
     await expect(fetch(`${running.baseUrl}/healthz`)).resolves.toMatchObject({ status: 200 });
 
-    const missing = await fetch(`${running.baseUrl}/metrics`);
+    const missing = await fetch(`${running.baseUrl}/metrics/`);
     expect(missing.status).toBe(401);
 
     const rejectedOrigin = await fetch(`${running.baseUrl}/metrics`, {
@@ -991,6 +991,9 @@ describe("http app Prometheus metrics", () => {
       'gitlab_mcp_http_requests_total{method="GET",route="healthz",status_code="200"} 1'
     );
     expect(output).toContain('gitlab_mcp_auth_failures_total{mode="metrics_bearer"} 1');
+    expect(output).toContain(
+      'gitlab_mcp_http_requests_total{method="GET",route="metrics",status_code="401"} 1'
+    );
     expect(output).toContain('gitlab_mcp_sessions{state="streamable"} 0');
   });
 

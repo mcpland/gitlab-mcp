@@ -38,8 +38,12 @@ describe("MetricsRegistry", () => {
 describe("classifyHttpRoute", () => {
   it.each([
     ["/mcp", "", "mcp"],
+    ["/mcp/", "", "mcp"],
     ["/gitlab/mcp", "/gitlab", "mcp"],
+    ["/gitlab/mcp/", "/gitlab", "mcp"],
     ["/downloads/job-artifacts", "", "downloads"],
+    ["/metrics/", "", "metrics"],
+    ["/authorize/", "", "oauth"],
     ["/projects/secret-project", "", "other"],
     ["/.well-known/oauth-authorization-server", "", "oauth"]
   ])("maps %s to a bounded route label", (path, prefix, expected) => {
