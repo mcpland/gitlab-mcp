@@ -158,6 +158,41 @@ describe("Tool handler: gitlab_list_projects", () => {
   });
 });
 
+describe("Tool handler: gitlab_list_project_members", () => {
+  it("preserves member ID filters as array queries", async () => {
+    const listProjectMembers = vi.fn().mockResolvedValue([]);
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listProjectMembers } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_project_members",
+        arguments: {
+          project_id: "group/project",
+          query: "alice",
+          user_ids: [1, 2],
+          skip_users: [3, 4],
+          page: 2
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listProjectMembers).toHaveBeenCalledWith("group/project", {
+        query: {
+          query: "alice",
+          user_ids: [1, 2],
+          skip_users: [3, 4],
+          page: 2
+        }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  gitlab_update_project                                              */
 /* ------------------------------------------------------------------ */
@@ -2139,7 +2174,36 @@ describe("Tool handler: gitlab_list_issues", () => {
       expect(listIssues).toHaveBeenCalledWith("group/project", {
         query: {
           author_username: "alice",
-          assignee_username: "bob"
+          assignee_username: ["bob"]
+        }
+      });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("preserves issue assignee usernames as an array query", async () => {
+    const listIssues = vi.fn().mockResolvedValue([]);
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { listIssues } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_list_issues",
+        arguments: {
+          project_id: "group/project",
+          assignee_username: ["alice", "bob"],
+          labels: ["bug", "backend"]
+        }
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(listIssues).toHaveBeenCalledWith("group/project", {
+        query: {
+          assignee_username: ["alice", "bob"],
+          labels: "bug,backend"
         }
       });
     } finally {

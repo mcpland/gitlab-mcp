@@ -639,6 +639,31 @@ describe("GitLabClient", () => {
       expect(url.searchParams.has("approved_by_usernames")).toBe(false);
     });
 
+    it("serializes issue and member array filters as repeated bracket parameters", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.listIssues("group/project", {
+        query: { assignee_username: ["alice", "bob"], labels: "bug,backend" }
+      });
+      await client.listProjectMembers("group/project", {
+        query: { user_ids: [1, 2], skip_users: [3, 4] }
+      });
+
+      const [issuesRequestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const issuesUrl = new URL(String(issuesRequestUrl));
+      expect(issuesUrl.searchParams.getAll("assignee_username[]")).toEqual(["alice", "bob"]);
+      expect(issuesUrl.searchParams.has("assignee_username")).toBe(false);
+      expect(issuesUrl.searchParams.get("labels")).toBe("bug,backend");
+
+      const [membersRequestUrl] = fetchMock.mock.calls[1] as [URL | string];
+      const membersUrl = new URL(String(membersRequestUrl));
+      expect(membersUrl.searchParams.getAll("user_ids[]")).toEqual(["1", "2"]);
+      expect(membersUrl.searchParams.getAll("skip_users[]")).toEqual(["3", "4"]);
+      expect(membersUrl.searchParams.has("user_ids")).toBe(false);
+      expect(membersUrl.searchParams.has("skip_users")).toBe(false);
+    });
+
     it("supports global issue listing endpoint", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
 

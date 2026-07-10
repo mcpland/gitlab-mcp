@@ -609,8 +609,14 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
+        const userIds = getOptionalNumberArray(args, "user_ids");
+        const skipUsers = getOptionalNumberArray(args, "skip_users");
         return context.gitlab.listProjectMembers(projectId, {
-          query: toQuery(omit(args, ["project_id"]))
+          query: {
+            ...toQuery(omit(args, ["project_id", "user_ids", "skip_users"])),
+            ...(userIds ? { user_ids: userIds } : {}),
+            ...(skipUsers ? { skip_users: skipUsers } : {})
+          }
         });
       }
     },
@@ -2406,9 +2412,15 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, false);
-        const query = toQuery(
-          normalizeIdUsernameFilters(omit(args, ["project_id"]), ISSUE_ID_USERNAME_PAIRS)
+        const normalized = normalizeIdUsernameFilters(
+          omit(args, ["project_id"]),
+          ISSUE_ID_USERNAME_PAIRS
         );
+        const assigneeUsernames = getOptionalStringArray(normalized, "assignee_username");
+        const query = {
+          ...toQuery(omit(normalized, ["assignee_username"])),
+          ...(assigneeUsernames ? { assignee_username: assigneeUsernames } : {})
+        };
 
         if (projectId) {
           return context.gitlab.listIssues(projectId, { query });
