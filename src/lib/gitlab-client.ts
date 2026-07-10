@@ -4,7 +4,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
 import { getSessionAuth, type SessionAuth } from "./auth-context.js";
-import { encodeGitLabGroupId, encodeGitLabProjectId } from "./gitlab-path.js";
+import {
+  encodeGitLabGroupId,
+  encodeGitLabNamespaceId,
+  encodeGitLabProjectId
+} from "./gitlab-path.js";
 import { LocalFileBoundary } from "./local-file-boundary.js";
 import { attachPaginationMetadata, extractGitLabPaginationMetadata } from "./pagination.js";
 import type { GitLabAuthHeader } from "../types/auth.js";
@@ -2593,11 +2597,11 @@ export class GitLabClient {
   }
 
   getNamespace(namespaceIdOrPath: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/namespaces/${encode(namespaceIdOrPath)}`, options);
+    return this.get(`/namespaces/${encodeGitLabNamespaceId(namespaceIdOrPath)}`, options);
   }
 
   verifyNamespace(pathName: string, options: GitLabRequestOptions = {}): Promise<unknown> {
-    return this.get(`/namespaces/${encode(pathName)}/exists`, options);
+    return this.get(`/namespaces/${encodeGitLabNamespaceId(pathName)}/exists`, options);
   }
 
   getUsers(options: GitLabRequestOptions = {}): Promise<unknown> {

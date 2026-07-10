@@ -628,6 +628,23 @@ describe("GitLabClient", () => {
       expect(url.pathname).toBe("/api/v4/namespaces/platform/exists");
       expect(url.searchParams.get("parent_id")).toBe("42");
     });
+
+    it("canonicalizes pre-encoded namespace paths", async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ exists: true })));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.getNamespace("group%2Fsubgroup");
+      await client.verifyNamespace("group%2Fsubgroup");
+
+      const paths = fetchMock.mock.calls.map(
+        ([requestUrl]) => new URL(String(requestUrl)).pathname
+      );
+      expect(paths).toEqual([
+        "/api/v4/namespaces/group%2Fsubgroup",
+        "/api/v4/namespaces/group%2Fsubgroup/exists"
+      ]);
+      expect(paths.join(" ")).not.toContain("%252F");
+    });
   });
 
   describe("attachment downloads", () => {

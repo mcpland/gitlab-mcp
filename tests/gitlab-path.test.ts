@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { encodeGitLabGroupId, encodeGitLabProjectId } from "../src/lib/gitlab-path.js";
+import {
+  encodeGitLabGroupId,
+  encodeGitLabNamespaceId,
+  encodeGitLabProjectId
+} from "../src/lib/gitlab-path.js";
 
 describe("encodeGitLabProjectId", () => {
   it.each([
@@ -45,4 +49,21 @@ describe("encodeGitLabGroupId", () => {
       expect(() => encodeGitLabGroupId(input)).toThrow(/Invalid GitLab group ID/u);
     }
   );
+});
+
+describe("encodeGitLabNamespaceId", () => {
+  it.each([
+    ["group/subgroup", "group%2Fsubgroup"],
+    ["group%2Fsubgroup", "group%2Fsubgroup"],
+    ["group%252Fsubgroup", "group%2Fsubgroup"],
+    ["12345", "12345"]
+  ])("canonicalizes %s", (input, expected) => {
+    expect(encodeGitLabNamespaceId(input)).toBe(expected);
+  });
+
+  it("rejects traversal paths", () => {
+    expect(() => encodeGitLabNamespaceId("group/../secret")).toThrow(
+      /Invalid GitLab namespace ID/u
+    );
+  });
 });

@@ -1,7 +1,7 @@
 const INVALID_PATH_CHARACTER = /[\\?#]/u;
 const MAX_PERCENT_DECODE_PASSES = 3;
 
-type GitLabPathIdKind = "project" | "group";
+type GitLabPathIdKind = "project" | "group" | "namespace";
 
 /**
  * Encode a numeric project ID or namespace/project path exactly once.
@@ -15,6 +15,11 @@ export function encodeGitLabProjectId(value: string): string {
 /** Encode a numeric group ID or nested group path exactly once. */
 export function encodeGitLabGroupId(value: string): string {
   return encodeGitLabPathId(value, "group");
+}
+
+/** Encode a numeric namespace ID or namespace path exactly once. */
+export function encodeGitLabNamespaceId(value: string): string {
+  return encodeGitLabPathId(value, "namespace");
 }
 
 function encodeGitLabPathId(value: string, kind: GitLabPathIdKind): string {
