@@ -116,8 +116,13 @@ export function downloadTokenResourceMatches(
 }
 
 function deriveDownloadTokenKey(secret: string | undefined): Buffer {
-  if (secret && secret.trim().length > 0) {
-    return createHash("sha256").update(secret).digest();
+  const normalized = secret?.trim();
+  if (normalized) {
+    if (normalized.length < 32) {
+      throw new Error("GITLAB_DOWNLOAD_TOKEN_SECRET must contain at least 32 characters");
+    }
+
+    return createHash("sha256").update(normalized).digest();
   }
 
   return processKey;

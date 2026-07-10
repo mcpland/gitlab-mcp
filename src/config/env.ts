@@ -39,6 +39,14 @@ const optionalHttpAuthToken = z.preprocess((value) => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }, z.string().min(32).optional());
+const optionalSharedSecret = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.string().min(32).optional());
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
@@ -122,7 +130,7 @@ const envSchema = z.object({
     .max(2_000_000_000)
     .default(250_000_000),
   GITLAB_LOCAL_FILE_ROOTS: z.string().optional(),
-  GITLAB_DOWNLOAD_TOKEN_SECRET: optionalNonEmptyString,
+  GITLAB_DOWNLOAD_TOKEN_SECRET: optionalSharedSecret,
   GITLAB_DOWNLOAD_TOKEN_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(300),
   GITLAB_HTTP_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
   GITLAB_HTTP_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),

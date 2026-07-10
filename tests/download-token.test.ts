@@ -7,6 +7,8 @@ import {
 } from "../src/lib/download-token.js";
 
 describe("download token", () => {
+  const sharedSecret = "test-download-secret-with-32-characters";
+
   it("round-trips auth and resource binding", () => {
     const resource = {
       type: "job-artifacts",
@@ -19,10 +21,10 @@ describe("download token", () => {
         apiUrl: "https://gitlab.example.com/api/v4"
       },
       resource,
-      { secret: "secret", ttlSeconds: 300, now: 1_000_000 }
+      { secret: sharedSecret, ttlSeconds: 300, now: 1_000_000 }
     );
 
-    const payload = decryptDownloadToken(token, { secret: "secret", now: 1_000_000 });
+    const payload = decryptDownloadToken(token, { secret: sharedSecret, now: 1_000_000 });
 
     expect(payload).toMatchObject({
       header: "authorization",
@@ -44,9 +46,19 @@ describe("download token", () => {
     const token = createDownloadToken(
       { header: "private-token", token: "pat" },
       { type: "attachment", params: { project_id: "p", secret: "s", filename: "f.txt" } },
-      { secret: "secret", ttlSeconds: 1, now: 1_000_000 }
+      { secret: sharedSecret, ttlSeconds: 1, now: 1_000_000 }
     );
 
-    expect(decryptDownloadToken(token, { secret: "secret", now: 1_003_000 })).toBeUndefined();
+    expect(decryptDownloadToken(token, { secret: sharedSecret, now: 1_003_000 })).toBeUndefined();
+  });
+
+  it("rejects low-entropy configured secrets", () => {
+    expect(() =>
+      createDownloadToken(
+        { header: "private-token", token: "pat" },
+        { type: "attachment", params: { project_id: "p", secret: "s", filename: "f.txt" } },
+        { secret: "too-short", ttlSeconds: 300 }
+      )
+    ).toThrow("at least 32 characters");
   });
 });

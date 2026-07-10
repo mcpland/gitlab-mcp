@@ -62,4 +62,20 @@ describe("environment defaults", () => {
       )
     ).toBe("readonly");
   });
+
+  it("requires shared download secrets to contain at least 32 characters", () => {
+    expect(() =>
+      readEnvironmentValue(
+        "env.GITLAB_DOWNLOAD_TOKEN_SECRET",
+        "GITLAB_DOWNLOAD_TOKEN_SECRET=too-short\n"
+      )
+    ).toThrow();
+
+    expect(
+      readEnvironmentValue(
+        "env.GITLAB_DOWNLOAD_TOKEN_SECRET",
+        `GITLAB_DOWNLOAD_TOKEN_SECRET=${"d".repeat(32)}\n`
+      )
+    ).toBe("d".repeat(32));
+  });
 });
