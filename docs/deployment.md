@@ -70,6 +70,17 @@ pnpm build
 HTTP_HOST=127.0.0.1 HTTP_PORT=3333 node dist/http.js
 ```
 
+When the server keeps a GitLab credential and listens beyond loopback, protect MCP endpoints with an independent, randomly generated secret (at least 32 characters):
+
+```bash
+MCP_HTTP_AUTH_TOKEN=<random-secret>
+HTTP_HOST=0.0.0.0
+HTTP_PORT=3333
+node dist/http.js
+```
+
+Clients then send `Authorization: Bearer <random-secret>`. This protection also covers legacy `/sse` and `/messages` endpoints when `SSE=true`.
+
 ### With Remote Authorization
 
 For multi-user deployments where each client provides their own GitLab token:

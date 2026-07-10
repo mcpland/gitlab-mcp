@@ -32,6 +32,7 @@ import {
 import { encodeGitLabProjectId } from "./lib/gitlab-path.js";
 import { hasReachedSessionCapacity } from "./lib/session-capacity.js";
 import { createGitLabMcpOAuthProvider } from "./lib/mcp-oauth-provider.js";
+import { verifyMcpHttpBearerToken } from "./lib/mcp-http-bearer-auth.js";
 import { resolveOauthScopes } from "./lib/oauth-scopes.js";
 import { createMcpServer } from "./server/build-server.js";
 import type { GitLabAuthHeader } from "./types/auth.js";
@@ -193,6 +194,14 @@ function isMcpRequestPath(path: string, pathPrefix: string): boolean {
   return path === "/mcp" || (pathPrefix.length > 0 && path === `${pathPrefix}/mcp`);
 }
 
+function isMcpTransportPath(path: string, pathPrefix: string): boolean {
+  const transportPaths = ["/mcp", "/sse", "/messages"];
+  return transportPaths.some(
+    (transportPath) =>
+      path === transportPath || (pathPrefix.length > 0 && path === `${pathPrefix}${transportPath}`)
+  );
+}
+
 function getPrefixedOAuthMetadataRoutes(metadataRoute: string, pathPrefix: string): string[] {
   return Array.from(
     new Set([metadataRoute, `${metadataRoute}${pathPrefix}`, `${pathPrefix}${metadataRoute}`])
@@ -204,6 +213,33 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
   const configuredPathPrefix = getConfiguredServerPathPrefix(appEnv);
 
   const app = createMcpExpressApp({ host: appEnv.HTTP_HOST });
+  app.use((req, res, next) => {
+    const expectedToken = appEnv.MCP_HTTP_AUTH_TOKEN;
+    if (!expectedToken || !isMcpTransportPath(req.path, configuredPathPrefix)) {
+      next();
+      return;
+    }
+
+    if (verifyMcpHttpBearerToken(req.header("authorization"), expectedToken)) {
+      next();
+      return;
+    }
+
+    res.setHeader("WWW-Authenticate", 'Bearer realm="gitlab-mcp"');
+    if (isMcpRequestPath(req.path, configuredPathPrefix)) {
+      res.status(401).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32014,
+          message: "Missing or invalid MCP HTTP bearer token"
+        },
+        id: null
+      });
+      return;
+    }
+
+    res.status(401).send("Missing or invalid MCP HTTP bearer token");
+  });
   app.use(express.json({ limit: "2mb" }));
   app.use(
     (error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -23,6 +23,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       MCP_SERVER_NAME: "http-app-test",
       MCP_SERVER_VERSION: "0.0.1",
       MCP_SERVER_URL: undefined,
+      MCP_HTTP_AUTH_TOKEN: undefined,
       GITLAB_API_URL: "https://gitlab.example.com/api/v4",
       GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
       GITLAB_PERSONAL_ACCESS_TOKEN: "test-token",
@@ -550,6 +551,65 @@ describe("http app MCP OAuth", () => {
     });
     expect(prefixedMcpResponse.status).toBe(401);
     expect(prefixedMcpResponse.headers.get("www-authenticate")).toContain("Bearer");
+  });
+});
+
+describe("http app independent bearer authentication", () => {
+  const gatewayToken = "independent-mcp-http-token-for-tests";
+
+  it("protects Streamable HTTP before session creation", async () => {
+    const context = buildContext();
+    context.env.MCP_HTTP_AUTH_TOKEN = gatewayToken;
+    running = await startServerForContext(context);
+
+    const missing = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"jsonrpc":"2.0"}'
+    });
+    expect(missing.status).toBe(401);
+    expect(missing.headers.get("www-authenticate")).toContain("Bearer");
+
+    const wrong = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer wrong-token",
+        "content-type": "application/json"
+      },
+      body: '{"jsonrpc":"2.0"}'
+    });
+    expect(wrong.status).toBe(401);
+
+    const authenticated = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${gatewayToken}`,
+        "content-type": "application/json"
+      },
+      body: '{"jsonrpc":"2.0"'
+    });
+    expect(authenticated.status).toBe(400);
+  });
+
+  it("protects both legacy SSE endpoints", async () => {
+    const context = buildContext();
+    context.env.MCP_HTTP_AUTH_TOKEN = gatewayToken;
+    context.env.SSE = true;
+    running = await startServerForContext(context);
+
+    const connect = await fetch(`${running.baseUrl}/sse`);
+    expect(connect.status).toBe(401);
+
+    const message = await fetch(`${running.baseUrl}/messages?sessionId=missing`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${gatewayToken}`,
+        "content-type": "application/json"
+      },
+      body: "{}"
+    });
+    expect(message.status).toBe(400);
+    await expect(message.text()).resolves.toContain("No transport");
   });
 });
 

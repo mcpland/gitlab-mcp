@@ -21,6 +21,14 @@ const optionalNonEmptyString = z.preprocess((value) => {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }, z.string().optional());
+const optionalHttpAuthToken = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}, z.string().min(32).optional());
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   if (value === undefined) {
@@ -47,6 +55,7 @@ const envSchema = z.object({
   MCP_SERVER_NAME: z.string().min(1).default("gitlab-mcp"),
   MCP_SERVER_VERSION: z.string().min(1).default(DEFAULT_SERVER_VERSION),
   MCP_SERVER_URL: z.string().url().optional(),
+  MCP_HTTP_AUTH_TOKEN: optionalHttpAuthToken,
   GITLAB_API_URL: z.string().min(1).default("https://gitlab.com/api/v4"),
   GITLAB_PERSONAL_ACCESS_TOKEN: z.string().min(1).optional(),
   GITLAB_JOB_TOKEN: z.string().min(1).optional(),

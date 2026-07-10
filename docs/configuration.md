@@ -11,12 +11,13 @@ node dist/http.js --env-file=.env.production
 
 ## Core Settings
 
-| Variable             | Type                                                                     | Default                | Description                                              |
-| -------------------- | ------------------------------------------------------------------------ | ---------------------- | -------------------------------------------------------- |
-| `NODE_ENV`           | `development` \| `test` \| `production`                                  | `development`          | Runtime environment. Affects error detail mode defaults. |
-| `LOG_LEVEL`          | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace` \| `silent` | `info`                 | Pino log level.                                          |
-| `MCP_SERVER_NAME`    | string                                                                   | `gitlab-mcp`           | Server name reported in MCP handshake.                   |
-| `MCP_SERVER_VERSION` | string                                                                   | `package.json` version | Server version reported in MCP handshake.                |
+| Variable              | Type                                                                     | Default                | Description                                                                                         |
+| --------------------- | ------------------------------------------------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`            | `development` \| `test` \| `production`                                  | `development`          | Runtime environment. Affects error detail mode defaults.                                            |
+| `LOG_LEVEL`           | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace` \| `silent` | `info`                 | Pino log level.                                                                                     |
+| `MCP_SERVER_NAME`     | string                                                                   | `gitlab-mcp`           | Server name reported in MCP handshake.                                                              |
+| `MCP_SERVER_VERSION`  | string                                                                   | `package.json` version | Server version reported in MCP handshake.                                                           |
+| `MCP_HTTP_AUTH_TOKEN` | string (32+ chars)                                                       | —                      | Independent bearer credential protecting `/mcp`, `/sse`, and `/messages` before request processing. |
 
 ## GitLab API
 
@@ -154,6 +155,9 @@ These settings apply only to the HTTP transport (`dist/http.js`).
 | `HTTP_JSON_ONLY` | boolean | `false`     | Force JSON-only responses (disable streaming).                                                               |
 | `SSE`            | boolean | `false`     | Enable legacy SSE transport (`GET /sse`, `POST /messages`). Cannot be used with `REMOTE_AUTHORIZATION=true`. |
 
+When `MCP_HTTP_AUTH_TOKEN` is configured, clients must send
+`Authorization: Bearer <MCP_HTTP_AUTH_TOKEN>` to Streamable HTTP and legacy SSE endpoints. The comparison is constant-time. In `REMOTE_AUTHORIZATION=true` mode, send the independent MCP token in `Authorization` and the upstream GitLab credential in `Private-Token` or `Job-Token`.
+
 ## Session Management (HTTP Mode)
 
 | Variable                  | Type   | Default | Description                                                                      |
@@ -170,5 +174,5 @@ The server enforces these cross-field constraints at startup:
 - `GITLAB_USE_OAUTH=true` requires `GITLAB_OAUTH_CLIENT_ID`
 - `ENABLE_DYNAMIC_API_URL=true` requires `REMOTE_AUTHORIZATION=true`
 - `SSE=true` is not compatible with `REMOTE_AUTHORIZATION=true`
-- `HTTP_HOST` values other than `127.0.0.1`, `localhost`, or `::1` cannot use a server-side `GITLAB_PERSONAL_ACCESS_TOKEN` or `GITLAB_JOB_TOKEN` unless `REMOTE_AUTHORIZATION=true`
+- `HTTP_HOST` values other than `127.0.0.1`, `localhost`, or `::1` cannot use server-side PAT, job-token, OAuth, token-script, token-file, or cookie credentials unless `MCP_HTTP_AUTH_TOKEN`, `REMOTE_AUTHORIZATION`, or `GITLAB_MCP_OAUTH` protects incoming requests
 - `NODE_TLS_REJECT_UNAUTHORIZED=0` requires `GITLAB_ALLOW_INSECURE_TLS=true`
