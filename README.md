@@ -338,7 +338,8 @@ Tools are organized into these categories. All GitLab tools use the `gitlab_` pr
 | **Users & Groups**  | `get_users`, `list_namespaces`, `list_events`                               | 6     |
 | **Health**          | `health_check`                                                              | 1     |
 
-See [docs/tools.md](docs/tools.md) for the complete reference.
+See [docs/tools.md](docs/tools.md) for usage details and
+[docs/tools-index.md](docs/tools-index.md) for the generated complete registry.
 
 ## Policy & Security
 
@@ -467,6 +468,7 @@ See [docs/architecture.md](docs/architecture.md) for detailed design documentati
 
 - [Configuration Reference](docs/configuration.md) — All environment variables
 - [Tools Reference](docs/tools.md) — Complete list of MCP tools
+- [Generated Tool Index](docs/tools-index.md) — Registry inventory checked by CI
 - [Authentication Guide](docs/authentication.md) — Auth methods and setup
 - [Deployment Guide](docs/deployment.md) — Docker, production, and multi-instance
 - [Architecture](docs/architecture.md) — Internal design and patterns

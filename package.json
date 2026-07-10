@@ -37,6 +37,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
+    "docs:generate": "tsx scripts/generate-tool-index.ts",
+    "docs:check": "tsx scripts/generate-tool-index.ts --check",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint-staged": "lint-staged",

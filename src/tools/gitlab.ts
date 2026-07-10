@@ -52,7 +52,7 @@ type ToolArgs = Record<string, unknown>;
 
 type ToolSchemaShape = Record<string, z.ZodTypeAny>;
 
-interface GitLabToolDefinition {
+export interface GitLabToolDefinition {
   name: string;
   title: string;
   description: string;
@@ -292,7 +292,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
   }
 }
 
-function getGitLabToolDefinitions(): GitLabToolDefinition[] {
+export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
   const definitions: GitLabToolDefinitionInput[] = [
     {
       name: "gitlab_get_project",
