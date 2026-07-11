@@ -7,16 +7,14 @@ import {
 } from "../src/lib/oauth-security.js";
 
 describe("assertSafeMcpOAuthConfiguration", () => {
-  it.each([
-    "http://localhost:3333",
-    "http://127.0.0.1:3333/gitlab-mcp",
-    "http://[::1]:3333",
-    "https://mcp.example.com"
-  ])("allows secure or loopback issuer %s", (serverUrl) => {
-    expect(() => assertSafeMcpOAuthConfiguration({ enabled: true, serverUrl })).not.toThrow();
-  });
+  it.each(["http://localhost:3333", "http://127.0.0.1:3333/gitlab-mcp", "https://mcp.example.com"])(
+    "allows secure or loopback issuer %s",
+    (serverUrl) => {
+      expect(() => assertSafeMcpOAuthConfiguration({ enabled: true, serverUrl })).not.toThrow();
+    }
+  );
 
-  it.each(["http://mcp.example.com", "http://192.168.1.20:3333"])(
+  it.each(["http://mcp.example.com", "http://192.168.1.20:3333", "http://[::1]:3333"])(
     "rejects non-loopback insecure issuer %s",
     (serverUrl) => {
       expect(() => assertSafeMcpOAuthConfiguration({ enabled: true, serverUrl })).toThrow(

@@ -290,7 +290,7 @@ GITLAB_OAUTH_APP_ID=<pre-registered-gitlab-application-id>
 GITLAB_MCP_OAUTH_STATE_SECRET=<base64-encoded-32-byte-secret>
 ```
 
-Public MCP OAuth issuers must use HTTPS. Plain HTTP is accepted only for loopback development URLs (`localhost`, `127.0.0.1`, or `[::1]`). `MCP_HTTP_AUTH_TOKEN` cannot be enabled with MCP OAuth because both authenticate through `Authorization: Bearer`; use one of these modes.
+Public MCP OAuth issuers must use HTTPS. Plain HTTP is accepted only for loopback development URLs using `localhost` or `127.0.0.1`. The MCP SDK does not accept `[::1]` as a plain HTTP issuer; an IPv6-bound local server should advertise a `localhost` issuer URL. `MCP_HTTP_AUTH_TOKEN` cannot be enabled with MCP OAuth because both authenticate through `Authorization: Bearer`; use one of these modes.
 
 Create a normal GitLab OAuth application before starting the server. Register the single fixed callback `<MCP_SERVER_URL without trailing slash>/callback` (for a prefixed issuer, for example `https://mcp.example.com/gitlab-mcp/callback`) and permit the configured `GITLAB_OAUTH_SCOPES`. Set `GITLAB_OAUTH_APP_SECRET` only for a confidential application. The proxy intentionally does not call GitLab `/oauth/register`: GitLab dynamically registered applications cannot obtain the `api` or `read_api` scope needed by this server.
 

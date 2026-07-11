@@ -231,7 +231,7 @@ The server enforces these cross-field constraints at startup:
 - `GITLAB_MCP_OAUTH=true` requires `GITLAB_OAUTH_APP_ID`, `GITLAB_MCP_OAUTH_STATE_SECRET`, and `MCP_SERVER_URL`
 - MCP OAuth state secrets must decode to 32–64 bytes; the previous rotation key must differ from the current key
 - `GITLAB_OAUTH_ALLOWED_GROUPS` requires local OAuth or MCP OAuth and contains group full paths, not display names or URLs
-- non-loopback `MCP_SERVER_URL` values must use HTTPS when `GITLAB_MCP_OAUTH=true`; HTTP is accepted only for `localhost`, `127.0.0.1`, and `[::1]`
+- `MCP_SERVER_URL` must use HTTPS when `GITLAB_MCP_OAUTH=true`; HTTP is accepted only for `localhost` and `127.0.0.1` because the MCP SDK does not accept `[::1]` as a plain HTTP issuer
 - `MCP_HTTP_AUTH_TOKEN` cannot be combined with `GITLAB_MCP_OAUTH=true` because both consume `Authorization: Bearer`
 - `REMOTE_AUTHORIZATION=true` cannot be combined with `GITLAB_MCP_OAUTH=true`; choose one per-request HTTP authentication mode
 - `ENABLE_DYNAMIC_API_URL=true` requires `REMOTE_AUTHORIZATION=true`

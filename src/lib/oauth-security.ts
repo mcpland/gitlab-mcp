@@ -49,7 +49,7 @@ export function assertSafeMcpOAuthConfiguration(config: McpOAuthSecurityConfig):
     return;
   }
   throw new Error(
-    "GITLAB_MCP_OAUTH requires an HTTPS MCP_SERVER_URL unless the issuer hostname is localhost, 127.0.0.1, or [::1]"
+    "GITLAB_MCP_OAUTH requires an HTTPS MCP_SERVER_URL unless the issuer hostname is localhost or 127.0.0.1"
   );
 }
 
@@ -76,5 +76,5 @@ export function assertOAuthGroupConfiguration(config: OAuthGroupSecurityConfig):
 
 function isLoopbackHostname(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
-  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "[::1]";
+  return normalized === "localhost" || normalized === "127.0.0.1";
 }
