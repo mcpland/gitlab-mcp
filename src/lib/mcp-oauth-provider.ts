@@ -61,7 +61,9 @@ const FORBIDDEN_REDIRECT_PROTOCOLS = new Set([
 ]);
 
 interface GitLabTokenInfo {
+  scope?: unknown;
   scopes?: unknown;
+  expires_in?: unknown;
   expires_in_seconds?: unknown;
   application?: { uid?: unknown } | null;
 }
@@ -300,7 +302,8 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
     } catch {
       throw new ServerError("GitLab returned an invalid OAuth token information response");
     }
-    const tokenScopes = info.scopes;
+    const tokenScopes = info.scope === undefined ? info.scopes : info.scope;
+    const expiresIn = info.expires_in === undefined ? info.expires_in_seconds : info.expires_in;
     if (info.application?.uid !== this.applicationId || !isStringArray(tokenScopes)) {
       throw new InvalidTokenError("OAuth token was not issued for this MCP server");
     }
@@ -316,8 +319,8 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
       clientId: this.applicationId,
       scopes: tokenScopes,
       expiresAt:
-        typeof info.expires_in_seconds === "number" && Number.isFinite(info.expires_in_seconds)
-          ? Math.floor(Date.now() / 1_000) + info.expires_in_seconds
+        typeof expiresIn === "number" && Number.isFinite(expiresIn)
+          ? Math.floor(Date.now() / 1_000) + expiresIn
           : undefined
     };
   }

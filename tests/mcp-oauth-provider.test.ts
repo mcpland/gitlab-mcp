@@ -499,8 +499,8 @@ describe("createGitLabMcpOAuthProvider", () => {
       if (url.pathname === "/oauth/token/info") {
         return Response.json({
           resource_owner_id: 42,
-          scopes: ["api"],
-          expires_in_seconds: 7_200,
+          scope: ["api"],
+          expires_in: 7_200,
           application: { uid: APPLICATION_ID }
         });
       }
@@ -522,6 +522,36 @@ describe("createGitLabMcpOAuthProvider", () => {
       scopes: ["api"]
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("prefers canonical token information fields over deprecated aliases", async () => {
+    const provider = createProvider({
+      fetch: vi.fn(async () =>
+        Response.json({
+          scope: ["api"],
+          scopes: ["read_user"],
+          expires_in: 7_200,
+          expires_in_seconds: 1,
+          application: { uid: APPLICATION_ID }
+        })
+      ) as unknown as typeof fetch
+    });
+
+    const authInfo = await provider.verifyAccessToken("oauth-token");
+
+    expect(authInfo.scopes).toEqual(["api"]);
+    expect(authInfo.expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1_000) + 7_100);
+  });
+
+  it("accepts deprecated token information aliases when canonical fields are absent", async () => {
+    const provider = createProvider({
+      fetch: vi.fn(async () => validDeprecatedTokenInfo()) as unknown as typeof fetch
+    });
+
+    await expect(provider.verifyAccessToken("oauth-token")).resolves.toMatchObject({
+      scopes: ["api"],
+      expiresAt: expect.any(Number)
+    });
   });
 
   it("rejects tokens issued to another GitLab application before group lookup", async () => {
@@ -681,6 +711,14 @@ function createProvider(overrides: Partial<GitLabMcpOAuthProviderOptions> = {}) 
 }
 
 function validTokenInfo(): globalThis.Response {
+  return Response.json({
+    scope: ["api"],
+    expires_in: 7_200,
+    application: { uid: APPLICATION_ID }
+  });
+}
+
+function validDeprecatedTokenInfo(): globalThis.Response {
   return Response.json({
     scopes: ["api"],
     expires_in_seconds: 7_200,
