@@ -13,7 +13,7 @@ import {
   assertOAuthGroupConfiguration,
   assertSafeMcpOAuthConfiguration
 } from "../lib/oauth-security.js";
-import { parseGitLabToolsets } from "../lib/toolsets.js";
+import { DEFAULT_GITLAB_TOOLSET, parseGitLabToolsets } from "../lib/toolsets.js";
 import { loadDotenvFromArgv } from "./dotenv.js";
 
 loadDotenvFromArgv();
@@ -113,7 +113,7 @@ const envSchema = z.object({
   GITLAB_PERMISSION_MODE: z.enum(GITLAB_PERMISSION_MODES).default("full"),
   GITLAB_ALLOWED_PROJECT_IDS: z.string().optional(),
   GITLAB_ALLOWED_TOOLS: z.string().optional(),
-  GITLAB_TOOLSETS: z.string().default("core"),
+  GITLAB_TOOLSETS: z.string().default(DEFAULT_GITLAB_TOOLSET),
   GITLAB_ENABLE_COMPATIBILITY_ALIASES: z.enum(["true", "false"]).default("false"),
   GITLAB_ENABLE_CI_VARIABLE_TOOLS: z.enum(["true", "false"]).default("false"),
   GITLAB_ALLOW_CI_VARIABLE_VALUES: z.enum(["true", "false"]).default("false"),

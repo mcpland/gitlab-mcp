@@ -1,4 +1,8 @@
-import { isToolEnabledByToolsets, toolsetsForTool } from "../src/lib/toolsets.js";
+import {
+  DEFAULT_GITLAB_TOOLSET,
+  isToolEnabledByToolsets,
+  toolsetsForTool
+} from "../src/lib/toolsets.js";
 import type { GitLabToolDefinition } from "../src/tools/gitlab.js";
 
 const EXPLICIT_ENABLE_FLAGS = {
@@ -9,7 +13,7 @@ const EXPLICIT_ENABLE_FLAGS = {
 export function describeToolAvailability(definition: GitLabToolDefinition): string {
   const optIns: string[] = [];
 
-  if (!isToolEnabledByToolsets(definition.name, ["core"])) {
+  if (!isToolEnabledByToolsets(definition.name, [DEFAULT_GITLAB_TOOLSET])) {
     optIns.push(
       toolsetsForTool(definition.name).length > 0
         ? "select a listed toolset"

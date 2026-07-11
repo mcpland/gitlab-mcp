@@ -154,7 +154,7 @@ Do not test tools only. A mature MCP server often exposes tools, resources, and 
 
 ```ts
 describe("Contract: listTools()", () => {
-  it("exposes expected core tools by default", async () => {
+  it("exposes expected tools by default", async () => {
     const { client, clientTransport, serverTransport } = await createLinkedPair(buildContext());
 
     try {

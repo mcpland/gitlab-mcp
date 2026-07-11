@@ -120,7 +120,7 @@ Dynamic API URLs are allowlisted by canonical `host:port`. Hosts from `GITLAB_AP
 | `GITLAB_READ_ONLY_MODE`                   | boolean | `false` | Deprecated compatibility switch. `true` takes precedence over `GITLAB_PERMISSION_MODE` and forces `readonly`.                                                          |
 | `GITLAB_ALLOWED_PROJECT_IDS`              | string  | —       | Comma-separated project IDs. If set, only these projects can be accessed. Empty = no restriction.                                                                      |
 | `GITLAB_ALLOWED_TOOLS`                    | string  | —       | Comma-separated tool allowlist. Accepts names with or without `gitlab_` prefix (e.g. `get_project` or `gitlab_get_project`). Empty = all tools enabled.                |
-| `GITLAB_TOOLSETS`                         | string  | `core`  | Comma-separated domain presets. Empty or `all` exposes the full registry; presets such as `ci-catalog` combine as a union before other policy filters.                 |
+| `GITLAB_TOOLSETS`                         | string  | `all`   | Comma-separated domain presets. Empty or `all` exposes the full registry; presets such as `ci-catalog` combine as a union before other policy filters.                 |
 | `GITLAB_ENABLE_COMPATIBILITY_ALIASES`     | boolean | `false` | Expose legacy duplicate names for older clients. Canonical tools remain available when aliases are hidden.                                                             |
 | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | boolean | `false` | Second gate for project/group CI/CD variable tools. Also select the `ci-variables` toolset (or `all`).                                                                 |
 | `GITLAB_ALLOW_CI_VARIABLE_VALUES`         | boolean | `false` | Permit list/get tools to return variable values only when the individual call also sets `include_value=true`. Write responses and errors never return supplied values. |
@@ -131,7 +131,7 @@ Dynamic API URLs are allowlisted by canonical `host:port`. Hosts from `GITLAB_AP
 
 In `modify` mode, the raw GraphQL mutation executor remains available for non-destructive updates. Before execution, gitlab-mcp parses the document AST and rejects mutation-root field names containing `delete`, `destroy`, `remove`, `prune`, or `purge`, including fields reached through aliases, inline fragments, and fragment spreads. Documents that cannot be verified are rejected.
 
-`GITLAB_TOOLSETS` selects the candidate registry first; the two sensitive-family flags are additional gates. With the default `GITLAB_TOOLSETS=core`, setting either flag alone exposes nothing. Use `core,ci-variables`, `core,dependency-proxy`, their union, or `all` as appropriate.
+`GITLAB_TOOLSETS` selects the candidate registry first; the two sensitive-family flags are additional gates. With the default `GITLAB_TOOLSETS=all`, setting a sensitive-family flag is sufficient to expose that family. When using a reduced registry, include `ci-variables` or `dependency-proxy` alongside the selected presets.
 
 ### Strict Project Scope
 

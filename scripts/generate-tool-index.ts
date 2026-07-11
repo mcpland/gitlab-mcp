@@ -5,7 +5,7 @@ import * as path from "node:path";
 
 import { format } from "prettier";
 
-import { toolsetsForTool } from "../src/lib/toolsets.js";
+import { DEFAULT_GITLAB_TOOLSET, toolsetsForTool } from "../src/lib/toolsets.js";
 import { getGitLabToolDefinitions } from "../src/tools/gitlab.js";
 import { describeToolAvailability } from "./tool-index.js";
 
@@ -41,7 +41,7 @@ function renderToolIndex(): string {
     "",
     `The registry contains **${tools.length} GitLab tools** plus \`health_check\`. Policy, toolset, feature, transport, and project-scope settings can hide tools at runtime.`,
     "",
-    "Availability is evaluated against the documented defaults: `GITLAB_TOOLSETS=core`, sensitive-family flags disabled, and compatibility aliases disabled. `default` means no additional opt-in is required. Other values list every extra gate; selecting a listed toolset means selecting any toolset shown in the adjacent column (or `all`).",
+    `Availability is evaluated against the documented defaults: \`GITLAB_TOOLSETS=${DEFAULT_GITLAB_TOOLSET}\`, sensitive-family flags disabled, and compatibility aliases disabled. \`default\` means no additional opt-in is required. Other values list every extra gate; selecting a listed toolset means selecting any toolset shown in the adjacent column (or \`all\`).`,
     "",
     "| Tool | Capabilities | Scope | Toolsets | Availability | Description |",
     "| --- | --- | --- | --- | --- | --- |",

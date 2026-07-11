@@ -451,7 +451,7 @@ node dist/http.js --env-file=.env.production
 | Policy          | `GITLAB_READ_ONLY_MODE`                   | `false`                     | Deprecated kill switch. When `true`, overrides `GITLAB_PERMISSION_MODE` and forces `readonly`.              |
 | Policy          | `GITLAB_ALLOWED_PROJECT_IDS`              | —                           | Restrict access to specific GitLab project IDs.                                                             |
 | Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                                           |
-| Policy          | `GITLAB_TOOLSETS`                         | `core`                      | Domain presets such as `core`, `merge-requests`, `issues`, or `pipelines`; use `all` for the full registry. |
+| Policy          | `GITLAB_TOOLSETS`                         | `all`                       | Full registry by default; use presets like `core`, `merge-requests`, `issues`, or `pipelines` to reduce it. |
 | Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                           |
 | Policy          | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | `false`                     | Second gate for CI/CD variable tools; also select `ci-variables` or `all`.                                  |
 | Policy          | `GITLAB_ALLOW_CI_VARIABLE_VALUES`         | `false`                     | Allow values only when a list/get call also passes `include_value=true`.                                    |

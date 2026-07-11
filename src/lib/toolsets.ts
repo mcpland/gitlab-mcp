@@ -21,6 +21,7 @@ export const GITLAB_TOOLSETS = [
 ] as const;
 
 export type GitLabToolset = (typeof GITLAB_TOOLSETS)[number];
+export const DEFAULT_GITLAB_TOOLSET: GitLabToolset = "all";
 
 const VALID_TOOLSETS = new Set<string>(GITLAB_TOOLSETS);
 

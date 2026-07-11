@@ -40,8 +40,8 @@ function readEnvironmentValue(expression: string, envFileContents = ""): unknown
 }
 
 describe("environment defaults", () => {
-  it("starts with the compact core toolset when no environment file is present", () => {
-    expect(readEnvironmentValue("env.GITLAB_TOOLSETS")).toEqual(["core"]);
+  it("exposes all toolsets when no environment file is present", () => {
+    expect(readEnvironmentValue("env.GITLAB_TOOLSETS")).toEqual(["all"]);
   });
 
   it("defaults permission mode to full", () => {
