@@ -3,7 +3,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerGitLabTools } from "../tools/gitlab.js";
 import { registerHealthTool } from "../tools/health.js";
 import type { AppContext } from "../types/context.js";
-import { installCompactToolListHandler } from "./compact-tool-list.js";
 
 export function createMcpServer(context: AppContext): McpServer {
   const server = new McpServer({
@@ -13,7 +12,6 @@ export function createMcpServer(context: AppContext): McpServer {
 
   registerHealthTool(server);
   registerGitLabTools(server, context);
-  installCompactToolListHandler(server);
 
   return server;
 }
