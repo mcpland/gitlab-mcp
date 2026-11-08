@@ -171,7 +171,7 @@ export async function waitForTerminalStatus(
   }
 }
 
-function sleepWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
+export function sleepWithSignal(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(signal.reason);

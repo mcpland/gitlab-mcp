@@ -77,6 +77,7 @@ import { deploymentToolDefinitions } from "./deployments.js";
 import { environmentToolDefinitions } from "./environments.js";
 import { GROUP_MILESTONE_TOOL_NAMES, groupMilestoneToolDefinitions } from "./group-milestones.js";
 import { GROUP_ITERATION_TOOL_NAMES, iterationToolDefinitions } from "./iterations.js";
+import { mergeRequestRebaseToolDefinitions } from "./merge-request-rebase.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
 import { pipelineJobToolDefinitions } from "./pipeline-jobs.js";
 import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
@@ -5742,7 +5743,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...snippetToolDefinitions,
     ...protectedTagToolDefinitions,
     ...runnerToolDefinitions,
-    ...vulnerabilityToolDefinitions
+    ...vulnerabilityToolDefinitions,
+    ...mergeRequestRebaseToolDefinitions
   ];
 
   return definitions.map((definition) => {
