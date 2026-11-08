@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a new tool, option, or behavior change.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do with GitLab through MCP, and what blocks you today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The tool, argument, or setting you have in mind, and the GitLab API endpoints involved if known.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Permissions and safety
+      description: Does it read, write, or delete data? Does it touch credentials, webhooks, or instance-wide settings? How should readonly and modify permission modes and project allowlists treat it?
