@@ -120,7 +120,9 @@ Membership is checked with the user's OAuth token against `GET /api/v4/groups` u
 
 - The callback server listens for up to 3 minutes before timing out
 - Token files are stored with `0600` permissions
-- If refresh fails, the server falls back to interactive authorization
+- If GitLab rejects the refresh token (HTTP 400/401, for example `invalid_grant`), the server falls back to interactive authorization
+- Network errors, rate limits, and GitLab 5xx responses during refresh fail only the current call and keep the stored token, so a transient outage never opens a browser
+- Token endpoint failures are logged with the HTTP status and OAuth error code only, never the response text
 
 ---
 
