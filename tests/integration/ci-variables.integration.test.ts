@@ -18,7 +18,16 @@ const GROUP_VARIABLE_TOOLS = [
   "gitlab_update_group_variable",
   "gitlab_delete_group_variable"
 ];
-const ALL_VARIABLE_TOOLS = [...PROJECT_VARIABLE_TOOLS, ...GROUP_VARIABLE_TOOLS];
+const SCHEDULE_VARIABLE_TOOLS = [
+  "gitlab_create_pipeline_schedule_variable",
+  "gitlab_update_pipeline_schedule_variable",
+  "gitlab_delete_pipeline_schedule_variable"
+];
+const ALL_VARIABLE_TOOLS = [
+  ...PROJECT_VARIABLE_TOOLS,
+  ...GROUP_VARIABLE_TOOLS,
+  ...SCHEDULE_VARIABLE_TOOLS
+];
 
 function textOf(result: { content?: Array<{ type: string; text: string }> }): string {
   return result.content?.find((item) => item.type === "text")?.text ?? "";

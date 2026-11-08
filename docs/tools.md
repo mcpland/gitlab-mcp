@@ -320,6 +320,26 @@ Requires `USE_PIPELINE=true` (default).
 
 ---
 
+## Pipeline Schedules
+
+Requires `USE_PIPELINE=true` (default) and the `pipelines` toolset (or `all`). Schedule variable tools hold CI/CD secrets, so they additionally require the `ci-variables` toolset (or `all`) and `GITLAB_ENABLE_CI_VARIABLE_TOOLS=true`; their supplied values are never returned or included in errors. `gitlab_get_pipeline_schedule` returns variable metadata only, unless the server sets `GITLAB_ALLOW_CI_VARIABLE_VALUES=true` and the call sets `include_variable_values=true`.
+
+| Tool                                       | Mutating | Description                                                                                                                           |
+| ------------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_pipeline_schedules`           | No       | List schedules (`cron`, `cron_timezone`, `next_run_at`, owner, `active`). Supports `scope` (`active`/`inactive`) and pagination.      |
+| `gitlab_get_pipeline_schedule`             | No       | Get one schedule with its last pipeline, inputs, and variable metadata.                                                               |
+| `gitlab_list_pipeline_schedule_pipelines`  | No       | List pipelines a schedule has triggered. Supports `scope`, `status`, `sort`, and created/updated date filters.                        |
+| `gitlab_create_pipeline_schedule`          | **Yes**  | Create a schedule. Params: `description`, `ref`, `cron` (required); `cron_timezone` (default UTC), `active`, `inputs` (GitLab 18.1+). |
+| `gitlab_update_pipeline_schedule`          | **Yes**  | Change a schedule; `active=false` pauses it and `{name, destroy: true}` removes an input.                                             |
+| `gitlab_delete_pipeline_schedule`          | **Yes**  | Permanently delete a schedule and its variables.                                                                                      |
+| `gitlab_play_pipeline_schedule`            | **Yes**  | Run a schedule immediately without changing `next_run_at`.                                                                            |
+| `gitlab_take_ownership_pipeline_schedule`  | **Yes**  | Make the current user the schedule owner; later scheduled pipelines run as that user.                                                 |
+| `gitlab_create_pipeline_schedule_variable` | **Yes**  | Add a variable (`key`, `value`, optional `variable_type`) to a schedule. Opt-in as described above.                                   |
+| `gitlab_update_pipeline_schedule_variable` | **Yes**  | Change a schedule variable's value or type. Opt-in as described above.                                                                |
+| `gitlab_delete_pipeline_schedule_variable` | **Yes**  | Permanently delete a schedule variable. Opt-in as described above.                                                                    |
+
+---
+
 ## CI/CD Variables
 
 Requires both the `ci-variables` toolset (or `all`) and `GITLAB_ENABLE_CI_VARIABLE_TOOLS=true` (default: `false`). Project and group variants support list, get, create, update, and delete. List endpoints support `page` and `per_page`; list, get, update, and delete accept `filter.environment_scope` to select an environment scope or disambiguate duplicate keys.

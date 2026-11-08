@@ -73,9 +73,11 @@ import { classifyTransportFailure, describeTransportFailure } from "../lib/trans
 import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
+import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
 import {
   adminCapabilities,
   adminDeleteCapabilities,
+  ciVariableKeySchema,
   adminGraphqlCapabilities,
   deleteCapabilities,
   deleteGraphqlCapabilities,
@@ -260,11 +262,6 @@ const customFieldValueSchema = z.object({
   selected_option_ids: optionalStringArray,
   date_value: optionalString
 });
-const ciVariableKeySchema = z
-  .string()
-  .min(1)
-  .max(255)
-  .regex(/^[A-Za-z0-9_]+$/, "CI/CD variable keys may contain only letters, digits, and '_'");
 const ciVariableFilterSchema = z
   .object({
     environment_scope: z.string().min(1)
@@ -5475,7 +5472,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
 
         return context.gitlab.executeGraphql(query, getOptionalRecord(args, "variables"));
       }
-    }
+    },
+    ...pipelineScheduleToolDefinitions
   ];
 
   return definitions.map((definition) => {

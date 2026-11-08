@@ -341,7 +341,7 @@ Tools are organized into these categories. All GitLab tools use the `gitlab_` pr
 | **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                      |
 | **Draft Notes**     | `list_draft_notes`, `create_draft_note`, `bulk_publish_draft_notes`          |
 | **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                   |
-| **Pipelines**       | `list_pipelines`, `list_deployments`, `get_job_artifact_file`                |
+| **Pipelines**       | `list_pipelines`, `list_pipeline_schedules`, `get_job_artifact_file`         |
 | **Commits**         | `list_commits`, `get_commit`, `get_commit_diff`                              |
 | **Labels**          | `list_labels`, `create_label`, `update_label`                                |
 | **Milestones**      | `list_milestones`, `create_milestone`, burndown events                       |
@@ -453,7 +453,7 @@ node dist/http.js --env-file=.env.production
 | Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                                           |
 | Policy          | `GITLAB_TOOLSETS`                         | `all`                       | Full registry by default; use presets like `core`, `merge-requests`, `issues`, or `pipelines` to reduce it. |
 | Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                           |
-| Policy          | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | `false`                     | Second gate for CI/CD variable tools; also select `ci-variables` or `all`.                                  |
+| Policy          | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | `false`                     | Second gate for CI/CD and schedule variable tools; also select `ci-variables` or `all`.                     |
 | Policy          | `GITLAB_ALLOW_CI_VARIABLE_VALUES`         | `false`                     | Allow values only when a list/get call also passes `include_value=true`.                                    |
 | Policy          | `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS`    | `false`                     | Second gate for Dependency Proxy tools; also select `dependency-proxy` or `all`.                            |
 | Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                                              |

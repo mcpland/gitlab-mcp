@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-import { isGitLabProjectIdentityAllowed } from "../lib/gitlab-path.js";
+import type { GitLabRequestOptions } from "../lib/gitlab-client.js";
+import {
+  encodeGitLabGroupId,
+  encodeGitLabPathSegment,
+  encodeGitLabProjectId,
+  isGitLabProjectIdentityAllowed
+} from "../lib/gitlab-path.js";
 import type { ToolCapability } from "../lib/tool-capabilities.js";
 import { nullableOptional, optionalBooleanLikeSchema } from "../lib/tool-schema.js";
 import type { AppContext } from "../types/context.js";
@@ -68,6 +74,12 @@ export const optionalStringOrStringArray = nullableOptional(
   z.union([z.string(), z.array(z.string())])
 );
 export const optionalRecord = nullableOptional(z.record(z.string(), z.unknown()));
+
+export const ciVariableKeySchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[A-Za-z0-9_]+$/, "CI/CD variable keys may contain only letters, digits, and '_'");
 
 export const paginationShape = {
   page: optionalNumber,
@@ -353,4 +365,32 @@ export function pickRecordFields(
       .filter((field) => Object.prototype.hasOwnProperty.call(record, field))
       .map((field) => [field, record[field]])
   );
+}
+
+/**
+ * Build `/projects/:id/<segments>` for the generic client methods. The project
+ * identity is canonicalized and every further value is encoded as exactly one
+ * path segment, so IDs such as ".." cannot retarget the request.
+ */
+export function projectApiPath(projectId: string, ...segments: Array<string | number>): string {
+  return [
+    `/projects/${encodeGitLabProjectId(projectId)}`,
+    ...segments.map((segment) => encodeGitLabPathSegment(String(segment)))
+  ].join("/");
+}
+
+/** Build `/groups/:id/<segments>` with the same encoding rules as projectApiPath. */
+export function groupApiPath(groupId: string, ...segments: Array<string | number>): string {
+  return [
+    `/groups/${encodeGitLabGroupId(groupId)}`,
+    ...segments.map((segment) => encodeGitLabPathSegment(String(segment)))
+  ].join("/");
+}
+
+/** Request options that send `payload` as a JSON body. */
+export function jsonBody(payload: unknown): GitLabRequestOptions {
+  return {
+    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" }
+  };
 }

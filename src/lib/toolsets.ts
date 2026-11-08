@@ -81,7 +81,7 @@ const TOOLSET_PATTERNS: ReadonlyArray<{
     pattern: /(?:pipeline|\bjob|job_|artifact|deployment|environment|ci_lint)/
   },
   { toolset: "ci-catalog", pattern: /ci_catalog/ },
-  { toolset: "ci-variables", pattern: /(?:project|group)_variable/ },
+  { toolset: "ci-variables", pattern: /(?:project|group|schedule)_variable/ },
   { toolset: "dependency-proxy", pattern: /dependency_proxy/ },
   { toolset: "wiki", pattern: /wiki/ },
   { toolset: "milestones", pattern: /milestone/ },
