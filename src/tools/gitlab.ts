@@ -8125,9 +8125,21 @@ function maybeDecodeRepositoryFileContents(value: unknown, shouldDecode?: boolea
     return value;
   }
 
+  // Decode only when the bytes survive a UTF-8 round trip. Binary files
+  // (images, archives, compiled assets) would otherwise be replaced with
+  // U+FFFD characters and lose their content, so they stay base64.
+  const bytes = Buffer.from(file.content, "base64");
+  const text = bytes.toString("utf8");
+  if (!Buffer.from(text, "utf8").equals(bytes)) {
+    return {
+      ...file,
+      decode_note: "Content is not valid UTF-8 text and was left base64-encoded."
+    };
+  }
+
   return {
     ...file,
-    content: Buffer.from(file.content, "base64").toString("utf8"),
+    content: text,
     encoding: "utf8"
   };
 }
