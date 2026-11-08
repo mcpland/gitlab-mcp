@@ -352,6 +352,8 @@ Tools are organized into these categories. All GitLab tools use the `gitlab_` pr
 | **Users & Groups**  | `get_users`, `list_namespaces`, `list_events`                                |
 | **Health**          | `health_check` (optionally verifies GitLab connectivity and auth)            |
 
+During `initialize`, the server also sends MCP `instructions`: a short briefing on ID formats, token-saving review and CI workflows, `gitlab_discover_tools`, untrusted content, and the active permission mode, project scope, and toolsets.
+
 See [docs/tools.md](docs/tools.md) for usage details and
 [docs/tools-index.md](docs/tools-index.md) for the generated complete registry.
 
