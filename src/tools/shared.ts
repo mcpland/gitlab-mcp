@@ -7,6 +7,8 @@ import {
   encodeGitLabProjectId,
   isGitLabProjectIdentityAllowed
 } from "../lib/gitlab-path.js";
+import type { ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+
 import type { ToolCapability } from "../lib/tool-capabilities.js";
 import { nullableOptional, optionalBooleanLikeSchema } from "../lib/tool-schema.js";
 import type { AppContext } from "../types/context.js";
@@ -29,7 +31,9 @@ export interface GitLabToolDefinition {
   scope: GitLabToolScopeMetadata;
   requiresAuth?: boolean;
   requiresFeature?: "wiki" | "milestone" | "pipeline" | "release";
-  requiresExplicitEnable?: "ciVariables" | "dependencyProxy";
+  requiresExplicitEnable?: "ciVariables" | "dependencyProxy" | "rawApi";
+  /** Override the capability-derived MCP annotations for tools with dynamic behavior. */
+  annotations?: ToolAnnotations;
   requiresLocalFileTools?: boolean;
   compatibilityAlias?: boolean;
   sensitiveArguments?: readonly string[];

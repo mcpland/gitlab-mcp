@@ -18,7 +18,8 @@ export const GITLAB_TOOLSETS = [
   "webhooks",
   "identity",
   "vulnerabilities",
-  "graphql"
+  "graphql",
+  "api"
 ] as const;
 
 export type GitLabToolset = (typeof GITLAB_TOOLSETS)[number];
@@ -92,6 +93,7 @@ const TOOLSET_PATTERNS: ReadonlyArray<{
   { toolset: "webhooks", pattern: /webhook/ },
   { toolset: "vulnerabilities", pattern: /vulnerabilit/ },
   { toolset: "graphql", pattern: /graphql/ },
+  { toolset: "api", pattern: /^gitlab_api_request$/ },
   {
     toolset: "groups",
     pattern: /(?:create_group|group_|namespace)/

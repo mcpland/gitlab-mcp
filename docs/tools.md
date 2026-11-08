@@ -587,6 +587,16 @@ Selected by the `vulnerabilities` toolset (or `all`). These GraphQL-backed tools
 
 ---
 
+## Raw REST API
+
+Requires `GITLAB_ENABLE_RAW_API=true` and the `api` toolset (or `all`). Hidden when `GITLAB_ALLOWED_PROJECT_IDS` is set. This escape hatch is checked only by HTTP method (GET needs `read`, POST/PUT/PATCH need `write`, DELETE needs `delete`), so it bypasses the per-family safeguards of typed tools such as admin classification and opt-in flags; enable it only for trusted agents. Credential and webhook endpoints (`variables`, `triggers`, access and deploy tokens, keys, `runners`, `hooks`, `application`) and `/graphql` are always refused.
+
+| Tool                 | Mutating | Description                                                                                                                                                                                                                       |
+| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_api_request` | **Yes**  | Send one REST request: `method` (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`), `path` relative to `/api/v4` (no query, fragment, or dot segments), optional `query` and JSON `body` (not for GET/DELETE). Redirects are not followed. |
+
+---
+
 ## GraphQL
 
 | Tool                              | Mutating | Description                                                                                                                          |

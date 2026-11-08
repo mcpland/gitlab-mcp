@@ -58,6 +58,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_ALLOW_CI_VARIABLE_VALUES: false,
       GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS: false,
       GITLAB_ENABLE_JMESPATH: false,
+      GITLAB_ENABLE_RAW_API: false,
       GITLAB_DISABLED_CAPABILITIES: [],
       GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: false,
       GITLAB_RESPONSE_MODE: "json",

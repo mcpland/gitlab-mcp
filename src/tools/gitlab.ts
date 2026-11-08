@@ -80,6 +80,7 @@ import { classifyTransportFailure, describeTransportFailure } from "../lib/trans
 import { nextStepForGitLabStatus, nextStepForMessage } from "../lib/error-hints.js";
 import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
+import { API_REQUEST_TOOL_NAME, apiRequestToolDefinitions } from "./api-request.js";
 import { deploymentToolDefinitions } from "./deployments.js";
 import { environmentToolDefinitions } from "./environments.js";
 import { GROUP_MILESTONE_TOOL_NAMES, groupMilestoneToolDefinitions } from "./group-milestones.js";
@@ -184,6 +185,7 @@ const RAW_GRAPHQL_TOOL_NAMES = new Set([
 
 const GLOBAL_TOOL_PROJECT_SCOPE_MODES = new Map<string, "allow" | "filter" | "deny">([
   ["gitlab_discover_tools", "allow"],
+  [API_REQUEST_TOOL_NAME, "deny"],
   ["gitlab_list_projects", "filter"],
   ["gitlab_search_repositories", "filter"],
   ["gitlab_search_code", "filter"],
@@ -419,6 +421,10 @@ function isExplicitlyEnabled(definition: GitLabToolDefinition, context: AppConte
     return context.env.GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS;
   }
 
+  if (definition.requiresExplicitEnable === "rawApi") {
+    return context.env.GITLAB_ENABLE_RAW_API;
+  }
+
   return true;
 }
 
@@ -461,7 +467,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
         inputSchema: jmespathEnabled
           ? { ...(definition.inputSchema ?? {}), [JMESPATH_ARGUMENT]: jmespathArgumentSchema }
           : (definition.inputSchema ?? {}),
-        annotations: annotationsForCapabilities(definition.capabilities)
+        annotations: definition.annotations ?? annotationsForCapabilities(definition.capabilities)
       },
       async (rawArgs, extra) => {
         try {
@@ -5916,7 +5922,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...protectedTagToolDefinitions,
     ...runnerToolDefinitions,
     ...vulnerabilityToolDefinitions,
-    ...mergeRequestRebaseToolDefinitions
+    ...mergeRequestRebaseToolDefinitions,
+    ...apiRequestToolDefinitions
   ];
 
   return definitions.map((definition) => {
