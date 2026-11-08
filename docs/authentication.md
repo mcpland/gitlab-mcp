@@ -118,7 +118,8 @@ Membership is checked with the user's OAuth token against `GET /api/v4/groups` u
 
 ### Notes
 
-- The callback server listens for up to 3 minutes before timing out
+- The callback server listens for up to 3 minutes before timing out, and only on the loopback host named in `GITLAB_OAUTH_REDIRECT_URI` (`127.0.0.1`, `localhost`, or `[::1]`)
+- Callback requests with the wrong `state` are rejected with HTTP 400 without aborting the login in progress
 - Token files are stored with `0600` permissions
 - If GitLab rejects the refresh token (HTTP 400/401, for example `invalid_grant`), the server falls back to interactive authorization
 - Network errors, rate limits, and GitLab 5xx responses during refresh fail only the current call and keep the stored token, so a transient outage never opens a browser

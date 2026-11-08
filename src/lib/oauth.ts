@@ -38,6 +38,8 @@ interface TokenResponse {
  * OAuth error code are kept: the response body is free text that should not
  * reach logs.
  */
+const LOOPBACK_CALLBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
 export class OAuthTokenEndpointError extends Error {
   constructor(
     public readonly status: number,
@@ -115,6 +117,11 @@ export class GitLabOAuthManager {
     if (redirectUrl.protocol !== "http:") {
       throw new Error("Only http redirect URI is supported for local OAuth callback server");
     }
+    if (!LOOPBACK_CALLBACK_HOSTS.has(redirectUrl.hostname.toLowerCase())) {
+      throw new Error(
+        "GITLAB_OAUTH_REDIRECT_URI must use a loopback host (127.0.0.1, localhost, or [::1]) so the OAuth callback server is not reachable from the network"
+      );
+    }
 
     const challenge = await pkceChallenge();
     const state = randomBytes(16).toString("hex");
@@ -181,12 +188,27 @@ export class GitLabOAuthManager {
 
         const code = requestUrl.searchParams.get("code");
         const state = requestUrl.searchParams.get("state");
-        if (!code || state !== expectedState) {
+        if (state !== expectedState) {
+          // A stray or forged request (another tab, a prefetch, a local page)
+          // must not abort the login the user is completing; keep waiting.
           res.statusCode = 400;
           res.end("Invalid OAuth callback");
+          return;
+        }
+
+        if (!code) {
+          const oauthError = requestUrl.searchParams.get("error");
+          res.statusCode = 400;
+          res.end("Authorization was not granted. You can close this tab.");
           finalize(() => {
             server.close();
-            reject(new Error("Invalid OAuth callback state or missing code"));
+            reject(
+              new Error(
+                `OAuth authorization was not granted${
+                  oauthError && /^[a-z_]{1,64}$/u.test(oauthError) ? `: ${oauthError}` : ""
+                }`
+              )
+            );
           });
           return;
         }

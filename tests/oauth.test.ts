@@ -1,4 +1,6 @@
 import * as fs from "node:fs/promises";
+import { get as httpGet } from "node:http";
+import { createServer } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -182,3 +184,87 @@ describe("GitLabOAuthManager refresh failures", () => {
     }
   });
 });
+
+describe("GitLabOAuthManager interactive callback", () => {
+  async function freePort(): Promise<number> {
+    return new Promise((resolve, reject) => {
+      const probe = createServer();
+      probe.once("error", reject);
+      probe.listen(0, "127.0.0.1", () => {
+        const address = probe.address();
+        probe.close(() =>
+          typeof address === "object" && address
+            ? resolve(address.port)
+            : reject(new Error("no port"))
+        );
+      });
+    });
+  }
+
+  async function createManager(redirectUri: string) {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "gitlab-mcp-oauth-test-"));
+    const info = vi.fn();
+    const manager = new GitLabOAuthManager(
+      {
+        clientId: "client-id",
+        gitlabUrl: "https://gitlab.example.com",
+        redirectUri,
+        scopes: ["api"],
+        tokenStoragePath: path.join(directory, "token.json"),
+        autoOpenBrowser: false
+      },
+      { info, warn: vi.fn() } as unknown as Logger
+    );
+    return { manager, info, cleanup: () => fs.rm(directory, { recursive: true, force: true }) };
+  }
+
+  it("refuses to listen for the callback on a non-loopback host", async () => {
+    const { manager, cleanup } = await createManager("http://0.0.0.0:8765/callback");
+    try {
+      await expect(manager.getAccessToken()).rejects.toThrow("must use a loopback host");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("ignores callbacks with the wrong state and completes with the right one", async () => {
+    const port = await freePort();
+    const { manager, info, cleanup } = await createManager(`http://127.0.0.1:${port}/callback`);
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        Response.json({ access_token: "fresh-token", token_type: "Bearer", expires_in: 3600 })
+      );
+    try {
+      const pending = manager.getAccessToken();
+      await vi.waitFor(() => expect(info).toHaveBeenCalled());
+      const authorizationUrl = new URL(
+        (info.mock.calls[0]?.[0] as { authorizationUrl: string }).authorizationUrl
+      );
+      const state = authorizationUrl.searchParams.get("state")!;
+      const callback = `http://127.0.0.1:${port}/callback`;
+
+      const wrongState = await rawGet(`${callback}?code=attacker&state=wrong`);
+      expect(wrongState).toBe(400);
+
+      const accepted = await rawGet(`${callback}?code=real-code&state=${state}`);
+      expect(accepted).toBe(200);
+      await expect(pending).resolves.toBe("fresh-token");
+      const body = new URLSearchParams(String((fetchSpy.mock.calls[0]?.[1] as RequestInit).body));
+      expect(body.get("code")).toBe("real-code");
+    } finally {
+      fetchSpy.mockRestore();
+      await cleanup();
+    }
+  });
+});
+
+/** GET through node:http so the mocked global fetch is not involved. */
+function rawGet(url: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    httpGet(url, (response) => {
+      response.resume();
+      response.on("end", () => resolve(response.statusCode ?? 0));
+    }).on("error", reject);
+  });
+}
