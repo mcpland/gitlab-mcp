@@ -414,8 +414,7 @@ export async function executeGraphqlData<T>(
   variables: Record<string, unknown> = {}
 ): Promise<T> {
   const response = (await context.gitlab.executeGraphql(query, variables)) as
-    | { data?: T; errors?: Array<{ message?: string }> }
-    | T;
+    { data?: T; errors?: Array<{ message?: string }> } | T;
 
   if (
     typeof response === "object" &&

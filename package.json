@@ -89,19 +89,6 @@
       "eslint --fix"
     ]
   },
-  "pnpm": {
-    "overrides": {
-      "@modelcontextprotocol/sdk>@hono/node-server": "1.19.13",
-      "@modelcontextprotocol/sdk>ajv": "8.18.0",
-      "@modelcontextprotocol/sdk>express-rate-limit": "8.2.2",
-      "@modelcontextprotocol/sdk>hono": "4.12.25",
-      "ajv>fast-uri": "3.1.2",
-      "body-parser>qs": "6.15.2",
-      "express-rate-limit>ip-address": "10.1.1",
-      "express>qs": "6.15.2",
-      "router>path-to-regexp": "8.4.0"
-    }
-  },
   "config": {
     "commitizen": {
       "path": "cz-conventional-changelog"
