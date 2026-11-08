@@ -65,6 +65,7 @@ interface GitLabTokenInfo {
   scopes?: unknown;
   expires_in?: unknown;
   expires_in_seconds?: unknown;
+  resource_owner_id?: unknown;
   application?: { uid?: unknown } | null;
 }
 
@@ -314,6 +315,7 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
       throw new InvalidTokenError("OAuth token owner is not in an allowed GitLab group");
     }
 
+    const resourceOwnerId = info.resource_owner_id;
     return {
       token,
       clientId: this.applicationId,
@@ -321,7 +323,11 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
       expiresAt:
         typeof expiresIn === "number" && Number.isFinite(expiresIn)
           ? Math.floor(Date.now() / 1_000) + expiresIn
-          : undefined
+          : undefined,
+      ...((typeof resourceOwnerId === "number" && Number.isSafeInteger(resourceOwnerId)) ||
+      (typeof resourceOwnerId === "string" && /^\d+$/u.test(resourceOwnerId))
+        ? { extra: { gitlabUserId: String(resourceOwnerId) } }
+        : {})
     };
   }
 

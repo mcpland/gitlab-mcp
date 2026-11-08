@@ -14,6 +14,7 @@ import {
   mcpAuthRouter
 } from "@modelcontextprotocol/sdk/server/auth/router.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type {
   OAuthMetadata,
   OAuthProtectedResourceMetadata
@@ -67,6 +68,12 @@ interface SessionState {
   activeRequests: number;
   closed: boolean;
   auth?: SessionAuth;
+  /**
+   * GitLab principal that created the session when per-request credentials
+   * are in use. Requests carrying another principal's credential are treated
+   * as if the session did not exist.
+   */
+  ownerKey?: string;
   rateLimit: SessionRateLimitState;
 }
 
@@ -82,6 +89,18 @@ interface SseSessionState {
 interface SessionRateLimitState {
   windowStart: number;
   count: number;
+}
+
+/**
+ * Session IDs act as bearer handles for stateful sessions, so logs carry only
+ * a short digest that still lets operators correlate lines for one session.
+ */
+export function sessionLogId(sessionId: string | undefined): string | undefined {
+  if (!sessionId) {
+    return undefined;
+  }
+
+  return `sha256:${createHash("sha256").update(sessionId, "utf8").digest("hex").slice(0, 12)}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -652,12 +671,15 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
               await server.connect(transport);
             }
           );
-          appLogger.info({ sessionId }, "MCP SSE session initialized");
+          appLogger.info({ sessionId: sessionLogId(sessionId) }, "MCP SSE session initialized");
         } catch (error) {
           if (sessionId) {
             await closeSseSession(sessionId, "connect-error");
           }
-          appLogger.error({ err: error, sessionId }, "Failed to initialize SSE session");
+          appLogger.error(
+            { err: error, sessionId: sessionLogId(sessionId) },
+            "Failed to initialize SSE session"
+          );
           if (!res.headersSent) {
             res.status(500).send("Failed to initialize SSE session");
           }
@@ -708,7 +730,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
           }
         );
       } catch (error) {
-        appLogger.error({ err: error, sessionId }, "SSE post message failed");
+        appLogger.error(
+          { err: error, sessionId: sessionLogId(sessionId) },
+          "SSE post message failed"
+        );
         if (!res.headersSent) {
           res.status(500).send("SSE message processing failed");
         }
@@ -827,12 +852,21 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         return;
       }
 
+      const requestOwner = await resolveSessionOwner(req, parsedAuth);
+      if (session?.ownerKey && session.ownerKey !== requestOwner) {
+        appLogger.warn(
+          { sessionId: sessionLogId(incomingSessionId), method: req.method },
+          "Rejected a session request authenticated as a different GitLab principal"
+        );
+        session = undefined;
+      }
+
       if (incomingSessionId && !session) {
         res.status(404).json({
           jsonrpc: "2.0",
           error: {
             code: -32001,
-            message: `Unknown session '${incomingSessionId}'`
+            message: "Unknown session"
           },
           id: null
         });
@@ -871,7 +905,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
           return;
         }
 
-        session = await createSession(parsedAuth);
+        session = await createSession(parsedAuth, requestOwner);
         createdSession = true;
       } else {
         refreshSessionAuth(session, parsedAuth);
@@ -895,8 +929,12 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         return;
       }
 
+      // Run with this request's own credential rather than whatever the
+      // session stores when the queued task starts, so a concurrent request
+      // can never lend its token to another queued call.
+      const requestAuth = parsedAuth;
       await enqueueSessionRequest(activeSession, async () => {
-        const runtimeAuth = buildRuntimeAuth(activeSession);
+        const runtimeAuth = buildRuntimeAuth(activeSession, requestAuth);
         await runWithSessionAuth(runtimeAuth, async () => {
           await activeSession.transport.handleRequest(req, res, req.body);
         });
@@ -906,7 +944,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         {
           err: error,
           method: req.method,
-          sessionId: incomingSessionId
+          sessionId: sessionLogId(incomingSessionId)
         },
         "MCP HTTP request failed"
       );
@@ -996,7 +1034,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     }
   }
 
-  async function createSession(initialAuth?: SessionAuth): Promise<SessionState> {
+  async function createSession(
+    initialAuth?: SessionAuth,
+    ownerKey?: string
+  ): Promise<SessionState> {
     const server = createMcpServer(context);
     const state: SessionState = {
       server,
@@ -1006,6 +1047,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
       activeRequests: 0,
       closed: false,
       auth: initialAuth,
+      ownerKey,
       rateLimit: {
         windowStart: Date.now(),
         count: 0
@@ -1022,7 +1064,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         state.lastAccessAt = Date.now();
         sessions.set(sessionId, state);
         pendingSessions.delete(state);
-        appLogger.info({ sessionId }, "MCP session initialized");
+        appLogger.info({ sessionId: sessionLogId(sessionId) }, "MCP session initialized");
       },
       onsessionclosed: async (sessionId) => {
         await closeSession(sessionId, "transport-close");
@@ -1032,7 +1074,10 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     state.transport = transport;
 
     transport.onerror = (error) => {
-      appLogger.error({ err: error, sessionId: state.sessionId }, "MCP transport error");
+      appLogger.error(
+        { err: error, sessionId: sessionLogId(state.sessionId) },
+        "MCP transport error"
+      );
     };
 
     try {
@@ -1092,19 +1137,62 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     session.lastAccessAt = Date.now();
   }
 
-  function buildRuntimeAuth(session: SessionState): SessionAuth | undefined {
+  function buildRuntimeAuth(
+    session: SessionState,
+    requestAuth?: SessionAuth
+  ): SessionAuth | undefined {
     const fallbackToken =
       appEnv.REMOTE_AUTHORIZATION || appEnv.GITLAB_MCP_OAUTH
         ? undefined
         : appEnv.GITLAB_PERSONAL_ACCESS_TOKEN;
+    const auth = requestAuth?.token ? requestAuth : session.auth;
 
     return {
       sessionId: session.sessionId,
-      token: session.auth?.token ?? fallbackToken,
-      apiUrl: session.auth?.apiUrl ?? appEnv.GITLAB_API_URL,
-      header: session.auth?.header,
-      updatedAt: session.auth?.updatedAt ?? Date.now()
+      token: auth?.token ?? fallbackToken,
+      apiUrl: auth?.apiUrl ?? appEnv.GITLAB_API_URL,
+      header: auth?.header,
+      updatedAt: auth?.updatedAt ?? Date.now()
     };
+  }
+
+  /**
+   * Identify the GitLab principal behind a request that carries its own
+   * credential. Sessions are bound to this key at initialize so that knowing
+   * a session ID is not enough to drive another user's session. Returns
+   * undefined when the server uses its own configured credentials.
+   */
+  async function resolveSessionOwner(
+    req: express.Request,
+    auth?: SessionAuth
+  ): Promise<string | undefined> {
+    if (!(appEnv.REMOTE_AUTHORIZATION || appEnv.GITLAB_MCP_OAUTH) || !auth?.token) {
+      return undefined;
+    }
+
+    const apiUrl = auth.apiUrl ?? appEnv.GITLAB_API_URL;
+    const oauthUserId = (req as express.Request & { auth?: AuthInfo }).auth?.extra?.gitlabUserId;
+    if (typeof oauthUserId === "string" && oauthUserId.length > 0) {
+      return `${apiUrl}#user:${oauthUserId}`;
+    }
+
+    if (auth.header) {
+      const validation = await gitLabAuthValidator.authenticate({
+        token: auth.token,
+        header: auth.header,
+        apiUrl
+      });
+      if (validation.valid && validation.principal) {
+        return `${apiUrl}#${validation.principal}`;
+      }
+    }
+
+    const tokenDigest = createHash("sha256")
+      .update(auth.header ?? "", "utf8")
+      .update("\0")
+      .update(auth.token, "utf8")
+      .digest("hex");
+    return `${apiUrl}#token:${tokenDigest}`;
   }
 
   async function resolveDownloadAuth(
@@ -1368,16 +1456,22 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     try {
       await session.transport.close();
     } catch (error) {
-      appLogger.warn({ err: error, sessionId, reason }, "Failed to close transport cleanly");
+      appLogger.warn(
+        { err: error, sessionId: sessionLogId(sessionId), reason },
+        "Failed to close transport cleanly"
+      );
     }
 
     try {
       await session.server.close();
     } catch (error) {
-      appLogger.warn({ err: error, sessionId, reason }, "Failed to close MCP server cleanly");
+      appLogger.warn(
+        { err: error, sessionId: sessionLogId(sessionId), reason },
+        "Failed to close MCP server cleanly"
+      );
     }
 
-    appLogger.info({ sessionId, reason }, "MCP session closed");
+    appLogger.info({ sessionId: sessionLogId(sessionId), reason }, "MCP session closed");
   }
 
   async function closeSseSession(
@@ -1395,16 +1489,22 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
     try {
       await session.transport.close();
     } catch (error) {
-      appLogger.warn({ err: error, sessionId, reason }, "Failed to close SSE transport cleanly");
+      appLogger.warn(
+        { err: error, sessionId: sessionLogId(sessionId), reason },
+        "Failed to close SSE transport cleanly"
+      );
     }
 
     try {
       await session.server.close();
     } catch (error) {
-      appLogger.warn({ err: error, sessionId, reason }, "Failed to close SSE MCP server cleanly");
+      appLogger.warn(
+        { err: error, sessionId: sessionLogId(sessionId), reason },
+        "Failed to close SSE MCP server cleanly"
+      );
     }
 
-    appLogger.info({ sessionId, reason }, "MCP SSE session closed");
+    appLogger.info({ sessionId: sessionLogId(sessionId), reason }, "MCP SSE session closed");
   }
 
   async function shutdown(

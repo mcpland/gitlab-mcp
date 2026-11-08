@@ -519,7 +519,8 @@ describe("createGitLabMcpOAuthProvider", () => {
     await expect(provider.verifyAccessToken("oauth-token")).resolves.toMatchObject({
       token: "oauth-token",
       clientId: APPLICATION_ID,
-      scopes: ["api"]
+      scopes: ["api"],
+      extra: { gitlabUserId: "42" }
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });

@@ -276,8 +276,10 @@ The header host and port must match `GITLAB_API_URL` or `GITLAB_ALLOWED_HOSTS`. 
 1. Client sends a request with auth headers
 2. The server extracts the token and required API URL (when dynamic API URLs are enabled) from headers
 3. Auth context is stored in `AsyncLocalStorage` for the duration of the request
-4. All GitLab API calls within that request use the per-session credentials
+4. All GitLab API calls within that request use the credential sent with that request
 5. Requests missing required headers are rejected before tool execution
+
+Stateful sessions are bound to the GitLab user that initialized them (the user ID from `GET /user`, the job's user for job tokens, or `resource_owner_id` for MCP OAuth bearer tokens, combined with the API URL). A `POST`, `GET`, or `DELETE` that presents another user's credential with that `Mcp-Session-Id` receives the same `404 Unknown session` as an unknown ID and cannot replace the stored credential. A rotated token of the same user keeps working. When GitLab returns no user ID, the session is bound to the exact token. Logs record a `sha256:` digest prefix instead of the raw session ID.
 
 ### MCP OAuth Discovery
 
