@@ -269,7 +269,7 @@ NODE_ENV=production
 GITLAB_ERROR_DETAIL_MODE=safe
 ```
 
-Tool errors stay actionable in both modes. A GitLab HTTP error that carries a `Retry-After` header (for example a `429` rate limit) includes `retry_after_seconds` so agents can back off. A request that never received an HTTP response names the failure class (`network`, `dns`, `tls`, or `timeout`); `full` mode adds the OS/TLS code such as `ECONNREFUSED` or `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, the underlying message, and a configuration hint instead of the bare `fetch failed`.
+Tool errors stay actionable in both modes. GitLab HTTP errors include a generic `next_step` hint (for example, check `project_id` on a 404, the token scope on an insufficient-scope 403, or the credential on a 401), and policy or project-scope refusals end with a `Next:` line. A GitLab HTTP error that carries a `Retry-After` header (for example a `429` rate limit) includes `retry_after_seconds` so agents can back off. A request that never received an HTTP response names the failure class (`network`, `dns`, `tls`, or `timeout`); `full` mode adds the OS/TLS code such as `ECONNREFUSED` or `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, the underlying message, and a configuration hint instead of the bare `fetch failed`.
 
 ### Response Size Limits
 

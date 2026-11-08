@@ -71,6 +71,7 @@ import { redactSuccessfulResponse } from "../lib/redact-success.js";
 import { MAX_JOB_TRACE_CONTEXT_LINES, MAX_JOB_TRACE_MAX_MATCHES } from "../lib/job-trace-search.js";
 import { sanitizeToolArguments } from "../lib/sanitize.js";
 import { classifyTransportFailure, describeTransportFailure } from "../lib/transport-error.js";
+import { nextStepForGitLabStatus, nextStepForMessage } from "../lib/error-hints.js";
 import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
 import { deploymentToolDefinitions } from "./deployments.js";
@@ -8473,6 +8474,12 @@ function toToolError(
     if (error.retryAfterSeconds !== undefined) {
       payload.retry_after_seconds = error.retryAfterSeconds;
     }
+    const nextStep = nextStepForGitLabStatus(error.status, error.details, {
+      remoteCredentials: Boolean(context?.env.REMOTE_AUTHORIZATION || context?.env.GITLAB_MCP_OAUTH)
+    });
+    if (nextStep) {
+      payload.next_step = nextStep;
+    }
     if (detailMode === "full") {
       payload.details = redactSensitive(error.details, redactionOptions);
     }
@@ -8506,10 +8513,12 @@ function toToolError(
   }
 
   if (error instanceof Error) {
-    const message =
+    const nextStep = nextStepForMessage(error.message);
+    const baseMessage =
       detailMode === "full"
         ? String(redactSensitive(error.message, redactionOptions))
         : "Request failed";
+    const message = nextStep ? `${baseMessage}\nNext: ${nextStep}` : baseMessage;
     return {
       isError: true,
       content: [
