@@ -2009,6 +2009,24 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_get_merge_request_discussion",
+      title: "Get Merge Request Discussion",
+      description:
+        "Get one MR discussion thread by discussion_id with all its notes and resolution state. Use gitlab_list_merge_request_discussions to find IDs.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: z.string().min(1),
+        discussion_id: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.getMergeRequestDiscussion(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "discussion_id")
+        )
+    },
+    {
       name: "gitlab_create_merge_request_thread",
       title: "Create Merge Request Thread",
       description: "Create a new MR discussion thread (supports diff positions).",

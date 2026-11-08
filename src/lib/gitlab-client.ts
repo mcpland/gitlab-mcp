@@ -1191,6 +1191,18 @@ export class GitLabClient {
     );
   }
 
+  getMergeRequestDiscussion(
+    projectId: string,
+    mergeRequestIid: string,
+    discussionId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.get(
+      `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/discussions/${encode(discussionId)}`,
+      options
+    );
+  }
+
   createMergeRequestDiscussionNote(
     projectId: string,
     mergeRequestIid: string,
