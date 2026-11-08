@@ -87,6 +87,7 @@ import { GROUP_MILESTONE_TOOL_NAMES, groupMilestoneToolDefinitions } from "./gro
 import { GROUP_ITERATION_TOOL_NAMES, iterationToolDefinitions } from "./iterations.js";
 import { mergeRequestRebaseToolDefinitions } from "./merge-request-rebase.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
+import { ORBIT_TOOL_NAMES, orbitToolDefinitions } from "./orbit.js";
 import { pipelineJobToolDefinitions } from "./pipeline-jobs.js";
 import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
 import { pipelineTriggerToolDefinitions } from "./pipeline-triggers.js";
@@ -186,6 +187,7 @@ const RAW_GRAPHQL_TOOL_NAMES = new Set([
 const GLOBAL_TOOL_PROJECT_SCOPE_MODES = new Map<string, "allow" | "filter" | "deny">([
   ["gitlab_discover_tools", "allow"],
   [API_REQUEST_TOOL_NAME, "deny"],
+  ...ORBIT_TOOL_NAMES.map((name) => [name, "deny"] as const),
   ["gitlab_list_projects", "filter"],
   ["gitlab_search_repositories", "filter"],
   ["gitlab_search_code", "filter"],
@@ -423,6 +425,10 @@ function isExplicitlyEnabled(definition: GitLabToolDefinition, context: AppConte
 
   if (definition.requiresExplicitEnable === "rawApi") {
     return context.env.GITLAB_ENABLE_RAW_API;
+  }
+
+  if (definition.requiresExplicitEnable === "orbit") {
+    return context.env.GITLAB_ENABLE_ORBIT_TOOLS;
   }
 
   return true;
@@ -5923,7 +5929,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...runnerToolDefinitions,
     ...vulnerabilityToolDefinitions,
     ...mergeRequestRebaseToolDefinitions,
-    ...apiRequestToolDefinitions
+    ...apiRequestToolDefinitions,
+    ...orbitToolDefinitions
   ];
 
   return definitions.map((definition) => {

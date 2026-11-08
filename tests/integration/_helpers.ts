@@ -67,6 +67,7 @@ const defaultEnv: AppContext["env"] = {
   GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS: false,
   GITLAB_ENABLE_JMESPATH: false,
   GITLAB_ENABLE_RAW_API: false,
+  GITLAB_ENABLE_ORBIT_TOOLS: false,
   GITLAB_DISABLED_CAPABILITIES: [],
   GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: false,
   GITLAB_RESPONSE_MODE: "json",
@@ -140,6 +141,7 @@ export interface BuildContextOptions {
   enableDependencyProxyTools?: boolean;
   enableJmespath?: boolean;
   enableRawApi?: boolean;
+  enableOrbitTools?: boolean;
   deniedToolsRegex?: RegExp;
   disabledCapabilities?: ToolCapability[];
   enabledFeatures?: typeof defaultFeatures;
@@ -175,6 +177,7 @@ export function buildContext(overrides?: BuildContextOptions): AppContext {
       GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS: overrides?.enableDependencyProxyTools ?? false,
       GITLAB_ENABLE_JMESPATH: overrides?.enableJmespath ?? false,
       GITLAB_ENABLE_RAW_API: overrides?.enableRawApi ?? false,
+      GITLAB_ENABLE_ORBIT_TOOLS: overrides?.enableOrbitTools ?? false,
       GITLAB_DISABLED_CAPABILITIES: overrides?.disabledCapabilities ?? [],
       GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: overrides?.allowGraphqlWithProjectScope ?? false,
       GITLAB_MAX_RESPONSE_BYTES: overrides?.maxBytes ?? 200_000,

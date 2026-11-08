@@ -31,7 +31,7 @@ export interface GitLabToolDefinition {
   scope: GitLabToolScopeMetadata;
   requiresAuth?: boolean;
   requiresFeature?: "wiki" | "milestone" | "pipeline" | "release";
-  requiresExplicitEnable?: "ciVariables" | "dependencyProxy" | "rawApi";
+  requiresExplicitEnable?: "ciVariables" | "dependencyProxy" | "rawApi" | "orbit";
   /** Override the capability-derived MCP annotations for tools with dynamic behavior. */
   annotations?: ToolAnnotations;
   requiresLocalFileTools?: boolean;

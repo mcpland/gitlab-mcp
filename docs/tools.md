@@ -587,6 +587,19 @@ Selected by the `vulnerabilities` toolset (or `all`). These GraphQL-backed tools
 
 ---
 
+## GitLab Orbit
+
+GitLab Orbit is GitLab's SDLC knowledge graph (Beta, Premium/Ultimate). Requires `GITLAB_ENABLE_ORBIT_TOOLS=true` and the `orbit` toolset (or `all`); every `gitlab_orbit_query` call consumes GitLab credits, so the family is off by default. These are instance-level tools and are hidden under `GITLAB_ALLOWED_PROJECT_IDS`.
+
+| Tool                      | Mutating | Description                                                                                                                            |
+| ------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_orbit_query`      | No       | Run one graph query (`query` object in the Orbit query DSL; `format` `llm` (default, compact text) or `raw` (JSON)). Consumes credits. |
+| `gitlab_orbit_get_schema` | No       | List the node and edge types available to queries.                                                                                     |
+| `gitlab_orbit_get_status` | No       | Report whether Orbit indexing has completed.                                                                                           |
+| `gitlab_orbit_list_tools` | No       | List the tool definitions Orbit itself exposes.                                                                                        |
+
+---
+
 ## Raw REST API
 
 Requires `GITLAB_ENABLE_RAW_API=true` and the `api` toolset (or `all`). Hidden when `GITLAB_ALLOWED_PROJECT_IDS` is set. This escape hatch is checked only by HTTP method (GET needs `read`, POST/PUT/PATCH need `write`, DELETE needs `delete`), so it bypasses the per-family safeguards of typed tools such as admin classification and opt-in flags; enable it only for trusted agents. Credential and webhook endpoints (`variables`, `triggers`, access and deploy tokens, keys, `runners`, `hooks`, `application`) and `/graphql` are always refused.
