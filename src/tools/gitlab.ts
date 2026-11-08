@@ -7713,7 +7713,12 @@ export function containsGraphqlMutation(query: string): boolean {
   }
 }
 
-const DESTRUCTIVE_GRAPHQL_MUTATION_FIELD_PATTERN = /(?:delete|destroy|remove|prune|purge)/iu;
+// GitLab exposes destructive mutations whose names do not contain "delete"
+// (jobErase, *TokenRevoke, *Unprotect, environmentStop, ...), so modify mode
+// blocks teardown and revocation verbs as well as deletion verbs. Pipeline and
+// job cancellation stay allowed, matching the REST cancel tools.
+const DESTRUCTIVE_GRAPHQL_MUTATION_FIELD_PATTERN =
+  /(?:delete|destroy|remove|prune|purge|erase|wipe|revoke|unprotect|stop|terminate|deactivate|disable|drop)/iu;
 
 export function assertGraphqlDocumentAllowedByPermissionMode(
   query: string,

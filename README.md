@@ -413,7 +413,7 @@ GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS=true
 
 Unsafe or invalid `GITLAB_DENIED_TOOLS_REGEX` patterns fail startup.
 
-In `modify` mode, raw GraphQL mutation tools remain available for updates, but the server parses each document and blocks mutation-root fields containing `delete`, `destroy`, `remove`, `prune`, or `purge`. Aliases and fragment expansion cannot bypass the check, and documents that cannot be verified fail closed.
+In `modify` mode, raw GraphQL mutation tools remain available for updates, but the server parses each document and blocks mutation-root fields containing deletion or teardown verbs such as `delete`, `destroy`, `remove`, `purge`, `erase`, `revoke`, `unprotect`, or `stop`. Aliases and fragment expansion cannot bypass the check, and documents that cannot be verified fail closed.
 
 `GITLAB_ALLOWED_PROJECT_IDS` is a strict resource boundary, not just a default project. Project-scoped tools validate every supplied source, target, and parent project ID. Safe global list/search tools return only allowed projects (global code search is executed once per allowed project), while group-wide, namespace-wide, user-wide, event-wide, fork, and unscoped create operations are hidden. Todo reads are filtered and a single todo is verified before mutation. Raw GraphQL executors are always hidden because an arbitrary document cannot be proven project-safe; project-bound Work Item tools remain available and enforce the same allowlist. The legacy `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` variable is retained for configuration compatibility but cannot override this boundary.
 

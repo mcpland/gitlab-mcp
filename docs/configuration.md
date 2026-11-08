@@ -129,7 +129,7 @@ Dynamic API URLs are allowlisted by canonical `host:port`. Hosts from `GITLAB_AP
 | `GITLAB_DENIED_TOOLS_REGEX`               | string  | —       | Regex pattern to deny tools by name (example: `^gitlab_delete_`). Unsafe nested-quantifier, overly long, or invalid patterns fail startup.                             |
 | `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` | boolean | `false` | Deprecated compatibility setting. Raw GraphQL tools stay disabled whenever `GITLAB_ALLOWED_PROJECT_IDS` is set.                                                        |
 
-In `modify` mode, the raw GraphQL mutation executor remains available for non-destructive updates. Before execution, gitlab-mcp parses the document AST and rejects mutation-root field names containing `delete`, `destroy`, `remove`, `prune`, or `purge`, including fields reached through aliases, inline fragments, and fragment spreads. Documents that cannot be verified are rejected.
+In `modify` mode, the raw GraphQL mutation executor remains available for non-destructive updates. Before execution, gitlab-mcp parses the document AST and rejects mutation-root field names containing a deletion or teardown verb (`delete`, `destroy`, `remove`, `prune`, `purge`, `erase`, `wipe`, `revoke`, `unprotect`, `stop`, `terminate`, `deactivate`, `disable`, or `drop`), including fields reached through aliases, inline fragments, and fragment spreads. Documents that cannot be verified are rejected.
 
 `GITLAB_TOOLSETS` selects the candidate registry first; the two sensitive-family flags are additional gates. With the default `GITLAB_TOOLSETS=all`, setting a sensitive-family flag is sufficient to expose that family. When using a reduced registry, include `ci-variables` or `dependency-proxy` alongside the selected presets.
 

@@ -123,6 +123,41 @@ describe("modify-mode raw GraphQL guard", () => {
     ).not.toThrow();
   });
 
+  it("blocks teardown and revocation mutations whose names lack delete", () => {
+    for (const field of [
+      "jobErase",
+      "personalAccessTokenRevoke",
+      "clusterAgentTokenRevoke",
+      "environmentStop",
+      "branchRuleUnprotect",
+      "workspaceTerminate",
+      "userDeactivate",
+      "pagesDomainDisable"
+    ]) {
+      expect(
+        () =>
+          assertGraphqlDocumentAllowedByPermissionMode(
+            `mutation { safeName: ${field}(input: {}) { errors } }`,
+            "modify"
+          ),
+        field
+      ).toThrow(field);
+    }
+  });
+
+  it("keeps pipeline and job cancellation available in modify mode", () => {
+    for (const field of ["pipelineCancel", "jobCancel", "pipelineRetry", "jobPlay"]) {
+      expect(
+        () =>
+          assertGraphqlDocumentAllowedByPermissionMode(
+            `mutation { ${field}(input: {}) { errors } }`,
+            "modify"
+          ),
+        field
+      ).not.toThrow();
+    }
+  });
+
   it("blocks destructive field names while ignoring a safe field's alias", () => {
     expect(() =>
       assertGraphqlDocumentAllowedByPermissionMode(
