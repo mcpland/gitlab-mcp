@@ -83,6 +83,12 @@ export interface GitLabMcpOAuthProviderOptions {
   callbackUrl: string;
   /** Absolute URL of the consent form endpoint; defaults to "consent" next to the callback. */
   consentUrl?: string;
+  /**
+   * When false, clients never receive refresh tokens and the refresh_token
+   * grant is refused, so users re-authorize in the browser once the GitLab
+   * access token expires. A re-authorization policy, not a security boundary.
+   */
+  allowRefreshTokens?: boolean;
   stateSecret: string;
   previousStateSecret?: string;
   scopes: string[];
@@ -102,6 +108,7 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
   readonly skipLocalPkceValidation = true;
   readonly callbackUrl: URL;
   readonly consentUrl: URL;
+  readonly allowRefreshTokens: boolean;
 
   private readonly gitLabBaseUrl: string;
   private readonly applicationId: string;
@@ -124,6 +131,7 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
       ? requireBoundedValue(options.applicationSecret, "GITLAB_OAUTH_APP_SECRET", 1_024)
       : undefined;
     this.callbackUrl = validateCallbackUrl(options.callbackUrl);
+    this.allowRefreshTokens = options.allowRefreshTokens ?? true;
     this.consentUrl = validateCallbackUrl(
       options.consentUrl ?? new URL("consent", this.callbackUrl).href
     );
@@ -390,7 +398,7 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
       tokenParams,
       "authorization code exchange",
       client.client_id,
-      client.grant_types?.includes("refresh_token") ?? false
+      this.allowRefreshTokens && (client.grant_types?.includes("refresh_token") ?? false)
     );
   }
 
@@ -401,6 +409,11 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
     resource?: URL
   ): Promise<OAuthTokens> {
     this.validateResource(resource);
+    if (!this.allowRefreshTokens) {
+      throw new InvalidGrantError(
+        "Refresh tokens are disabled on this server; run the authorization flow again"
+      );
+    }
     if (!client.grant_types?.includes("refresh_token")) {
       throw new UnauthorizedClientError("Client is not registered for the refresh_token grant");
     }
@@ -566,7 +579,11 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
         return this.codec.openClient(clientId);
       },
       registerClient: async (client) => {
-        const registered = validateClientRegistration(client, this.resourceName);
+        const registered = validateClientRegistration(
+          client,
+          this.resourceName,
+          this.allowRefreshTokens
+        );
         let clientId: string;
         try {
           clientId = this.codec.sealClient(registered);
@@ -708,7 +725,8 @@ export function createGitLabMcpOAuthProvider(
 
 function validateClientRegistration(
   client: Omit<OAuthClientInformationFull, "client_id" | "client_id_issued_at">,
-  resourceName: string
+  resourceName: string,
+  allowRefreshTokens: boolean
 ): OAuthClientInformationFull {
   const redirectUris = [...new Set(client.redirect_uris)];
   if (
@@ -724,13 +742,16 @@ function validateClientRegistration(
     validateRedirectUri(redirectUri);
   }
 
-  const grantTypes = client.grant_types ?? ["authorization_code", "refresh_token"];
+  const requestedGrantTypes = client.grant_types ?? ["authorization_code", "refresh_token"];
   if (
-    !grantTypes.includes("authorization_code") ||
-    grantTypes.some((grantType) => !SUPPORTED_GRANT_TYPES.has(grantType))
+    !requestedGrantTypes.includes("authorization_code") ||
+    requestedGrantTypes.some((grantType) => !SUPPORTED_GRANT_TYPES.has(grantType))
   ) {
     throw new InvalidClientMetadataError("Only authorization_code and refresh_token are supported");
   }
+  const grantTypes = allowRefreshTokens
+    ? requestedGrantTypes
+    : requestedGrantTypes.filter((grantType) => grantType !== "refresh_token");
   const responseTypes = client.response_types ?? ["code"];
   if (
     !responseTypes.includes("code") ||

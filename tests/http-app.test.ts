@@ -42,6 +42,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS: undefined,
       GITLAB_MCP_OAUTH_CLIENT_TTL_SECONDS: 2_592_000,
       GITLAB_MCP_OAUTH_CODE_TTL_SECONDS: 600,
+      GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS: false,
       GITLAB_OAUTH_AUTO_OPEN_BROWSER: false,
       GITLAB_OAUTH_SCOPES: "api",
       GITLAB_OAUTH_ALLOWED_GROUPS: [],
@@ -1242,6 +1243,35 @@ describe("http app MCP OAuth", () => {
       await new Promise<void>((resolve, reject) => {
         gitLabServer.close((error) => (error ? reject(error) : resolve()));
       });
+    }
+  });
+
+  it("advertises only the authorization_code grant when refresh tokens are disabled", async () => {
+    for (const serverUrl of ["https://mcp.example.com", "https://mcp.example.com/gitlab-mcp"]) {
+      const context = buildContext();
+      context.env.GITLAB_MCP_OAUTH = true;
+      context.env.GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS = true;
+      context.env.MCP_SERVER_URL = serverUrl;
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      running = await startServerForContext(context);
+
+      const paths = serverUrl.endsWith("/gitlab-mcp")
+        ? [
+            "/.well-known/oauth-authorization-server",
+            "/.well-known/oauth-authorization-server/gitlab-mcp"
+          ]
+        : ["/.well-known/oauth-authorization-server"];
+      for (const path of paths) {
+        const metadata = (await (await fetch(`${running.baseUrl}${path}`)).json()) as {
+          grant_types_supported?: string[];
+        };
+        expect(metadata.grant_types_supported, `${serverUrl} ${path}`).toEqual([
+          "authorization_code"
+        ]);
+      }
+
+      await running.close();
+      running = undefined;
     }
   });
 

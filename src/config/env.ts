@@ -96,6 +96,7 @@ const envSchema = z.object({
     .max(31_536_000)
     .default(2_592_000),
   GITLAB_MCP_OAUTH_CODE_TTL_SECONDS: z.coerce.number().int().min(60).max(3_600).default(600),
+  GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS: z.enum(["true", "false"]).default("false"),
   GITLAB_OAUTH_CLIENT_ID: z.string().optional(),
   GITLAB_OAUTH_CLIENT_SECRET: z.string().optional(),
   GITLAB_OAUTH_GITLAB_URL: z.string().optional(),
@@ -251,6 +252,10 @@ export const env = {
     data.GITLAB_ERROR_DETAIL_MODE ?? (data.NODE_ENV === "production" ? "safe" : "full"),
   GITLAB_USE_OAUTH: parseBoolean(data.GITLAB_USE_OAUTH, false),
   GITLAB_MCP_OAUTH: parseBoolean(data.GITLAB_MCP_OAUTH, false),
+  GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS: parseBoolean(
+    data.GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS,
+    false
+  ),
   GITLAB_OAUTH_AUTO_OPEN_BROWSER: parseBoolean(data.GITLAB_OAUTH_AUTO_OPEN_BROWSER, true),
   GITLAB_OAUTH_ALLOWED_GROUPS: oauthAllowedGroups,
   GITLAB_CLOUDFLARE_BYPASS: parseBoolean(data.GITLAB_CLOUDFLARE_BYPASS, false),

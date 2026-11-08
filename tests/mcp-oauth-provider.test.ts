@@ -627,6 +627,48 @@ describe("createGitLabMcpOAuthProvider", () => {
     );
   });
 
+  it("withholds refresh tokens and refuses the refresh grant when disabled", async () => {
+    const fetchMock = vi.fn(async (input: URL | RequestInfo) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/oauth/token") {
+        return Response.json({
+          access_token: "gitlab-access-token",
+          refresh_token: "gitlab-refresh-token",
+          token_type: "Bearer",
+          expires_in: 7_200,
+          scope: "api"
+        });
+      }
+      return validTokenInfo();
+    });
+    const provider = createProvider({
+      fetch: fetchMock as unknown as typeof fetch,
+      allowRefreshTokens: false
+    });
+    const registered = await registerPublicClient(provider);
+    expect(registered.grant_types).toEqual(["authorization_code"]);
+
+    const code = await issueProxyCode(provider, registered.client_id);
+    const client = await provider.clientsStore.getClient(registered.client_id);
+    const tokens = await provider.exchangeAuthorizationCode(
+      client!,
+      code,
+      CLIENT_CODE_VERIFIER,
+      CLIENT_REDIRECT_URI
+    );
+    expect(tokens.access_token).toBe("gitlab-access-token");
+    expect(tokens.refresh_token).toBeUndefined();
+
+    const callsBeforeRefresh = fetchMock.mock.calls.length;
+    await expect(
+      provider.exchangeRefreshToken(
+        { ...client!, grant_types: ["authorization_code", "refresh_token"] },
+        "v1.refresh.anything"
+      )
+    ).rejects.toThrow("Refresh tokens are disabled");
+    expect(fetchMock.mock.calls.length).toBe(callsBeforeRefresh);
+  });
+
   it("passes GitLab authorization errors back to the original client", async () => {
     const provider = createProvider();
     const registered = await registerPublicClient(provider);

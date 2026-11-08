@@ -158,8 +158,26 @@ function installMcpOAuthRoutes(app: Express, options: InstallMcpOAuthRoutesOptio
     clientRegistrationOptions: { rateLimit }
   };
 
+  if (!options.provider.allowRefreshTokens) {
+    // The SDK always advertises refresh_token; serve corrected metadata first.
+    const rootMetadata = withoutRefreshGrant(
+      pathPrefix
+        ? createPathAwareOAuthMetadata(options)
+        : createOAuthMetadata({
+            provider: options.provider,
+            issuerUrl: options.issuerUrl,
+            baseUrl: options.issuerUrl,
+            scopesSupported: options.scopesSupported
+          })
+    );
+    app.use("/.well-known/oauth-authorization-server", metadataHandler(rootMetadata));
+  }
+
   if (pathPrefix) {
-    const oauthMetadata = createPathAwareOAuthMetadata(options);
+    const oauthMetadata = withoutRefreshGrantIfDisabled(
+      createPathAwareOAuthMetadata(options),
+      options.provider
+    );
     const protectedResourceMetadata = createPathAwareProtectedResourceMetadata(
       options,
       oauthMetadata
@@ -196,6 +214,22 @@ function installMcpOAuthRoutes(app: Express, options: InstallMcpOAuthRoutesOptio
   if (pathPrefix) {
     app.use(pathPrefix, mcpAuthRouter(routerOptions));
   }
+}
+
+function withoutRefreshGrant(metadata: OAuthMetadata): OAuthMetadata {
+  return {
+    ...metadata,
+    grant_types_supported: (metadata.grant_types_supported ?? ["authorization_code"]).filter(
+      (grantType) => grantType !== "refresh_token"
+    )
+  };
+}
+
+function withoutRefreshGrantIfDisabled(
+  metadata: OAuthMetadata,
+  provider: GitLabMcpOAuthProvider
+): OAuthMetadata {
+  return provider.allowRefreshTokens ? metadata : withoutRefreshGrant(metadata);
 }
 
 function createPathAwareOAuthMetadata(options: InstallMcpOAuthRoutesOptions): OAuthMetadata {
@@ -459,6 +493,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
           applicationSecret: appEnv.GITLAB_OAUTH_APP_SECRET,
           callbackUrl: buildUrlWithPathPrefix(oauthIssuerUrl, "callback"),
           consentUrl: buildUrlWithPathPrefix(oauthIssuerUrl, "consent"),
+          allowRefreshTokens: !appEnv.GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS,
           stateSecret: appEnv.GITLAB_MCP_OAUTH_STATE_SECRET!,
           previousStateSecret: appEnv.GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS,
           scopes: oauthScopes,
