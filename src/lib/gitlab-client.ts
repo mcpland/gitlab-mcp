@@ -868,6 +868,10 @@ export class GitLabClient {
     return this.get(`/projects/${encodeGitLabProjectId(projectId)}/merge_requests`, options);
   }
 
+  listGroupMergeRequests(groupId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}/merge_requests`, options);
+  }
+
   listGlobalMergeRequests(options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get("/merge_requests", options);
   }

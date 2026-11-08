@@ -146,6 +146,7 @@ const GROUP_SCOPED_TOOL_NAMES = new Set([
   ...GROUP_ITERATION_TOOL_NAMES,
   "gitlab_create_group",
   "gitlab_list_group_members",
+  "gitlab_list_group_merge_requests",
   "gitlab_list_group_projects",
   "gitlab_list_group_iterations",
   "gitlab_search_group_code",
@@ -1425,6 +1426,62 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         }
 
         return context.gitlab.listGlobalMergeRequests({ query });
+      }
+    },
+    {
+      name: "gitlab_list_group_merge_requests",
+      title: "List Group Merge Requests",
+      description:
+        "List merge requests across every project in a group and its subgroups, with the same filters as gitlab_list_merge_requests. non_archived=true skips archived projects.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        group_id: z.string().min(1),
+        assignee_id: optionalStringOrNumber,
+        assignee_username: optionalString,
+        author_id: optionalStringOrNumber,
+        author_username: optionalString,
+        reviewer_id: optionalStringOrNumber,
+        reviewer_username: optionalString,
+        approved_by_usernames: optionalStringArray,
+        created_after: optionalString,
+        created_before: optionalString,
+        updated_after: optionalString,
+        updated_before: optionalString,
+        labels: optionalStringOrStringArray,
+        milestone: optionalString,
+        state: optionalString,
+        scope: optionalString,
+        order_by: z
+          .enum([
+            "created_at",
+            "updated_at",
+            "priority",
+            "label_priority",
+            "milestone_due",
+            "popularity"
+          ])
+          .optional(),
+        sort: z.enum(["asc", "desc"]).optional(),
+        source_branch: optionalRefLikeSchema,
+        target_branch: optionalRefLikeSchema,
+        search: optionalString,
+        wip: z.enum(["yes", "no"]).optional(),
+        with_labels_details: optionalBoolean,
+        non_archived: optionalBoolean,
+        ...paginationShape
+      },
+      handler: async (args, context) => {
+        const normalized = normalizeIdUsernameFilters(
+          omit(args, ["group_id"]),
+          MERGE_REQUEST_ID_USERNAME_PAIRS
+        );
+        const approvedByUsernames = getOptionalStringArray(normalized, "approved_by_usernames");
+        return context.gitlab.listGroupMergeRequests(getString(args, "group_id"), {
+          query: {
+            ...toQuery(omit(normalized, ["approved_by_usernames"])),
+            ...(approvedByUsernames ? { approved_by_usernames: approvedByUsernames } : {})
+          }
+        });
       }
     },
     {
