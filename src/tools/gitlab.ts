@@ -18,6 +18,7 @@ import {
   type PushFileAction
 } from "../lib/gitlab-client.js";
 import {
+  encodeGitLabPathSegment,
   encodeGitLabProjectId,
   encodeGitLabSlashPath,
   isGitLabProjectIdentityAllowed
@@ -4895,7 +4896,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
               );
             }
 
-            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
+            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeGitLabPathSegment(upload.secret, "upload secret")}/${encodeGitLabPathSegment(upload.filename, "filename")}`;
             return context.gitlab.downloadAttachment(apiRelativePath);
           }
 
@@ -4915,7 +4916,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
               );
             }
 
-            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
+            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeGitLabPathSegment(upload.secret, "upload secret")}/${encodeGitLabPathSegment(upload.filename, "filename")}`;
             return context.gitlab.downloadAttachment(apiRelativePath);
           }
 
@@ -4931,7 +4932,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         }
 
         const projectId = resolveProjectId(args, context, true);
-        const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(secret)}/${encodeURIComponent(filename)}`;
+        const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeGitLabPathSegment(secret, "upload secret")}/${encodeGitLabPathSegment(filename, "filename")}`;
         if (shouldReturnDownloadProxy(context)) {
           return buildDownloadProxyResult(
             context,

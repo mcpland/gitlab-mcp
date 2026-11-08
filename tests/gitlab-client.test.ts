@@ -481,6 +481,20 @@ describe("GitLabClient", () => {
     });
   });
 
+  describe("path segments", () => {
+    it("refuses dot segments instead of letting URL resolution retarget the request", async () => {
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+
+      await expect(
+        Promise.resolve().then(() => client.deleteIssueLink("group/project", "5", ".."))
+      ).rejects.toThrow("Invalid GitLab path segment");
+      await expect(
+        Promise.resolve().then(() => client.getPipelineJob("group/project", "."))
+      ).rejects.toThrow("Invalid GitLab path segment");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
   describe("query parameters", () => {
     it("drops blank filter values and blank array entries", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));

@@ -7,6 +7,7 @@ import { getSessionAuth, type SessionAuth } from "./auth-context.js";
 import {
   encodeGitLabGroupId,
   encodeGitLabNamespaceId,
+  encodeGitLabPathSegment,
   encodeGitLabProjectId,
   encodeGitLabSlashPath
 } from "./gitlab-path.js";
@@ -3424,7 +3425,7 @@ export function getEffectiveSessionAuth(
 }
 
 function encode(value: string): string {
-  return encodeURIComponent(value);
+  return encodeGitLabPathSegment(value);
 }
 
 function buildSafeSlashPathUrl(

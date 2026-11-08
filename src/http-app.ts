@@ -29,6 +29,7 @@ import {
   type DownloadTokenResource
 } from "./lib/download-token.js";
 import {
+  encodeGitLabPathSegment,
   encodeGitLabProjectId,
   encodeGitLabSlashPath,
   isGitLabProjectIdentityAllowed
@@ -1586,7 +1587,7 @@ function buildDownloadGitLabTarget(
       if (!jobId) {
         throw new DownloadClientError("job_id is required");
       }
-      const path = `/projects/${encodeGitLabProjectId(projectId)}/jobs/${encodeURIComponent(jobId)}/artifacts`;
+      const path = `/projects/${encodeGitLabProjectId(projectId)}/jobs/${encodeDownloadSegment(jobId, "job_id")}/artifacts`;
       return { path, expectedPathPrefix: path };
     }
 
@@ -1596,8 +1597,9 @@ function buildDownloadGitLabTarget(
       if (!tagName || !directAssetPath) {
         throw new DownloadClientError("tag_name and direct_asset_path are required");
       }
-      const expectedPathPrefix = `/projects/${encodeGitLabProjectId(projectId)}/releases/${encodeURIComponent(
-        tagName
+      const expectedPathPrefix = `/projects/${encodeGitLabProjectId(projectId)}/releases/${encodeDownloadSegment(
+        tagName,
+        "tag_name"
       )}/downloads/`;
       let encodedPath: string;
       try {
@@ -1617,9 +1619,10 @@ function buildDownloadGitLabTarget(
         throw new DownloadClientError("secret and filename are required");
       }
       const expectedPathPrefix = `/projects/${encodeGitLabProjectId(projectId)}/uploads/`;
-      const path = `${expectedPathPrefix}${encodeURIComponent(
-        secret
-      )}/${encodeURIComponent(filename)}`;
+      const path = `${expectedPathPrefix}${encodeDownloadSegment(
+        secret,
+        "upload secret"
+      )}/${encodeDownloadSegment(filename, "filename")}`;
       return { path, expectedPathPrefix };
     }
 
@@ -1670,6 +1673,14 @@ function getSingleQueryValue(value: unknown): string | undefined {
   }
 
   return undefined;
+}
+
+function encodeDownloadSegment(value: string, label: string): string {
+  try {
+    return encodeGitLabPathSegment(value, label);
+  } catch (error) {
+    throw new DownloadClientError(error instanceof Error ? error.message : "Invalid path");
+  }
 }
 
 class DownloadClientError extends Error {}
