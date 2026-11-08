@@ -226,3 +226,30 @@ export async function createLinkedPair(context: AppContext): Promise<{
 
   return { client, server, clientTransport, serverTransport, context };
 }
+
+/* ------------------------------------------------------------------ */
+/*  callTool                                                           */
+/* ------------------------------------------------------------------ */
+
+/** Call one tool on a fresh linked pair and close both transports. */
+export async function callToolWithContext(
+  context: AppContext,
+  name: string,
+  args: Record<string, unknown> = {}
+): Promise<Awaited<ReturnType<Client["callTool"]>>> {
+  const { client, clientTransport, serverTransport } = await createLinkedPair(context);
+  try {
+    return await client.callTool({ name, arguments: args });
+  } finally {
+    await clientTransport.close();
+    await serverTransport.close();
+  }
+}
+
+/** Parse the JSON text payload of a tool result. */
+export function parseToolText(result: Awaited<ReturnType<Client["callTool"]>>): unknown {
+  const text = (result.content as Array<{ type: string; text?: string }>).find(
+    (item) => item.type === "text"
+  )?.text;
+  return text === undefined ? undefined : JSON.parse(text);
+}

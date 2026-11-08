@@ -950,6 +950,7 @@ export class GitLabClient {
       assignee_ids?: number[];
       reviewer_ids?: number[];
       labels?: string;
+      milestone_id?: number;
       allow_collaboration?: boolean;
       remove_source_branch?: boolean;
       squash?: boolean;

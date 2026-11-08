@@ -201,6 +201,14 @@ const optionalPipelineInputsRecord = nullableOptional(
   z.record(z.string(), pipelineInputValueSchema)
 );
 const excludedFilePatternsSchema = nullableOptional(z.array(z.string().min(1).max(200)).max(20));
+// GitLab milestone IDs; 0 removes the milestone. Numeric strings are accepted,
+// while "" and null mean "not provided" rather than coercing to 0.
+const optionalMilestoneIdSchema = z
+  .preprocess(
+    (value) => (value === "" || value === null ? undefined : value),
+    z.coerce.number().int().min(0).optional()
+  )
+  .optional();
 
 const protectedBranchAccessLevelSchema = z.union([
   z.literal(0),
@@ -1409,6 +1417,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         assignee_ids: optionalNumberArray,
         reviewer_ids: optionalNumberArray,
         labels: optionalStringOrStringArray,
+        milestone_id: optionalMilestoneIdSchema,
         allow_collaboration: optionalBoolean,
         remove_source_branch: optionalBoolean,
         squash: optionalBoolean,
@@ -1428,6 +1437,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           assignee_ids: getOptionalNumberArray(args, "assignee_ids"),
           reviewer_ids: getOptionalNumberArray(args, "reviewer_ids"),
           labels: toCsvValue(args.labels),
+          milestone_id: getOptionalNumber(args, "milestone_id"),
           allow_collaboration: getOptionalBoolean(args, "allow_collaboration"),
           remove_source_branch: getOptionalBoolean(args, "remove_source_branch"),
           squash: getOptionalBoolean(args, "squash"),
@@ -1468,7 +1478,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_update_merge_request",
       title: "Update Merge Request",
-      description: "Update merge request fields.",
+      description:
+        "Update merge request fields. labels replaces every label; add_labels and remove_labels change only the named ones. milestone_id 0 unassigns the milestone.",
       capabilities: writeCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
@@ -1481,10 +1492,15 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         reviewer_ids: optionalNumberArray,
         reviewers: optionalStringArray,
         labels: optionalStringOrStringArray,
-        state_event: optionalString,
+        add_labels: optionalStringOrStringArray,
+        remove_labels: optionalStringOrStringArray,
+        milestone_id: optionalMilestoneIdSchema,
+        state_event: z.enum(["close", "reopen"]).optional(),
         squash: optionalBoolean,
         draft: optionalBoolean,
-        remove_source_branch: optionalBoolean
+        remove_source_branch: optionalBoolean,
+        allow_collaboration: optionalBoolean,
+        discussion_locked: optionalBoolean
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
@@ -1492,8 +1508,10 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           string,
           unknown
         >;
-        if (payload.labels === undefined) {
-          payload.labels = toCsvValue(args.labels);
+        for (const field of ["labels", "add_labels", "remove_labels"]) {
+          if (payload[field] === undefined) {
+            payload[field] = toCsvValue(args[field]);
+          }
         }
         if (Array.isArray(args.assignee_ids)) {
           payload.assignee_ids = args.assignee_ids as number[];
@@ -2600,8 +2618,10 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           string,
           unknown
         >;
-        if (payload.labels === undefined) {
-          payload.labels = toCsvValue(args.labels);
+        for (const field of ["labels", "add_labels", "remove_labels"]) {
+          if (payload[field] === undefined) {
+            payload[field] = toCsvValue(args[field]);
+          }
         }
         if (Array.isArray(args.assignee_ids)) {
           payload.assignee_ids = args.assignee_ids as number[];
