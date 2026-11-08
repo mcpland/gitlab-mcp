@@ -34,10 +34,15 @@ export interface GitLabToolDefinition {
   compatibilityAlias?: boolean;
   sensitiveArguments?: readonly string[];
   inputSchema?: ToolSchemaShape;
-  handler: (args: ToolArgs, context: AppContext) => Promise<unknown>;
+  handler: (args: ToolArgs, context: AppContext, call?: ToolCallOptions) => Promise<unknown>;
 }
 
 export type GitLabToolDefinitionInput = Omit<GitLabToolDefinition, "scope">;
+
+/** Per-call information from the MCP request, such as client cancellation. */
+export interface ToolCallOptions {
+  signal?: AbortSignal;
+}
 
 export type GitLabToolScope = "project" | "group" | "global" | "rawGraphQL";
 

@@ -75,6 +75,7 @@ import type { AppContext } from "../types/context.js";
 import { deploymentToolDefinitions } from "./deployments.js";
 import { environmentToolDefinitions } from "./environments.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
+import { pipelineJobToolDefinitions } from "./pipeline-jobs.js";
 import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
 import { pipelineTriggerToolDefinitions } from "./pipeline-triggers.js";
 import { pipelineToolDefinitions } from "./pipelines.js";
@@ -332,7 +333,7 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
         inputSchema: definition.inputSchema ?? {},
         annotations: annotationsForCapabilities(definition.capabilities)
       },
-      async (rawArgs) => {
+      async (rawArgs, extra) => {
         try {
           context.policy.assertCanExecute({
             name: definition.name,
@@ -346,7 +347,9 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
 
           const args = sanitizeToolArguments(definition.name, (rawArgs ?? {}) as ToolArgs);
           assertToolCanExecuteInProjectScope(definition, args, context);
-          const result = redactSuccessfulResponse(await definition.handler(args, context));
+          const result = redactSuccessfulResponse(
+            await definition.handler(args, context, { signal: extra.signal })
+          );
           const pagination = getPaginationMetadata(result);
           const formatted = context.formatter.format(result);
           const structuredResult = formatted.truncated
@@ -5481,7 +5484,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...pipelineTriggerToolDefinitions,
     ...environmentToolDefinitions,
     ...deploymentToolDefinitions,
-    ...pipelineToolDefinitions
+    ...pipelineToolDefinitions,
+    ...pipelineJobToolDefinitions
   ];
 
   return definitions.map((definition) => {
