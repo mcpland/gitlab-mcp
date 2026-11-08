@@ -492,13 +492,17 @@ Requires `USE_RELEASE=true` (default).
 
 ## Tags
 
-| Tool                       | Mutating | Description                                                                                                      |
-| -------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| `gitlab_list_tags`         | No       | List repository tags. Supports `order_by`, `sort`, `search`, and pagination.                                     |
-| `gitlab_get_tag`           | No       | Get one repository tag by name. Params: `tag_name` (required).                                                   |
-| `gitlab_create_tag`        | **Yes**  | Create a repository tag. Params: `tag_name`, `ref` (required). Supports optional `message` for annotated tags.   |
-| `gitlab_delete_tag`        | **Yes**  | Delete a repository tag permanently. Irreversible. Requires `tag_name`. Pre-check with `get_tag` or `list_tags`. |
-| `gitlab_get_tag_signature` | No       | Get the X.509 signature for a signed repository tag. Params: `tag_name` (required).                              |
+| Tool                         | Mutating | Description                                                                                                                                                                                     |
+| ---------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_tags`           | No       | List repository tags. Supports `order_by`, `sort`, `search`, and pagination.                                                                                                                    |
+| `gitlab_get_tag`             | No       | Get one repository tag by name. Params: `tag_name` (required).                                                                                                                                  |
+| `gitlab_create_tag`          | **Yes**  | Create a repository tag. Params: `tag_name`, `ref` (required). Supports optional `message` for annotated tags.                                                                                  |
+| `gitlab_delete_tag`          | **Yes**  | Delete a repository tag permanently. Irreversible. Requires `tag_name`. Pre-check with `get_tag` or `list_tags`.                                                                                |
+| `gitlab_get_tag_signature`   | No       | Get the X.509 signature for a signed repository tag. Params: `tag_name` (required).                                                                                                             |
+| `gitlab_list_protected_tags` | No       | List protected tag rules (names or wildcards such as `v*`) and their create access levels.                                                                                                      |
+| `gitlab_get_protected_tag`   | No       | Get one protected tag rule by `name`.                                                                                                                                                           |
+| `gitlab_protect_tag`         | **Yes**  | Protect a tag name or wildcard. Supports `create_access_level` (0, 30, 40, 60) and `allowed_to_create` (`user_id`, `group_id`, `deploy_key_id`, or `access_level` per entry). Admin capability. |
+| `gitlab_unprotect_tag`       | **Yes**  | Remove tag protection. Delete capability: hidden in `modify`.                                                                                                                                   |
 
 ---
 
