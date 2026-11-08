@@ -210,15 +210,15 @@ Optional boolean arguments accept JSON booleans and the spellings `"true"`/`"fal
 
 ## Draft Notes
 
-| Tool                              | Mutating | Description                                                                                                                                          |
-| --------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gitlab_get_draft_note`           | No       | Get a single draft note.                                                                                                                             |
-| `gitlab_list_draft_notes`         | No       | List draft notes on an MR.                                                                                                                           |
-| `gitlab_create_draft_note`        | **Yes**  | Create a draft note. Params: `body` (required). Supports `position`, `resolve_discussion`.                                                           |
-| `gitlab_update_draft_note`        | **Yes**  | Update a draft note. At least one of `body`, `position`, or `resolve_discussion` required.                                                           |
-| `gitlab_delete_draft_note`        | **Yes**  | Delete a draft note permanently. Irreversible. Requires `merge_request_iid`, `draft_note_id`. Pre-check with `get_draft_note` or `list_draft_notes`. |
-| `gitlab_publish_draft_note`       | **Yes**  | Publish one draft note.                                                                                                                              |
-| `gitlab_bulk_publish_draft_notes` | **Yes**  | Publish all draft notes on an MR.                                                                                                                    |
+| Tool                              | Mutating | Description                                                                                                                                                       |
+| --------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_get_draft_note`           | No       | Get a single draft note.                                                                                                                                          |
+| `gitlab_list_draft_notes`         | No       | List draft notes on an MR.                                                                                                                                        |
+| `gitlab_create_draft_note`        | **Yes**  | Create a draft note. Params: `body` (required). Supports `position`, `resolve_discussion`.                                                                        |
+| `gitlab_update_draft_note`        | **Yes**  | Update a draft note. At least one of `body`, `position`, or `resolve_discussion` required.                                                                        |
+| `gitlab_delete_draft_note`        | **Yes**  | Delete a draft note permanently. Irreversible. Requires `merge_request_iid`, `draft_note_id`. Pre-check with `get_draft_note` or `list_draft_notes`.              |
+| `gitlab_publish_draft_note`       | **Yes**  | Publish one draft note.                                                                                                                                           |
+| `gitlab_bulk_publish_draft_notes` | **Yes**  | Publish all draft notes on an MR. GitLab 19.2+ also accepts `reviewer_state` (`requested_changes`/`reviewed`, not an approval), a summary `note`, and `internal`. |
 
 ---
 

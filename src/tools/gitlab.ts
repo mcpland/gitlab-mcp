@@ -2172,16 +2172,25 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_bulk_publish_draft_notes",
       title: "Bulk Publish Draft Notes",
-      description: "Publish all merge-request draft notes.",
+      description:
+        "Publish all merge-request draft notes. On GitLab 19.2+ it can also set your reviewer state (requested_changes or reviewed; not a formal approval) and post a summary note, even with no drafts.",
       capabilities: writeCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        merge_request_iid: z.string().min(1)
+        merge_request_iid: z.string().min(1),
+        reviewer_state: z.enum(["requested_changes", "reviewed"]).optional(),
+        note: optionalBodySchema,
+        internal: optionalBoolean
       },
       handler: async (args, context) =>
         context.gitlab.bulkPublishDraftNotes(
           resolveProjectId(args, context, true),
-          getString(args, "merge_request_iid")
+          getString(args, "merge_request_iid"),
+          pickPresentFields(args, ["reviewer_state", "note", "internal"]) as {
+            reviewer_state?: "requested_changes" | "reviewed";
+            note?: string;
+            internal?: boolean;
+          }
         )
     },
     {

@@ -1508,13 +1508,18 @@ export class GitLabClient {
   bulkPublishDraftNotes(
     projectId: string,
     mergeRequestIid: string,
+    payload: {
+      reviewer_state?: "requested_changes" | "reviewed";
+      note?: string;
+      internal?: boolean;
+    } = {},
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
       `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/draft_notes/bulk_publish`,
       {
         ...options,
-        body: JSON.stringify({}),
+        body: JSON.stringify(payload),
         headers: {
           "Content-Type": "application/json",
           ...(options.headers ?? {})

@@ -95,3 +95,35 @@ describe("gitlab_create_merge_request milestone", () => {
     );
   });
 });
+
+describe("gitlab_bulk_publish_draft_notes review options", () => {
+  it("forwards reviewer_state, note, and internal", async () => {
+    const bulkPublishDraftNotes = vi.fn().mockResolvedValue({});
+
+    const result = await callTool({ bulkPublishDraftNotes }, "gitlab_bulk_publish_draft_notes", {
+      project_id: "group/project",
+      merge_request_iid: "7",
+      reviewer_state: "requested_changes",
+      note: "Please address the comments.",
+      internal: "false"
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(bulkPublishDraftNotes).toHaveBeenCalledWith("group/project", "7", {
+      reviewer_state: "requested_changes",
+      note: "Please address the comments.",
+      internal: false
+    });
+  });
+
+  it("publishes with an empty payload when no review options are set", async () => {
+    const bulkPublishDraftNotes = vi.fn().mockResolvedValue({});
+
+    await callTool({ bulkPublishDraftNotes }, "gitlab_bulk_publish_draft_notes", {
+      project_id: "group/project",
+      merge_request_iid: "7"
+    });
+
+    expect(bulkPublishDraftNotes).toHaveBeenCalledWith("group/project", "7", {});
+  });
+});
