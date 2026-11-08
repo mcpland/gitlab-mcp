@@ -110,6 +110,7 @@ import {
   hasValue,
   isObjectRecord,
   isRecord,
+  jsonBody,
   omit,
   optionalBoolean,
   optionalNumber,
@@ -123,6 +124,7 @@ import {
   paginationShape,
   pickPresentFields,
   pickRecordFields,
+  projectApiPath,
   readCapabilities,
   readGraphqlCapabilities,
   requireArrayValue,
@@ -2805,6 +2807,35 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           payload
         );
         return getOptionalBoolean(args, "full_response") ? issue : slimUpdatedIssue(issue);
+      }
+    },
+    {
+      name: "gitlab_reorder_issue",
+      title: "Reorder Issue",
+      description:
+        "Change an issue's relative position in boards and manually sorted lists. move_after_id and move_before_id take global issue IDs (the id field, not iid) of the neighbors: move_after_id is the issue that should follow this one and move_before_id the issue that should precede it.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        issue_iid: z.coerce.string().min(1),
+        move_after_id: nullableOptional(z.coerce.number().int().positive()),
+        move_before_id: nullableOptional(z.coerce.number().int().positive())
+      },
+      handler: async (args, context) => {
+        const payload = pickPresentFields(args, ["move_after_id", "move_before_id"]);
+        if (Object.keys(payload).length === 0) {
+          throw new Error("Provide move_after_id, move_before_id, or both");
+        }
+
+        return context.gitlab.put(
+          projectApiPath(
+            resolveProjectId(args, context, true),
+            "issues",
+            getString(args, "issue_iid"),
+            "reorder"
+          ),
+          jsonBody(payload)
+        );
       }
     },
     {
