@@ -82,6 +82,7 @@ import { pipelineJobToolDefinitions } from "./pipeline-jobs.js";
 import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
 import { pipelineTriggerToolDefinitions } from "./pipeline-triggers.js";
 import { pipelineToolDefinitions } from "./pipelines.js";
+import { snippetToolDefinitions } from "./snippets.js";
 import {
   adminCapabilities,
   adminDeleteCapabilities,
@@ -5519,7 +5520,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...pipelineToolDefinitions,
     ...pipelineJobToolDefinitions,
     ...groupMilestoneToolDefinitions,
-    ...iterationToolDefinitions
+    ...iterationToolDefinitions,
+    ...snippetToolDefinitions
   ];
 
   return definitions.map((definition) => {

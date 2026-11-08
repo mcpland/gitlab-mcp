@@ -63,6 +63,18 @@ Iterations are a Premium/Ultimate feature. Cadence tools and iteration create/up
 | `gitlab_update_group_iteration_cadence` | **Yes**  | Update a cadence's settings.                                                                                                                                 |
 | `gitlab_delete_group_iteration_cadence` | **Yes**  | Permanently delete a cadence and its iterations.                                                                                                             |
 
+## Snippets
+
+Project snippets, selected by the `projects` toolset. Snippet file paths reject `.` and `..` segments.
+
+| Tool                            | Mutating | Description                                                                                                                 |
+| ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_project_snippets`  | No       | List a project's snippets. Supports pagination.                                                                             |
+| `gitlab_get_project_snippet`    | No       | Get snippet metadata; `include_content=true` also returns the raw content of up to 10 files (`ref` overrides the revision). |
+| `gitlab_create_project_snippet` | **Yes**  | Create a snippet. Params: `title`, `files` (`[{file_path, content}]`, 1 to 10) required; `description`, `visibility`.       |
+| `gitlab_update_project_snippet` | **Yes**  | Update title, description, visibility, or files (`action` create/update/delete/move; move needs `previous_path`).           |
+| `gitlab_delete_project_snippet` | **Yes**  | Permanently delete a snippet and its files.                                                                                 |
+
 ---
 
 ## Users & Namespaces
