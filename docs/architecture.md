@@ -55,9 +55,14 @@ config/env.ts
   │     └── lib/network.ts
   │     └── lib/request-runtime.ts
   │           └── lib/oauth.ts
+  │     └── lib/response-masking.ts (optional policy)
   │     └── server/build-server.ts
+  │           └── server/instructions.ts
+  │           └── server/prompts.ts
   │           └── tools/gitlab.ts
+  │           │     └── tools/shared.ts (definition types and argument helpers)
   │           │     └── tools/mr-code-context.ts
+  │           │     └── tools/<family>.ts (pipelines, pipeline-schedules, environments, ...)
   │           └── tools/health.ts
   │
   └── http.ts (HTTP)
@@ -77,14 +82,15 @@ config/env.ts
 
 ### `server/build-server.ts` — Server Factory
 
-- Creates an `McpServer` instance with configured name and version
-- Registers the health check tool
+- Creates an `McpServer` instance with configured name and version and the initialize `instructions` from `server/instructions.ts`
+- Registers the health check tool and the workflow prompts from `server/prompts.ts`
 - Registers all GitLab tools after policy filtering
 - Pure factory function — no side effects
 
 ### `tools/gitlab.ts` — Tool Definitions
 
-- Defines the complete registry as a `GitLabToolDefinition[]` array; the [generated index](tools-index.md) is the authoritative inventory
+- Assembles the complete registry as a `GitLabToolDefinition[]` array; the [generated index](tools-index.md) is the authoritative inventory
+- Newer tool families live in their own modules under `src/tools/` (for example `pipeline-schedules.ts`, `environments.ts`, `deployments.ts`, `iterations.ts`, `vulnerabilities.ts`, `api-request.ts`) and are spread into the registry; they build API paths with `projectApiPath`/`groupApiPath` from `tools/shared.ts`, which encode every value as exactly one path segment
 - Each definition specifies: `name`, `title`, `description`, `capabilities`, optional `requiresFeature`, project/group/global/raw-GraphQL scope metadata, `inputSchema` (Zod), and `handler`
 - Tools are filtered by project-scope metadata and the policy engine at registration time
 - Tool execution wraps results through the output formatter
@@ -93,12 +99,14 @@ config/env.ts
 **Tool execution flow:**
 
 ```
-Raw args ──▶ sanitizeToolArguments ──▶ scope guard ──▶ handler ──▶ success redaction ──▶ formatter ──▶ MCP response
-                                      │                  │
+Raw args ──▶ sanitizeToolArguments ──▶ scope guard ──▶ handler ──▶ success redaction ──▶ masking ──▶ jmespath ──▶ formatter ──▶ MCP response
+                                      │                  │                                (optional)   (optional)
                                       │                  └── assertAuthReady()  (check token exists)
                                       │                  └── resolveProjectId() (defense in depth)
                                       └── validate source/target/parent project arguments
 ```
+
+Errors take the same masking step and carry a `next_step` recovery hint; transport failures name their network, DNS, TLS, or timeout cause.
 
 When `GITLAB_ALLOWED_PROJECT_IDS` is configured, registration keeps project-bound tools and explicitly safe/filterable global tools. Group-wide, unprovable global, and raw GraphQL tools are removed. Execution repeats project/group argument checks so a stale or direct tool call cannot bypass registration filtering. Handlers additionally filter list responses and verify resources such as todos before mutation.
 

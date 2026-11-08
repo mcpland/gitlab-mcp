@@ -8,12 +8,13 @@ A production-ready [MCP](https://modelcontextprotocol.io/) server for GitLab. It
 
 ## Highlights
 
-- **Comprehensive GitLab coverage** — projects, merge requests (with code-context analysis), issues, pipelines, wikis, milestones, releases, labels, commits, branches, GraphQL, and file management
+- **Comprehensive GitLab coverage** — projects, merge requests (with code-context analysis and rebase), issues, pipelines (schedules, triggers, test reports, waits, log search), environments and deployments, wikis, milestones and iterations, releases, protected branches and tags, snippets, webhooks, vulnerabilities, labels, commits, GraphQL, and file management
 - **Multiple transports** — stdio for local CLI usage, Streamable HTTP for remote deployments, optional SSE
 - **Flexible authentication** — personal access tokens, OAuth 2.0 PKCE, external token scripts, token files, cookie-based auth, and per-request remote authorization
 - **Policy engine** — readonly/modify/full modes, tool allowlist/denylist, feature toggles, and project-scoped restrictions
 - **Enterprise networking** — HTTP/HTTPS proxy, custom CA certificates, Cloudflare bypass, multi-instance API rotation
-- **Output control** — JSON, compact JSON, or YAML formatting with configurable response size limits
+- **Output control** — JSON, compact JSON, or YAML formatting with configurable response size limits, optional JMESPath projection, and an optional masking policy for tokens, IPs, and keywords
+- **Agent guidance** — initialize instructions, workflow prompts (review an MR, triage a pipeline failure or vulnerabilities), and recovery hints on errors
 
 ## Usage
 
@@ -331,26 +332,31 @@ pnpm start:http -- --env-file .env.local
 
 Tools are organized into these categories. All GitLab tools use the `gitlab_` prefix, except `health_check`.
 
-| Category            | Examples                                                                     |
-| ------------------- | ---------------------------------------------------------------------------- |
-| **Projects**        | `get_project`, `list_projects`, `create_repository`, `update_project`        |
-| **Repository**      | `get_repository_tree`, `get_file_contents`, `push_files`, protected branches |
-| **Merge Requests**  | `list_merge_requests`, `get_merge_request_conflicts`, `merge_merge_request`  |
-| **MR Code Context** | `get_merge_request_code_context` (advanced code review)                      |
-| **MR Discussions**  | `list_merge_request_discussions`, `create_merge_request_thread`              |
-| **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                      |
-| **Draft Notes**     | `list_draft_notes`, `create_draft_note`, `bulk_publish_draft_notes`          |
-| **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                   |
-| **Pipelines**       | `list_pipelines`, `list_pipeline_schedules`, `get_job_artifact_file`         |
-| **Commits**         | `list_commits`, `get_commit`, `get_commit_diff`                              |
-| **Labels**          | `list_labels`, `create_label`, `update_label`                                |
-| **Milestones**      | `list_milestones`, `create_milestone`, burndown events                       |
-| **Releases**        | `list_releases`, `create_release`, `download_release_asset`                  |
-| **Wiki**            | `list_wiki_pages`, `create_wiki_page`, `update_wiki_page`                    |
-| **Uploads**         | `upload_markdown`, `download_attachment`                                     |
-| **GraphQL**         | `execute_graphql_query`, `execute_graphql_mutation`                          |
-| **Users & Groups**  | `get_users`, `list_namespaces`, `list_events`                                |
-| **Health**          | `health_check` (optionally verifies GitLab connectivity and auth)            |
+| Category            | Examples                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------ |
+| **Projects**        | `get_project`, `list_projects`, `create_repository`, `update_project`                            |
+| **Repository**      | `get_repository_tree`, `get_file_contents`, `push_files`, protected branches                     |
+| **Merge Requests**  | `list_merge_requests`, `get_merge_request_conflicts`, `merge_merge_request`                      |
+| **MR Code Context** | `get_merge_request_code_context` (advanced code review)                                          |
+| **MR Discussions**  | `list_merge_request_discussions`, `create_merge_request_thread`                                  |
+| **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                                          |
+| **Draft Notes**     | `list_draft_notes`, `create_draft_note`, `bulk_publish_draft_notes`                              |
+| **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                                       |
+| **Pipelines**       | `list_pipelines`, `list_pipeline_schedules`, `get_pipeline_test_report`, `wait_for_pipeline`     |
+| **Deployments**     | `create_environment`, `stop_environment`, `approve_deployment`, `list_deployment_merge_requests` |
+| **Commits**         | `list_commits`, `get_commit`, `get_commit_diff`                                                  |
+| **Labels**          | `list_labels`, `create_label`, `update_label`                                                    |
+| **Milestones**      | `list_milestones`, `list_group_milestones`, `create_group_iteration`, burndown events            |
+| **Snippets**        | `list_project_snippets`, `create_project_snippet`                                                |
+| **Security**        | `list_project_vulnerabilities`, `dismiss_vulnerability` (Ultimate)                               |
+| **Webhooks**        | `list_webhooks`, `create_webhook`, `list_webhook_events`                                         |
+| **Releases**        | `list_releases`, `create_release`, `download_release_asset`                                      |
+| **Wiki**            | `list_wiki_pages`, `create_wiki_page`, `update_wiki_page`                                        |
+| **Uploads**         | `upload_markdown`, `download_attachment`                                                         |
+| **GraphQL**         | `execute_graphql_query`, `execute_graphql_mutation`                                              |
+| **Users & Groups**  | `get_users`, `list_group_members`, `list_namespaces`, `list_events`                              |
+| **Opt-in**          | `api_request` (raw REST), `orbit_query` (GitLab Orbit)                                           |
+| **Health**          | `health_check` (optionally verifies GitLab connectivity and auth)                                |
 
 During `initialize`, the server also sends MCP `instructions`: a short briefing on ID formats, token-saving review and CI workflows, `gitlab_discover_tools`, untrusted content, and the active permission mode, project scope, and toolsets.
 
