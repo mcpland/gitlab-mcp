@@ -17,6 +17,7 @@ export const GITLAB_TOOLSETS = [
   "work-items",
   "webhooks",
   "identity",
+  "vulnerabilities",
   "graphql"
 ] as const;
 
@@ -89,6 +90,7 @@ const TOOLSET_PATTERNS: ReadonlyArray<{
   { toolset: "labels", pattern: /label/ },
   { toolset: "work-items", pattern: /(?:work_item|custom_field|timeline_event)/ },
   { toolset: "webhooks", pattern: /webhook/ },
+  { toolset: "vulnerabilities", pattern: /vulnerabilit/ },
   { toolset: "graphql", pattern: /graphql/ },
   {
     toolset: "groups",

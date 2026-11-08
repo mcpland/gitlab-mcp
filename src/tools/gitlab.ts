@@ -85,6 +85,7 @@ import { pipelineToolDefinitions } from "./pipelines.js";
 import { protectedTagToolDefinitions } from "./protected-tags.js";
 import { runnerToolDefinitions } from "./runners.js";
 import { snippetToolDefinitions } from "./snippets.js";
+import { vulnerabilityToolDefinitions } from "./vulnerabilities.js";
 import {
   adminCapabilities,
   adminDeleteCapabilities,
@@ -5636,7 +5637,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...iterationToolDefinitions,
     ...snippetToolDefinitions,
     ...protectedTagToolDefinitions,
-    ...runnerToolDefinitions
+    ...runnerToolDefinitions,
+    ...vulnerabilityToolDefinitions
   ];
 
   return definitions.map((definition) => {

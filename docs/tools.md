@@ -556,6 +556,19 @@ These tools use GitLab GraphQL. Without a project allowlist, a path-like `projec
 
 ---
 
+## Vulnerabilities
+
+Selected by the `vulnerabilities` toolset (or `all`). These GraphQL-backed tools need GitLab Ultimate and the `graphql` capability. Vulnerability IDs are global, so every tool first checks that the vulnerability belongs to `project_id` (and therefore to `GITLAB_ALLOWED_PROJECT_IDS` when set).
+
+| Tool                                  | Mutating | Description                                                                                                                                                                                                   |
+| ------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_project_vulnerabilities` | No       | List vulnerabilities with severity, state, scanner, identifiers, and location. Filters: `state`, `severity`, `report_type` (value or list); page with `first` (max 100) and `after` = `page_info.end_cursor`. |
+| `gitlab_get_vulnerability`            | No       | Get one vulnerability by numeric or global `vulnerability_id`.                                                                                                                                                |
+| `gitlab_confirm_vulnerability`        | **Yes**  | Confirm a vulnerability, with an optional `comment`.                                                                                                                                                          |
+| `gitlab_dismiss_vulnerability`        | **Yes**  | Dismiss a vulnerability with `reason` (`acceptable_risk`, `false_positive`, `used_in_tests`, `mitigating_control`, `not_applicable`) and optional `comment`.                                                  |
+
+---
+
 ## GraphQL
 
 | Tool                              | Mutating | Description                                                                                                                          |
