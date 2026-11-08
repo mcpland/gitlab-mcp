@@ -77,6 +77,7 @@ import { environmentToolDefinitions } from "./environments.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
 import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
 import { pipelineTriggerToolDefinitions } from "./pipeline-triggers.js";
+import { pipelineToolDefinitions } from "./pipelines.js";
 import {
   adminCapabilities,
   adminDeleteCapabilities,
@@ -5479,7 +5480,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...pipelineScheduleToolDefinitions,
     ...pipelineTriggerToolDefinitions,
     ...environmentToolDefinitions,
-    ...deploymentToolDefinitions
+    ...deploymentToolDefinitions,
+    ...pipelineToolDefinitions
   ];
 
   return definitions.map((definition) => {
