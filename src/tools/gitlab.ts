@@ -245,6 +245,61 @@ const protectedBranchAccessLevelSchema = z.union([
   z.literal(40),
   z.literal(60)
 ]);
+function protectedBranchAccessEntrySchema(allowDeployKeys: boolean) {
+  return z
+    .object({
+      id: z.number().int().positive().optional(),
+      _destroy: optionalBoolean,
+      access_level: protectedBranchAccessLevelSchema.optional(),
+      user_id: z.number().int().positive().optional(),
+      group_id: z.number().int().positive().optional(),
+      ...(allowDeployKeys ? { deploy_key_id: z.number().int().positive().optional() } : {})
+    })
+    .superRefine((entry, issue) => {
+      const record = entry as Record<string, unknown>;
+      const targets = ["access_level", "user_id", "group_id", "deploy_key_id"].filter(
+        (key) => record[key] !== undefined
+      );
+      if (record._destroy === true && record.id === undefined) {
+        issue.addIssue({ code: "custom", message: "_destroy requires the entry id" });
+      }
+      if (record.id === undefined && targets.length !== 1) {
+        issue.addIssue({
+          code: "custom",
+          message: `a new entry needs exactly one of access_level, user_id, group_id${
+            allowDeployKeys ? ", deploy_key_id" : ""
+          }`
+        });
+      }
+    });
+}
+
+/**
+ * Refuse protected-branch updates that would remove every unprotect grant,
+ * which would leave the rule unremovable by anyone but an administrator.
+ */
+function assertUnprotectAccessRemains(current: unknown, changes: unknown[]): void {
+  const existing =
+    isRecord(current) && Array.isArray(current.unprotect_access_levels)
+      ? current.unprotect_access_levels.filter(isRecord)
+      : [];
+  const destroyed = new Set(
+    changes
+      .filter((change) => isRecord(change) && change._destroy === true && change.id !== undefined)
+      .map((change) => String((change as Record<string, unknown>).id))
+  );
+  const added = changes.filter(
+    (change) => isRecord(change) && change.id === undefined && change._destroy !== true
+  );
+  const remaining = existing.filter((entry) => !destroyed.has(String(entry.id)));
+
+  if (remaining.length + added.length === 0) {
+    throw new Error(
+      "Refusing to remove every allowed_to_unprotect entry; add a replacement entry in the same request"
+    );
+  }
+}
+
 const protectedBranchUnprotectAccessLevelSchema = z.union([
   z.literal(30),
   z.literal(40),
@@ -1186,6 +1241,48 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           allow_force_push: getOptionalBoolean(args, "allow_force_push"),
           code_owner_approval_required: getOptionalBoolean(args, "code_owner_approval_required")
         })
+    },
+    {
+      name: "gitlab_update_protected_branch",
+      title: "Update Protected Branch",
+      description:
+        "Change an existing branch protection rule in place: allow_force_push, code_owner_approval_required, and allowed_to_push/allowed_to_merge/allowed_to_unprotect entries. Add an entry with one of access_level, user_id, group_id, or deploy_key_id (push only); change one with its id; remove one with {id, _destroy: true}. Read entry ids with gitlab_get_protected_branch. Changes that would leave nobody allowed to unprotect are refused.",
+      capabilities: adminCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        branch: protectedBranchNameSchema,
+        allow_force_push: optionalBoolean,
+        code_owner_approval_required: optionalBoolean,
+        allowed_to_push: nullableOptional(z.array(protectedBranchAccessEntrySchema(true)).max(50)),
+        allowed_to_merge: nullableOptional(
+          z.array(protectedBranchAccessEntrySchema(false)).max(50)
+        ),
+        allowed_to_unprotect: nullableOptional(
+          z.array(protectedBranchAccessEntrySchema(false)).max(50)
+        )
+      },
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const branch = getString(args, "branch");
+        const payload = pickPresentFields(args, [
+          "allow_force_push",
+          "code_owner_approval_required",
+          "allowed_to_push",
+          "allowed_to_merge",
+          "allowed_to_unprotect"
+        ]);
+        if (Object.keys(payload).length === 0) {
+          throw new Error("Provide at least one protected branch setting to update");
+        }
+
+        const unprotectChanges = getOptionalArray(args, "allowed_to_unprotect");
+        if (unprotectChanges && unprotectChanges.length > 0) {
+          const current = await context.gitlab.getProtectedBranch(projectId, branch);
+          assertUnprotectAccessRemains(current, unprotectChanges);
+        }
+
+        return context.gitlab.updateProtectedBranch(projectId, branch, payload);
+      }
     },
     {
       name: "gitlab_unprotect_branch",

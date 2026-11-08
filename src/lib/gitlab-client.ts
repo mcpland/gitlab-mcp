@@ -741,6 +741,22 @@ export class GitLabClient {
     );
   }
 
+  updateProtectedBranch(
+    projectId: string,
+    branch: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.patch(
+      `/projects/${encodeGitLabProjectId(projectId)}/protected_branches/${encode(branch)}`,
+      {
+        ...options,
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json", ...(options.headers ?? {}) }
+      }
+    );
+  }
+
   protectBranch(
     projectId: string,
     payload: {
@@ -3112,12 +3128,16 @@ export class GitLabClient {
     return this.request("PUT", path, options);
   }
 
+  patch(path: string, options: GitLabRequestOptions = {}): Promise<unknown> {
+    return this.request("PATCH", path, options);
+  }
+
   delete(path: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.request("DELETE", path, options);
   }
 
   private async request(
-    method: "GET" | "POST" | "PUT" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
