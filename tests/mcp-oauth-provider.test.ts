@@ -3,10 +3,13 @@ import { createHash } from "node:crypto";
 import type { Request, Response } from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { InvalidGrantError, ServerError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
+
 import {
   createGitLabMcpOAuthProvider,
   type GitLabMcpOAuthProviderOptions
 } from "../src/lib/mcp-oauth-provider.js";
+import { parseMcpOAuthKeyRing, StatelessMcpOAuthCodec } from "../src/lib/mcp-oauth-stateless.js";
 
 const APPLICATION_ID = "pre-registered-gitlab-app";
 const CALLBACK_URL = "https://mcp.example.com/oauth/callback";
@@ -597,6 +600,31 @@ describe("createGitLabMcpOAuthProvider", () => {
     expect(revokeInit?.redirect).toBe("error");
     expect(body.get("token")).toBe("raw-access-token");
     expect(body.get("token_type_hint")).toBe("refresh_token");
+  });
+
+  it("keeps refresh tokens usable when GitLab is temporarily unavailable", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("upstream outage", { status: 503 }))
+      .mockResolvedValueOnce(new Response("slow down", { status: 429 }))
+      .mockResolvedValueOnce(Response.json({ error: "invalid_grant" }, { status: 400 }));
+    const provider = createProvider({ fetch: fetchMock as unknown as typeof fetch });
+    const client = await registerPublicClient(provider);
+    const refreshToken = new StatelessMcpOAuthCodec({
+      keyRing: parseMcpOAuthKeyRing(STATE_SECRET),
+      clientTtlSeconds: 2_592_000,
+      codeTtlSeconds: 600
+    }).sealRefreshToken("gitlab-refresh-token", client.client_id);
+
+    await expect(provider.exchangeRefreshToken(client, refreshToken)).rejects.toBeInstanceOf(
+      ServerError
+    );
+    await expect(provider.exchangeRefreshToken(client, refreshToken)).rejects.toBeInstanceOf(
+      ServerError
+    );
+    await expect(provider.exchangeRefreshToken(client, refreshToken)).rejects.toBeInstanceOf(
+      InvalidGrantError
+    );
   });
 
   it("passes GitLab authorization errors back to the original client", async () => {

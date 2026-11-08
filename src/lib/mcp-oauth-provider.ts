@@ -601,6 +601,14 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
     }
     if (!response.ok) {
       await response.body?.cancel();
+      // invalid_grant tells the client to discard its refresh token and
+      // re-authorize; reserve it for GitLab rejecting the grant itself and
+      // report outages and rate limits as retryable server errors.
+      if (response.status >= 500 || response.status === 429) {
+        throw new ServerError(
+          `GitLab OAuth ${operation} is temporarily unavailable (HTTP ${String(response.status)})`
+        );
+      }
       throw new InvalidGrantError(`GitLab rejected the OAuth ${operation}`);
     }
     try {
