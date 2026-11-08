@@ -735,10 +735,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           name: getString(args, "name"),
           description: getOptionalString(args, "description"),
           visibility: getOptionalString(args, "visibility") as
-            | "private"
-            | "internal"
-            | "public"
-            | undefined,
+            "private" | "internal" | "public" | undefined,
           initialize_with_readme: getOptionalBoolean(args, "initialize_with_readme"),
           path: getOptionalString(args, "path"),
           namespace_id: getOptionalNumber(args, "namespace_id"),
@@ -763,10 +760,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           path: getString(args, "path"),
           description: getOptionalString(args, "description"),
           visibility: getOptionalString(args, "visibility") as
-            | "private"
-            | "internal"
-            | "public"
-            | undefined,
+            "private" | "internal" | "public" | undefined,
           parent_id: getOptionalNumber(args, "parent_id")
         })
     },
@@ -1768,10 +1762,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           name: getOptionalString(args, "name"),
           description: getOptionalString(args, "description"),
           visibility: getOptionalString(args, "visibility") as
-            | "private"
-            | "internal"
-            | "public"
-            | undefined,
+            "private" | "internal" | "public" | undefined,
           default_branch: getOptionalString(args, "default_branch")
         })
     },
@@ -2035,16 +2026,10 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
             contextLines: getOptionalNumber(args, "context_lines") ?? 20,
             mode:
               (getOptionalString(args, "mode") as
-                | "patch"
-                | "surrounding"
-                | "fullfile"
-                | undefined) ?? "patch",
+                "patch" | "surrounding" | "fullfile" | undefined) ?? "patch",
             sort:
               (getOptionalString(args, "sort") as
-                | "changed_lines"
-                | "path"
-                | "file_size"
-                | undefined) ?? "changed_lines",
+                "changed_lines" | "path" | "file_size" | undefined) ?? "changed_lines",
             listOnly: getOptionalBoolean(args, "list_only") ?? false
           },
           context
@@ -3343,10 +3328,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
             ),
             target_issue_iid: getString(args, "target_issue_iid"),
             link_type: getOptionalString(args, "link_type") as
-              | "relates_to"
-              | "blocks"
-              | "is_blocked_by"
-              | undefined
+              "relates_to" | "blocks" | "is_blocked_by" | undefined
           }
         )
     },
@@ -3419,11 +3401,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           title: getString(args, "title"),
           content: getString(args, "content"),
           format: getOptionalString(args, "format") as
-            | "markdown"
-            | "rdoc"
-            | "asciidoc"
-            | "org"
-            | undefined
+            "markdown" | "rdoc" | "asciidoc" | "org" | undefined
         })
     },
     {
@@ -3449,11 +3427,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           content: getString(args, "content"),
           title,
           format: getOptionalString(args, "format") as
-            | "markdown"
-            | "rdoc"
-            | "asciidoc"
-            | "org"
-            | undefined
+            "markdown" | "rdoc" | "asciidoc" | "org" | undefined
         });
       }
     },
@@ -4456,8 +4430,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           getString(args, "job_id"),
           {
             job_variables_attributes: getOptionalArray(args, "job_variables_attributes") as
-              | Array<{ key: string; value: string }>
-              | undefined,
+              Array<{ key: string; value: string }> | undefined,
             job_inputs: getOptionalRecord(args, "job_inputs")
           }
         )
@@ -5545,8 +5518,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
             projectId
           ),
           customFields: getOptionalArray(args, "custom_fields") as
-            | WorkItemCustomFieldInput[]
-            | undefined,
+            WorkItemCustomFieldInput[] | undefined,
           severity: getOptionalString(args, "severity"),
           escalationStatus: getOptionalString(args, "escalation_status")
         });
@@ -9127,8 +9099,7 @@ function getLinkedWorkItemReferences(
   defaultProjectId: string
 ): LinkedWorkItemReference[] | undefined {
   const references = getWorkItemReferences(args, key, context, defaultProjectId) as
-    | LinkedWorkItemReference[]
-    | undefined;
+    LinkedWorkItemReference[] | undefined;
   const rawValues = getOptionalArray(args, key);
   if (!references || !rawValues) {
     return references;

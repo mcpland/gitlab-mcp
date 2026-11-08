@@ -90,7 +90,7 @@ function formatIpv6(bytes: Uint8Array): string {
   );
   let bestStart = -1;
   let bestLength = 0;
-  for (let start = 0; start < hextets.length; ) {
+  for (let start = 0; start < hextets.length;) {
     if (hextets[start] !== "0") {
       start += 1;
       continue;

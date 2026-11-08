@@ -1,14 +1,7 @@
 const GITLAB_LATENCY_BUCKETS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10];
 
 export type HttpRouteLabel =
-  | "mcp"
-  | "sse"
-  | "messages"
-  | "downloads"
-  | "healthz"
-  | "metrics"
-  | "oauth"
-  | "other";
+  "mcp" | "sse" | "messages" | "downloads" | "healthz" | "metrics" | "oauth" | "other";
 export type RateLimitScope = "ip" | "session" | "download";
 export type AuthFailureMode = "mcp_http_bearer" | "metrics_bearer" | "remote_gitlab" | "mcp_oauth";
 
