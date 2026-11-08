@@ -68,6 +68,7 @@ import {
 } from "../lib/pagination.js";
 import { redactSuccessfulResponse } from "../lib/redact-success.js";
 import { sanitizeToolArguments } from "../lib/sanitize.js";
+import { classifyTransportFailure, describeTransportFailure } from "../lib/transport-error.js";
 import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
@@ -8053,6 +8054,9 @@ function toToolError(
     const payload: Record<string, unknown> = {
       error: `GitLab API error ${error.status}`
     };
+    if (error.retryAfterSeconds !== undefined) {
+      payload.retry_after_seconds = error.retryAfterSeconds;
+    }
     if (detailMode === "full") {
       payload.details = redactSensitive(error.details, redactionOptions);
     }
@@ -8063,6 +8067,23 @@ function toToolError(
         {
           type: "text",
           text: formatPayloadText(payload, context)
+        }
+      ]
+    };
+  }
+
+  const transportFailure = classifyTransportFailure(error);
+  if (transportFailure) {
+    const message =
+      detailMode === "full"
+        ? String(redactSensitive(describeTransportFailure(transportFailure), redactionOptions))
+        : `GitLab request failed before an HTTP response (${transportFailure.kind})`;
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: message
         }
       ]
     };

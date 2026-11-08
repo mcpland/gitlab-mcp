@@ -157,14 +157,23 @@ export type GitLabPipelineInputValue = string | number | boolean | Array<string 
 
 type AwardEmojiEntity = "issues" | "merge_requests";
 
+export interface GitLabApiErrorOptions {
+  /** Seconds GitLab asked the client to wait, from a Retry-After header. */
+  retryAfterSeconds?: number;
+}
+
 export class GitLabApiError extends Error {
+  public readonly retryAfterSeconds?: number;
+
   constructor(
     message: string,
     public readonly status: number,
-    public readonly details?: unknown
+    public readonly details?: unknown,
+    options: GitLabApiErrorOptions = {}
   ) {
     super(message);
     this.name = "GitLabApiError";
+    this.retryAfterSeconds = options.retryAfterSeconds;
   }
 }
 
@@ -538,7 +547,8 @@ export class GitLabClient {
         response.status,
         {
           message: error instanceof Error ? error.message : "Failed to read GitLab error response"
-        }
+        },
+        { retryAfterSeconds: readRetryAfterSeconds(response) }
       );
     }
 
@@ -546,7 +556,8 @@ export class GitLabClient {
       throw new GitLabApiError(
         `GitLab API request failed: ${response.status} ${response.statusText}`,
         response.status,
-        body
+        body,
+        { retryAfterSeconds: readRetryAfterSeconds(response) }
       );
     }
 
@@ -2077,7 +2088,8 @@ export class GitLabClient {
       throw new GitLabApiError(
         `GitLab API request failed: ${response.status} ${response.statusText}`,
         response.status,
-        details
+        details,
+        { retryAfterSeconds: readRetryAfterSeconds(response) }
       );
     }
 
@@ -2970,7 +2982,8 @@ export class GitLabClient {
     return new GitLabApiError(
       `GitLab ${label.toLowerCase()} download failed: ${response.status} ${response.statusText}`,
       response.status,
-      details
+      details,
+      { retryAfterSeconds: readRetryAfterSeconds(response) }
     );
   }
 
@@ -3083,7 +3096,8 @@ export class GitLabClient {
         response.status,
         {
           message: error instanceof Error ? error.message : "Failed to read GitLab error response"
-        }
+        },
+        { retryAfterSeconds: readRetryAfterSeconds(response) }
       );
     }
 
@@ -3091,7 +3105,8 @@ export class GitLabClient {
       throw new GitLabApiError(
         `GitLab API request failed: ${response.status} ${response.statusText}`,
         response.status,
-        body
+        body,
+        { retryAfterSeconds: readRetryAfterSeconds(response) }
       );
     }
 
@@ -3191,7 +3206,8 @@ export class GitLabClient {
         response.status,
         {
           message: error instanceof Error ? error.message : "Failed to read GitLab error response"
-        }
+        },
+        { retryAfterSeconds: readRetryAfterSeconds(response) }
       );
     }
 
@@ -3199,7 +3215,8 @@ export class GitLabClient {
       throw new GitLabApiError(
         `GitLab API request failed: ${response.status} ${response.statusText}`,
         response.status,
-        body
+        body,
+        { retryAfterSeconds: readRetryAfterSeconds(response) }
       );
     }
 
@@ -3732,6 +3749,15 @@ function resolveGetRetryDelay(
   }
 
   return Math.min(baseDelayMs * 2 ** retry, maxDelayMs);
+}
+
+/**
+ * Whole seconds from a Retry-After header (delta-seconds or HTTP date), so
+ * rate-limited tool calls can tell the agent how long to back off.
+ */
+function readRetryAfterSeconds(response: Response): number | undefined {
+  const delayMs = parseRetryAfter(response.headers.get("retry-after"));
+  return delayMs === undefined ? undefined : Math.ceil(delayMs / 1000);
 }
 
 function parseRetryAfter(value: string | null): number | undefined {
