@@ -10,6 +10,18 @@ Optional boolean arguments accept JSON booleans and the spellings `"true"`/`"fal
 
 ---
 
+## Prompts
+
+The server also publishes MCP prompts that clients can offer as slash commands. Each renders a step-by-step workflow that uses the token-efficient tools below.
+
+| Prompt                    | Arguments                         | Workflow                                                                                         |
+| ------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `review_merge_request`    | `project_id`, `merge_request_iid` | File-by-file review with threaded or draft comments and a final verdict.                         |
+| `triage_pipeline_failure` | `project_id`, `pipeline_id`       | Failed jobs, failing tests, searched job logs, root cause, and a proposed fix.                   |
+| `triage_vulnerabilities`  | `project_id`                      | Severity-ordered vulnerability review with remediation proposals; state changes only on request. |
+
+---
+
 ## Health
 
 | Tool           | Mutating | Description                                                                                                                                                                                                                                                                                                              |

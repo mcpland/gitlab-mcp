@@ -4,6 +4,7 @@ import { registerGitLabTools } from "../tools/gitlab.js";
 import { registerHealthTool } from "../tools/health.js";
 import type { AppContext } from "../types/context.js";
 import { buildServerInstructions } from "./instructions.js";
+import { registerGitLabPrompts } from "./prompts.js";
 
 export function createMcpServer(context: AppContext): McpServer {
   const server = new McpServer(
@@ -15,6 +16,7 @@ export function createMcpServer(context: AppContext): McpServer {
   );
 
   registerHealthTool(server, context);
+  registerGitLabPrompts(server);
   registerGitLabTools(server, context);
 
   return server;
