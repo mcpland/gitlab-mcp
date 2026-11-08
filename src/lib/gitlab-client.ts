@@ -3691,19 +3691,31 @@ function parseContentLength(value: string | null): number | undefined {
 
 function appendQueryParameters(url: URL, query: GitLabRequestOptions["query"]): void {
   for (const [key, value] of Object.entries(query ?? {})) {
-    if (value === undefined || value === null) {
+    if (value === undefined || value === null || isBlankQueryValue(value)) {
       continue;
     }
 
     if (Array.isArray(value)) {
       for (const item of value) {
-        url.searchParams.append(`${key}[]`, String(item));
+        if (!isBlankQueryValue(item)) {
+          url.searchParams.append(`${key}[]`, String(item));
+        }
       }
       continue;
     }
 
     url.searchParams.set(key, String(value));
   }
+}
+
+/**
+ * MCP clients frequently send "" (or whitespace) for optional filters they do
+ * not intend to use. GitLab treats such parameters as real filters — an empty
+ * author_username matches nobody and an empty created_after is rejected with
+ * 400 — so blank values are dropped instead of being sent.
+ */
+function isBlankQueryValue(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length === 0;
 }
 
 const RETRYABLE_GET_STATUSES = new Set([429, 502, 503, 504]);

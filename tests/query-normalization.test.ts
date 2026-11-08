@@ -45,6 +45,15 @@ describe("normalizeIdUsernameFilters", () => {
     });
   });
 
+  it("retains IDs when username arrays contain only blank entries", () => {
+    expect(
+      normalizeIdUsernameFilters(
+        { assignee_id: 2, assignee_username: ["", "  "] },
+        ISSUE_ID_USERNAME_PAIRS
+      )
+    ).toEqual({ assignee_id: 2, assignee_username: ["", "  "] });
+  });
+
   it("normalizes reviewer filters for merge requests", () => {
     expect(
       normalizeIdUsernameFilters(

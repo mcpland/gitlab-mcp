@@ -252,7 +252,10 @@ export function toQuery(args: ToolArgs): Record<string, string | number | boolea
     }
 
     if (Array.isArray(value)) {
-      output[key] = value.join(",");
+      const items = value.filter((item) => !(typeof item === "string" && item.trim().length === 0));
+      if (items.length > 0) {
+        output[key] = items.join(",");
+      }
       continue;
     }
 

@@ -482,6 +482,32 @@ describe("GitLabClient", () => {
   });
 
   describe("query parameters", () => {
+    it("drops blank filter values and blank array entries", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.listMergeRequests("group/project", {
+        query: {
+          author_username: "",
+          created_after: "   ",
+          state: "opened",
+          labels: "bug",
+          iids: ["", "4", " "],
+          reviewer_username: [" ", ""]
+        }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+
+      expect(url.searchParams.has("author_username")).toBe(false);
+      expect(url.searchParams.has("created_after")).toBe(false);
+      expect(url.searchParams.has("reviewer_username[]")).toBe(false);
+      expect(url.searchParams.get("state")).toBe("opened");
+      expect(url.searchParams.get("labels")).toBe("bug");
+      expect(url.searchParams.getAll("iids[]")).toEqual(["4"]);
+    });
+
     it("adds query params for project search", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
 
