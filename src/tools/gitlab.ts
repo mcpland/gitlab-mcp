@@ -461,9 +461,12 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
 
           const args = sanitizeToolArguments(definition.name, (rawArgs ?? {}) as ToolArgs);
           assertToolCanExecuteInProjectScope(definition, args, context);
-          const result = redactSuccessfulResponse(
+          const redacted = redactSuccessfulResponse(
             await definition.handler(args, context, { signal: extra.signal })
           );
+          const result = context.responseMasker
+            ? context.responseMasker.maskValue(redacted)
+            : redacted;
           const pagination = getPaginationMetadata(result);
           const formatted = context.formatter.format(result);
           const structuredResult = formatted.truncated
@@ -487,10 +490,13 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
             }
           };
         } catch (error) {
-          return toToolError(error, context, {
+          const errorResult = toToolError(error, context, {
             extraKeys: definition.sensitiveArguments,
             extraValues: getSensitiveArgumentValues(rawArgs, definition.sensitiveArguments)
           });
+          return context.responseMasker
+            ? { ...errorResult, content: context.responseMasker.maskValue(errorResult.content) }
+            : errorResult;
         }
       }
     );

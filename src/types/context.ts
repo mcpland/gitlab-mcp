@@ -1,6 +1,7 @@
 import type { AppEnv } from "../config/env.js";
 import type { OutputFormatter } from "../lib/output.js";
 import type { ToolPolicyEngine } from "../lib/policy.js";
+import type { ResponseMasker } from "../lib/response-masking.js";
 import type { GitLabClient } from "../lib/gitlab-client.js";
 import type { Logger } from "pino";
 
@@ -11,4 +12,6 @@ export interface AppContext {
   policy: ToolPolicyEngine;
   formatter: OutputFormatter;
   allowLocalFileTools: boolean;
+  /** Optional operator-defined masking applied to tool results and errors. */
+  responseMasker?: ResponseMasker;
 }

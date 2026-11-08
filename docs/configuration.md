@@ -173,10 +173,49 @@ When `GITLAB_ALLOWED_PROJECT_IDS` is non-empty, it is enforced as a strict resou
 | `GITLAB_AUTH_VALIDATION_TIMEOUT_MS`  | number                             | `5000`                                 | Timeout for pre-session upstream token validation (500–30000ms).                                                                       |
 | `GITLAB_AUTH_VALIDATION_TTL_SECONDS` | number                             | `30`                                   | Cache TTL for valid and invalid remote-token checks (1–300s). Cache keys are token digests.                                            |
 | `GITLAB_ERROR_DETAIL_MODE`           | `safe` \| `full`                   | `safe` in production, `full` otherwise | Controls error response verbosity. `safe` returns only the error message; `full` includes upstream details.                            |
+| `GITLAB_RESPONSE_MASKING_FILE`       | path                               | —                                      | Optional JSON masking policy applied to every tool result and error text. See [Response Masking](#response-masking).                   |
 
 For agent-facing and remote deployments, prefer `GITLAB_RESPONSE_MODE=compact-json`. It preserves the same JSON fields and values while removing indentation, reducing transport bytes and model-token overhead. Keep `json` when human-readable output is more useful during local debugging.
 
 `GITLAB_LOCAL_FILE_ROOTS` applies only to local-file operations in stdio mode. Relative roots are resolved from the server working directory. Traversal outside a configured root and symbolic-link escapes are rejected. HTTP transports continue to hide local artifact-write tools and reject `file_path` uploads.
+
+### Response Masking
+
+Set `GITLAB_RESPONSE_MASKING_FILE` to a JSON policy to mask GitLab content before it reaches the MCP client and model provider. The file is validated at startup; an invalid policy stops the server, and error messages name the rule `id`, never its pattern.
+
+```json
+{
+  "version": 1,
+  "builtins": {
+    "gitlab-token": { "enabled": true, "replacement": "[token masked]" },
+    "ipv4": { "enabled": true },
+    "ipv6": { "enabled": true },
+    "email": { "enabled": false }
+  },
+  "rules": [
+    { "id": "customer", "type": "keyword", "match": "Acme Corp", "replacement": "[customer]" },
+    {
+      "id": "admin-portal",
+      "type": "keyword",
+      "match": "admin.internal.example",
+      "replacement": "[admin portal]",
+      "case_sensitive": false
+    },
+    {
+      "id": "ticket-ids",
+      "type": "regex",
+      "pattern": "INC-\\d{6}",
+      "flags": "i",
+      "replacement": "INC-######"
+    }
+  ]
+}
+```
+
+- Builtins: `gitlab-token` (all documented GitLab token prefixes; enabled by default once a policy is loaded), `ipv4`, `ipv6`, and `email` (disabled unless enabled).
+- `keyword` rules match literally; `regex` rules accept the `i`, `m`, `s`, and `u` flags, at most 500 characters, and no nested quantifiers such as `(a+)+`. Regex replacements may use `$1`-style group references; keyword and builtin replacements are literal.
+- Rules apply in order to every string value of tool results (structured content and text) and to error text. Object keys are not changed.
+- Base64 payloads are not decoded for masking: file contents without `decode_base64=true`, job artifacts, attachments, and release assets (including `/downloads` proxy streams) pass through unchanged. Masking is a data-loss-prevention aid, not an access control.
 
 ## Network
 
