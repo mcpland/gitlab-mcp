@@ -391,7 +391,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
 
     res.status(401).send("Missing or invalid MCP HTTP bearer token");
   });
-  app.use(express.json({ limit: "2mb" }));
+  app.use(express.json({ limit: appEnv.MCP_HTTP_MAX_BODY_BYTES }));
   app.use(
     (error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
       if (!isMcpRequestPath(req.path, configuredPathPrefix) || !isJsonBodyParserError(error)) {
@@ -404,7 +404,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
           jsonrpc: "2.0",
           error: {
             code: -32013,
-            message: "JSON payload exceeds 2mb limit"
+            message: `JSON payload exceeds the ${String(appEnv.MCP_HTTP_MAX_BODY_BYTES)}-byte limit (MCP_HTTP_MAX_BODY_BYTES)`
           },
           id: null
         });

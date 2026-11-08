@@ -196,14 +196,15 @@ For agent-facing and remote deployments, prefer `GITLAB_RESPONSE_MODE=compact-js
 
 These settings apply only to the HTTP transport (`dist/http.js`).
 
-| Variable                 | Type               | Default     | Description                                                                                                  |
-| ------------------------ | ------------------ | ----------- | ------------------------------------------------------------------------------------------------------------ |
-| `HTTP_HOST`              | string             | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces.                                                     |
-| `HTTP_PORT`              | number             | `3333`      | Listen port (1–65535).                                                                                       |
-| `HTTP_JSON_ONLY`         | boolean            | `false`     | Force JSON-only responses (disable streaming).                                                               |
-| `SSE`                    | boolean            | `false`     | Enable legacy SSE transport (`GET /sse`, `POST /messages`). Cannot be used with `REMOTE_AUTHORIZATION=true`. |
-| `MCP_METRICS_ENABLED`    | boolean            | `false`     | Expose Prometheus text metrics at `GET /metrics`.                                                            |
-| `MCP_METRICS_AUTH_TOKEN` | string (32+ chars) | —           | Dedicated bearer token for `/metrics`. Falls back to `MCP_HTTP_AUTH_TOKEN` when omitted.                     |
+| Variable                  | Type               | Default     | Description                                                                                                                                                                                         |
+| ------------------------- | ------------------ | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HTTP_HOST`               | string             | `127.0.0.1` | Bind address. Use `0.0.0.0` to listen on all interfaces.                                                                                                                                            |
+| `HTTP_PORT`               | number             | `3333`      | Listen port (1–65535).                                                                                                                                                                              |
+| `HTTP_JSON_ONLY`          | boolean            | `false`     | Force JSON-only responses (disable streaming).                                                                                                                                                      |
+| `MCP_HTTP_MAX_BODY_BYTES` | number             | `2097152`   | Largest JSON request body accepted by `/mcp` and `/messages` (65536 to 52428800 bytes). Larger requests get HTTP 413 with JSON-RPC error `-32013`; raise it for large `push_files` or file uploads. |
+| `SSE`                     | boolean            | `false`     | Enable legacy SSE transport (`GET /sse`, `POST /messages`). Cannot be used with `REMOTE_AUTHORIZATION=true`.                                                                                        |
+| `MCP_METRICS_ENABLED`     | boolean            | `false`     | Expose Prometheus text metrics at `GET /metrics`.                                                                                                                                                   |
+| `MCP_METRICS_AUTH_TOKEN`  | string (32+ chars) | —           | Dedicated bearer token for `/metrics`. Falls back to `MCP_HTTP_AUTH_TOKEN` when omitted.                                                                                                            |
 
 When `MCP_HTTP_AUTH_TOKEN` is configured, clients must send
 `Authorization: Bearer <MCP_HTTP_AUTH_TOKEN>` to Streamable HTTP and legacy SSE endpoints. The comparison is constant-time. In `REMOTE_AUTHORIZATION=true` mode, send the independent MCP token in `Authorization` and the upstream GitLab credential in `Private-Token` or `Job-Token`.

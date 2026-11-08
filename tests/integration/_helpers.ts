@@ -90,6 +90,7 @@ const defaultEnv: AppContext["env"] = {
   REMOTE_AUTHORIZATION: false,
   ENABLE_DYNAMIC_API_URL: false,
   HTTP_JSON_ONLY: false,
+  MCP_HTTP_MAX_BODY_BYTES: 2_097_152,
   SSE: false,
   SESSION_TIMEOUT_SECONDS: 3600,
   OAUTH_STATELESS_MODE: false,

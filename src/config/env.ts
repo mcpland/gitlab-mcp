@@ -170,6 +170,7 @@ const envSchema = z.object({
   HTTP_HOST: z.string().min(1).default("127.0.0.1"),
   HTTP_PORT: z.coerce.number().int().min(1).max(65_535).default(3333),
   HTTP_JSON_ONLY: z.enum(["true", "false"]).default("false"),
+  MCP_HTTP_MAX_BODY_BYTES: z.coerce.number().int().min(65_536).max(52_428_800).default(2_097_152),
   SSE: z.enum(["true", "false"]).default("false")
 });
 

@@ -444,6 +444,7 @@ node dist/http.js --env-file=.env.production
 | HTTP Server     | `HTTP_PORT`                               | `3333`                      | HTTP server port.                                                                                           |
 | HTTP Server     | `MCP_SERVER_URL`                          | —                           | Public base URL used when HTTP download tools return proxy URLs.                                            |
 | HTTP Server     | `HTTP_JSON_ONLY`                          | `false`                     | Force JSON-only responses (no streaming framing).                                                           |
+| HTTP Server     | `MCP_HTTP_MAX_BODY_BYTES`                 | `2097152`                   | Largest JSON request body in bytes (64 KiB to 50 MiB).                                                      |
 | HTTP Server     | `SSE`                                     | `false`                     | Enable legacy SSE endpoints (`/sse`, `/messages`). Not compatible with remote auth.                         |
 | Sessions        | `SESSION_TIMEOUT_SECONDS`                 | `3600`                      | Idle session timeout in HTTP mode.                                                                          |
 | Sessions        | `OAUTH_STATELESS_MODE`                    | `false`                     | Use stateless Streamable HTTP transports; clients must send auth on every request.                          |

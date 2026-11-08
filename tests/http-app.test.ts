@@ -82,6 +82,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       REMOTE_AUTHORIZATION: false,
       ENABLE_DYNAMIC_API_URL: false,
       HTTP_JSON_ONLY: false,
+      MCP_HTTP_MAX_BODY_BYTES: 2_097_152,
       SSE: false,
       SESSION_TIMEOUT_SECONDS: 3600,
       OAUTH_STATELESS_MODE: false,
@@ -247,8 +248,29 @@ describe("http app pending session handling", () => {
     expect(response.status).toBe(413);
     expect(body.jsonrpc).toBe("2.0");
     expect(body.error?.code).toBe(-32013);
-    expect(body.error?.message).toContain("2mb");
+    expect(body.error?.message).toContain("2097152-byte limit");
     expect(running.pendingSessions.size).toBe(0);
+  });
+
+  it("honors a configured request body limit", async () => {
+    const context = buildContext();
+    context.env.MCP_HTTP_MAX_BODY_BYTES = 65_536;
+    running = await startServerForContext(context);
+
+    const response = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { blob: "x".repeat(70_000) }
+      })
+    });
+    const body = (await response.json()) as { error?: { message?: string } };
+
+    expect(response.status).toBe(413);
+    expect(body.error?.message).toContain("65536-byte limit (MCP_HTTP_MAX_BODY_BYTES)");
   });
 
   it("releases pending session for invalid initial POST requests", async () => {
