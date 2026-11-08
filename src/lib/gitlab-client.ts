@@ -318,6 +318,15 @@ export class GitLabClient {
     return this.get(`/projects/${encodeGitLabProjectId(projectId)}/${membersPath}`, requestOptions);
   }
 
+  listGroupMembers(
+    groupId: string,
+    options: GitLabProjectMemberListOptions = {}
+  ): Promise<unknown> {
+    const { includeInheritance = false, ...requestOptions } = options;
+    const membersPath = includeInheritance ? "members/all" : "members";
+    return this.get(`/groups/${encodeGitLabGroupId(groupId)}/${membersPath}`, requestOptions);
+  }
+
   listProjectVariables(projectId: string, options: GitLabRequestOptions = {}): Promise<unknown> {
     return this.get(`/projects/${encodeGitLabProjectId(projectId)}/variables`, options);
   }

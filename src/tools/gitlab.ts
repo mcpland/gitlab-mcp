@@ -145,6 +145,7 @@ const GROUP_SCOPED_TOOL_NAMES = new Set([
   ...GROUP_MILESTONE_TOOL_NAMES,
   ...GROUP_ITERATION_TOOL_NAMES,
   "gitlab_create_group",
+  "gitlab_list_group_members",
   "gitlab_list_group_projects",
   "gitlab_list_group_iterations",
   "gitlab_search_group_code",
@@ -679,6 +680,34 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         return context.gitlab.listProjectMembers(projectId, {
           query: {
             ...toQuery(omit(args, ["project_id", "user_ids", "skip_users", "include_inheritance"])),
+            ...(userIds ? { user_ids: userIds } : {}),
+            ...(skipUsers ? { skip_users: skipUsers } : {})
+          },
+          ...(includeInheritance !== undefined ? { includeInheritance } : {})
+        });
+      }
+    },
+    {
+      name: "gitlab_list_group_members",
+      title: "List Group Members",
+      description:
+        "List direct group members by default, for example to find reviewers or assignees by name; set include_inheritance=true to include members inherited from parent groups.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        group_id: z.string().min(1),
+        query: optionalString,
+        user_ids: optionalNumberArray,
+        skip_users: optionalNumberArray,
+        include_inheritance: optionalBoolean,
+        ...paginationShape
+      },
+      handler: async (args, context) => {
+        const userIds = getOptionalNumberArray(args, "user_ids");
+        const skipUsers = getOptionalNumberArray(args, "skip_users");
+        const includeInheritance = getOptionalBoolean(args, "include_inheritance");
+        return context.gitlab.listGroupMembers(getString(args, "group_id"), {
+          query: {
+            ...toQuery(omit(args, ["group_id", "user_ids", "skip_users", "include_inheritance"])),
             ...(userIds ? { user_ids: userIds } : {}),
             ...(skipUsers ? { skip_users: skipUsers } : {})
           },
