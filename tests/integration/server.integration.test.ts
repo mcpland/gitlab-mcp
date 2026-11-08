@@ -153,7 +153,8 @@ describe("MCP Server Integration (InMemoryTransport)", () => {
       });
 
       const healthTool = result.tools.find((tool) => tool.name === "health_check");
-      expect(healthTool?.annotations?.openWorldHint).toBe(false);
+      expect(healthTool?.annotations?.readOnlyHint).toBe(true);
+      expect(healthTool?.annotations?.destructiveHint).toBe(false);
     });
 
     it("tool names follow naming convention", async () => {

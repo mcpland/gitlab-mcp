@@ -12,9 +12,9 @@ Optional boolean arguments accept JSON booleans and the spellings `"true"`/`"fal
 
 ## Health
 
-| Tool           | Mutating | Description                                   |
-| -------------- | -------- | --------------------------------------------- |
-| `health_check` | No       | Return server liveness and current timestamp. |
+| Tool           | Mutating | Description                                                                                                                                                                                                                                                                                                              |
+| -------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `health_check` | No       | Return liveness, timestamp, and server name/version. With `check_gitlab=true` it also reports whether GitLab is reachable (with the transport reason when not), whether the credential authenticates (job tokens fall back to `/job`), the current user, and the GitLab version; status is `ok`, `degraded`, or `error`. |
 
 ---
 

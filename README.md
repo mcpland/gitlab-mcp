@@ -350,7 +350,7 @@ Tools are organized into these categories. All GitLab tools use the `gitlab_` pr
 | **Uploads**         | `upload_markdown`, `download_attachment`                                     |
 | **GraphQL**         | `execute_graphql_query`, `execute_graphql_mutation`                          |
 | **Users & Groups**  | `get_users`, `list_namespaces`, `list_events`                                |
-| **Health**          | `health_check`                                                               |
+| **Health**          | `health_check` (optionally verifies GitLab connectivity and auth)            |
 
 See [docs/tools.md](docs/tools.md) for usage details and
 [docs/tools-index.md](docs/tools-index.md) for the generated complete registry.

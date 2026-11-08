@@ -10,7 +10,7 @@ export function createMcpServer(context: AppContext): McpServer {
     version: context.env.MCP_SERVER_VERSION
   });
 
-  registerHealthTool(server);
+  registerHealthTool(server, context);
   registerGitLabTools(server, context);
 
   return server;
