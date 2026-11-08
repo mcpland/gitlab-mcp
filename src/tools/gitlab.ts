@@ -75,6 +75,7 @@ import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
 import { deploymentToolDefinitions } from "./deployments.js";
 import { environmentToolDefinitions } from "./environments.js";
+import { GROUP_MILESTONE_TOOL_NAMES, groupMilestoneToolDefinitions } from "./group-milestones.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
 import { pipelineJobToolDefinitions } from "./pipeline-jobs.js";
 import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
@@ -135,6 +136,7 @@ import {
 export type { GitLabToolDefinition, GitLabToolScope, GitLabToolScopeMetadata } from "./shared.js";
 
 const GROUP_SCOPED_TOOL_NAMES = new Set([
+  ...GROUP_MILESTONE_TOOL_NAMES,
   "gitlab_create_group",
   "gitlab_list_group_projects",
   "gitlab_list_group_iterations",
@@ -5512,7 +5514,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...environmentToolDefinitions,
     ...deploymentToolDefinitions,
     ...pipelineToolDefinitions,
-    ...pipelineJobToolDefinitions
+    ...pipelineJobToolDefinitions,
+    ...groupMilestoneToolDefinitions
   ];
 
   return definitions.map((definition) => {

@@ -425,6 +425,21 @@ Requires `USE_MILESTONE=true` (default).
 | `gitlab_promote_milestone`             | **Yes**  | Promote a project milestone to a group milestone.                                                                           |
 | `gitlab_get_milestone_burndown_events` | No       | List burndown events for a milestone.                                                                                       |
 
+### Group Milestones
+
+Group-scoped (`group_id`), so they are hidden when `GITLAB_ALLOWED_PROJECT_IDS` is set. Selected by the `milestones` or `groups` toolset.
+
+| Tool                                         | Mutating | Description                                                                                                                                       |
+| -------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_group_milestones`               | No       | List group milestones. Supports `iids`, `state`, `title`, `search`, `search_title`, `include_ancestors`, `include_descendants`, and date filters. |
+| `gitlab_get_group_milestone`                 | No       | Get a group milestone by ID.                                                                                                                      |
+| `gitlab_create_group_milestone`              | **Yes**  | Create a group milestone. Params: `title` (required); supports `description`, `due_date`, `start_date`.                                           |
+| `gitlab_update_group_milestone`              | **Yes**  | Update title, description, dates, or `state_event` (`close`/`activate`).                                                                          |
+| `gitlab_delete_group_milestone`              | **Yes**  | Permanently delete a group milestone.                                                                                                             |
+| `gitlab_list_group_milestone_issues`         | No       | List issues assigned to a group milestone.                                                                                                        |
+| `gitlab_list_group_milestone_merge_requests` | No       | List MRs assigned to a group milestone.                                                                                                           |
+| `gitlab_get_group_milestone_burndown_events` | No       | List burndown events for a group milestone (Premium/Ultimate).                                                                                    |
+
 ---
 
 ## Releases
