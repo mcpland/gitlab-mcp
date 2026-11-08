@@ -161,11 +161,11 @@ Optional boolean arguments accept JSON booleans and the spellings `"true"`/`"fal
 
 ### MR Approvals
 
-| Tool                                      | Mutating | Description                                                                                 |
-| ----------------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| `gitlab_approve_merge_request`            | **Yes**  | Approve an MR. Supports `sha`, `approval_password`.                                         |
-| `gitlab_unapprove_merge_request`          | **Yes**  | Remove current user's approval from an MR.                                                  |
-| `gitlab_get_merge_request_approval_state` | No       | Get approval state for an MR, with approvals fallback when `approval_state` is unavailable. |
+| Tool                                      | Mutating | Description                                                                                                                                                                                                |
+| ----------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_approve_merge_request`            | **Yes**  | Approve an MR. Supports `sha`, `approval_password`.                                                                                                                                                        |
+| `gitlab_unapprove_merge_request`          | **Yes**  | Remove current user's approval from an MR.                                                                                                                                                                 |
+| `gitlab_get_merge_request_approval_state` | No       | Get approval state for an MR. Falls back to `/approvals` when `approval_state` is unavailable or unlicensed (404/402/403), or when it reports no approval rules (Free tier) so approvers are still listed. |
 
 ---
 

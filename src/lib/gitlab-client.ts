@@ -1109,15 +1109,39 @@ export class GitLabClient {
       authHeader: config.authHeader
     });
 
-    if (response.status === 404) {
-      const approvals = await this.get(
-        `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/approvals`,
-        options
-      );
-      return normalizeMergeRequestApprovalsFallback(approvals);
+    const approvalsPath = `/projects/${encodeGitLabProjectId(projectId)}/merge_requests/${encode(mergeRequestIid)}/approvals`;
+
+    // 404 when the endpoint is unavailable; 402/403 when the instance or
+    // namespace is not licensed for approval rules (a paid-tier feature).
+    if (response.status === 404 || response.status === 402 || response.status === 403) {
+      await response.body?.cancel();
+      return normalizeMergeRequestApprovalsFallback(await this.get(approvalsPath, options));
     }
 
-    return normalizeMergeRequestApprovalState(await this.parseApiResponse(response));
+    const approvalState = await this.parseApiResponse(response);
+
+    // approval_state only attributes approvals to rules, so a project without
+    // approval rules answers 200 with `rules: []` and no approvers even after
+    // someone approved. Read /approvals then; a non-empty rules array means
+    // approval_state is authoritative and no extra request is made.
+    if (isRecord(approvalState) && extractApprovalRules(approvalState.rules).length === 0) {
+      try {
+        const fallback = normalizeMergeRequestApprovalsFallback(
+          await this.get(approvalsPath, options)
+        );
+        if (
+          isRecord(fallback) &&
+          Array.isArray(fallback.approved_by) &&
+          fallback.approved_by.length > 0
+        ) {
+          return fallback;
+        }
+      } catch {
+        // /approvals is unavailable as well; keep the approval_state answer.
+      }
+    }
+
+    return normalizeMergeRequestApprovalState(approvalState);
   }
 
   getMergeRequestConflicts(

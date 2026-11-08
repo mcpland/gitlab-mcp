@@ -1563,6 +1563,75 @@ describe("GitLabClient", () => {
       });
     });
 
+    it("reads /approvals when approval_state reports no approval rules", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ rules: [] })).mockResolvedValueOnce(
+        jsonResponse({
+          approved: true,
+          user_has_approved: true,
+          user_can_approve: false,
+          approved_by: [{ user: { id: 3, username: "carol" } }]
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.getMergeRequestApprovalState("proj", "7");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [secondUrl] = fetchMock.mock.calls[1] as [URL | string];
+      expect(new URL(String(secondUrl)).pathname).toBe(
+        "/api/v4/projects/proj/merge_requests/7/approvals"
+      );
+      expect(result).toMatchObject({
+        approved: true,
+        approved_by_usernames: ["carol"],
+        source_endpoint: "approvals"
+      });
+    });
+
+    it("keeps the empty approval_state answer when /approvals lists nobody or fails", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ rules: [] }))
+        .mockResolvedValueOnce(jsonResponse({ approved_by: [] }))
+        .mockResolvedValueOnce(jsonResponse({ rules: [] }))
+        .mockResolvedValueOnce(jsonResponse({ message: "500" }, 500));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxGetRetries: 0
+      });
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await expect(client.getMergeRequestApprovalState("proj", "7")).resolves.toMatchObject({
+          approved_by: [],
+          source_endpoint: "approval_state"
+        });
+      }
+    });
+
+    it("falls back to /approvals when approval rules are not licensed", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ message: "403 Forbidden" }, 403))
+        .mockResolvedValueOnce(
+          jsonResponse({ approved_by: [{ user: { id: 4, username: "dan" } }] })
+        );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await expect(client.getMergeRequestApprovalState("proj", "7")).resolves.toMatchObject({
+        approved_by_usernames: ["dan"],
+        source_endpoint: "approvals"
+      });
+    });
+
+    it("does not query /approvals when approval rules exist but nobody approved yet", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ rules: [{ approved: false, approved_by: [] }] })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.getMergeRequestApprovalState("proj", "7");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it("uploads markdown file", async () => {
       fetchMock.mockResolvedValue(jsonResponse({ markdown: "![file](/uploads/abc/file.md)" }));
 
