@@ -2732,6 +2732,39 @@ export class GitLabClient {
     return this.get(`${this.webhookBasePath(scope)}/hooks/${encode(hookId)}/events`, options);
   }
 
+  createWebhook(
+    scope: { projectId?: string; groupId?: string },
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.post(`${this.webhookBasePath(scope)}/hooks`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json", ...(options.headers ?? {}) }
+    });
+  }
+
+  updateWebhook(
+    scope: { projectId?: string; groupId?: string },
+    hookId: string,
+    payload: Record<string, unknown>,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.put(`${this.webhookBasePath(scope)}/hooks/${encode(hookId)}`, {
+      ...options,
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json", ...(options.headers ?? {}) }
+    });
+  }
+
+  deleteWebhook(
+    scope: { projectId?: string; groupId?: string },
+    hookId: string,
+    options: GitLabRequestOptions = {}
+  ): Promise<unknown> {
+    return this.delete(`${this.webhookBasePath(scope)}/hooks/${encode(hookId)}`, options);
+  }
+
   // attachments / markdown
   uploadMarkdown(
     projectId: string,

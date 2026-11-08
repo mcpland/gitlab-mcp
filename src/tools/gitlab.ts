@@ -189,6 +189,9 @@ const GLOBAL_TOOL_PROJECT_SCOPE_MODES = new Map<string, "allow" | "filter" | "de
 ]);
 
 const PROJECT_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
+  ["gitlab_create_webhook", ["project_id"]],
+  ["gitlab_update_webhook", ["project_id"]],
+  ["gitlab_delete_webhook", ["project_id"]],
   ["gitlab_create_merge_request", ["project_id", "target_project_id"]],
   ["gitlab_create_issue_link", ["project_id", "target_project_id"]],
   ["gitlab_update_work_item", ["project_id", "parent_project_id"]],
@@ -201,6 +204,9 @@ const PROJECT_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
 
 const GROUP_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
   ["gitlab_create_group", []],
+  ["gitlab_create_webhook", ["group_id"]],
+  ["gitlab_update_webhook", ["group_id"]],
+  ["gitlab_delete_webhook", ["group_id"]],
   ["gitlab_list_webhooks", ["group_id"]],
   ["gitlab_list_webhook_events", ["group_id"]],
   ["gitlab_get_webhook_event", ["group_id"]]
@@ -274,6 +280,43 @@ const customFieldValueSchema = z.object({
   selected_option_ids: optionalStringArray,
   date_value: optionalString
 });
+const webhookUrlSchema = z
+  .string()
+  .url()
+  .max(2048)
+  .regex(/^https?:\/\//iu, "url must use http or https");
+const webhookEventFlags = [
+  "push_events",
+  "tag_push_events",
+  "merge_requests_events",
+  "issues_events",
+  "confidential_issues_events",
+  "note_events",
+  "confidential_note_events",
+  "job_events",
+  "pipeline_events",
+  "wiki_page_events",
+  "deployment_events",
+  "releases_events",
+  "feature_flag_events",
+  "emoji_events",
+  "resource_access_token_events",
+  "member_events",
+  "project_events",
+  "subgroup_events",
+  "vulnerability_events",
+  "enable_ssl_verification"
+] as const;
+const webhookSettingsShape: ToolSchemaShape = {
+  name: nullableOptional(z.string().max(255)),
+  description: nullableOptional(z.string().max(2048)),
+  token: nullableOptional(z.string().max(255)),
+  push_events_branch_filter: optionalString,
+  branch_filter_strategy: z.enum(["wildcard", "regex", "all_branches"]).optional(),
+  ...Object.fromEntries(webhookEventFlags.map((flag) => [flag, optionalBoolean]))
+};
+const WEBHOOK_SETTING_FIELDS = Object.keys(webhookSettingsShape);
+const webhookSensitiveArguments = ["token", "url"] as const;
 const ciVariableFilterSchema = z
   .object({
     environment_scope: z.string().min(1)
@@ -4856,6 +4899,74 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
               ? `on page ${getOptionalNumber(args, "page")}`
               : "in the 500 most recent events"
           }`
+        };
+      }
+    },
+    {
+      name: "gitlab_create_webhook",
+      title: "Create Webhook",
+      description:
+        "Create a project or group webhook. GitLab then sends the selected event payloads to url, so only target endpoints you trust. token and url are redacted from errors and never returned.",
+      capabilities: adminCapabilities,
+      sensitiveArguments: webhookSensitiveArguments,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        group_id: optionalProjectIdSchema,
+        url: webhookUrlSchema,
+        ...webhookSettingsShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.createWebhook(
+          resolveWebhookScope(args, context),
+          pickPresentFields(args, ["url", ...WEBHOOK_SETTING_FIELDS])
+        )
+    },
+    {
+      name: "gitlab_update_webhook",
+      title: "Update Webhook",
+      description:
+        "Update a project or group webhook's URL, secret token, events, or SSL verification. Omitted fields keep their values.",
+      capabilities: adminCapabilities,
+      sensitiveArguments: webhookSensitiveArguments,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        group_id: optionalProjectIdSchema,
+        hook_id: z.union([z.string().min(1), z.number()]),
+        url: nullableOptional(webhookUrlSchema),
+        ...webhookSettingsShape
+      },
+      handler: async (args, context) => {
+        const payload = pickPresentFields(args, ["url", ...WEBHOOK_SETTING_FIELDS]);
+        if (Object.keys(payload).length === 0) {
+          throw new Error("Provide at least one webhook field to update");
+        }
+
+        return context.gitlab.updateWebhook(
+          resolveWebhookScope(args, context),
+          getIdString(args, "hook_id"),
+          payload
+        );
+      }
+    },
+    {
+      name: "gitlab_delete_webhook",
+      title: "Delete Webhook",
+      description:
+        "Delete a project or group webhook permanently; GitLab stops sending its events. Irreversible. Requires hook_id. Recommended pre-check: gitlab_list_webhooks.",
+      capabilities: adminDeleteCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        group_id: optionalProjectIdSchema,
+        hook_id: z.union([z.string().min(1), z.number()])
+      },
+      handler: async (args, context) => {
+        const scope = resolveWebhookScope(args, context);
+        const hookId = getIdString(args, "hook_id");
+        await context.gitlab.deleteWebhook(scope, hookId);
+        return {
+          status: "deleted",
+          ...(scope.projectId ? { project_id: scope.projectId } : { group_id: scope.groupId }),
+          hook_id: hookId
         };
       }
     },

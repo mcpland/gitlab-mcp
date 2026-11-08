@@ -101,11 +101,16 @@ Project snippets, selected by the `projects` toolset. Snippet file paths reject 
 
 ## Webhooks
 
-| Tool                         | Mutating | Description                                                                                                 |
-| ---------------------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `gitlab_list_webhooks`       | No       | List webhooks for exactly one `project_id` or `group_id`. Supports pagination.                              |
-| `gitlab_list_webhook_events` | No       | List recent webhook events for `hook_id`. Supports `status`, `summary`, `page`, `per_page` (max 20).        |
-| `gitlab_get_webhook_event`   | No       | Find one webhook event by `event_id`. Supports direct `page`; otherwise scans up to 500 most recent events. |
+Webhook mutations are classified as `admin` because a webhook sends future event payloads to an external URL. Under `GITLAB_ALLOWED_PROJECT_IDS`, only `project_id` targets in the allowlist are accepted.
+
+| Tool                         | Mutating | Description                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gitlab_list_webhooks`       | No       | List webhooks for exactly one `project_id` or `group_id`. Supports pagination.                                                                                                                                                                                                                                                   |
+| `gitlab_list_webhook_events` | No       | List recent webhook events for `hook_id`. Supports `status`, `summary`, `page`, `per_page` (max 20).                                                                                                                                                                                                                             |
+| `gitlab_get_webhook_event`   | No       | Find one webhook event by `event_id`. Supports direct `page`; otherwise scans up to 500 most recent events.                                                                                                                                                                                                                      |
+| `gitlab_create_webhook`      | **Yes**  | Create a webhook for exactly one `project_id` or `group_id`. Params: `url` (http/https, required); `name`, `description`, secret `token`, event flags (`push_events`, `merge_requests_events`, `pipeline_events`, ...), branch filters, `enable_ssl_verification`. Admin capability; `token` and `url` are redacted from errors. |
+| `gitlab_update_webhook`      | **Yes**  | Update a webhook's URL, secret token, events, or SSL verification by `hook_id`.                                                                                                                                                                                                                                                  |
+| `gitlab_delete_webhook`      | **Yes**  | Permanently delete a webhook by `hook_id`. Admin and delete capabilities.                                                                                                                                                                                                                                                        |
 
 ---
 

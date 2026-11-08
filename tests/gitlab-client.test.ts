@@ -495,6 +495,25 @@ describe("GitLabClient", () => {
     });
   });
 
+  describe("webhook management", () => {
+    it("targets project and group hook endpoints", async () => {
+      fetchMock.mockImplementation(async () => jsonResponse({ id: 3 }));
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+
+      await client.createWebhook({ projectId: "group/project" }, { url: "https://x.test/h" });
+      await client.updateWebhook({ groupId: "my-org/sub" }, "3", { push_events: false });
+      await client.deleteWebhook({ projectId: "7" }, "3");
+
+      const calls = fetchMock.mock.calls as Array<[URL | string, RequestInit]>;
+      expect(calls.map(([url, init]) => [init.method, new URL(String(url)).pathname])).toEqual([
+        ["POST", "/api/v4/projects/group%2Fproject/hooks"],
+        ["PUT", "/api/v4/groups/my-org%2Fsub/hooks/3"],
+        ["DELETE", "/api/v4/projects/7/hooks/3"]
+      ]);
+      expect(JSON.parse(String(calls[0]![1].body))).toEqual({ url: "https://x.test/h" });
+    });
+  });
+
   describe("query parameters", () => {
     it("drops blank filter values and blank array entries", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
