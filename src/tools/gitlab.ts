@@ -74,6 +74,7 @@ import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
 import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
+import { pipelineTriggerToolDefinitions } from "./pipeline-triggers.js";
 import {
   adminCapabilities,
   adminDeleteCapabilities,
@@ -5473,7 +5474,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         return context.gitlab.executeGraphql(query, getOptionalRecord(args, "variables"));
       }
     },
-    ...pipelineScheduleToolDefinitions
+    ...pipelineScheduleToolDefinitions,
+    ...pipelineTriggerToolDefinitions
   ];
 
   return definitions.map((definition) => {

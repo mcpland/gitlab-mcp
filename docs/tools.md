@@ -340,6 +340,21 @@ Requires `USE_PIPELINE=true` (default) and the `pipelines` toolset (or `all`). S
 
 ---
 
+## Pipeline Trigger Tokens
+
+Requires `USE_PIPELINE=true` (default) and the `pipelines` toolset (or `all`). Trigger tokens are credentials: list, get, and update responses never include the token value, and `gitlab_create_pipeline_trigger` returns the new token exactly once. `gitlab_trigger_pipeline` sends its `token` argument in the request body (never the URL) and redacts it from errors.
+
+| Tool                             | Mutating | Description                                                                                                                                                                    |
+| -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gitlab_list_pipeline_triggers`  | No       | List trigger tokens with description, owner, and `last_used`.                                                                                                                  |
+| `gitlab_get_pipeline_trigger`    | No       | Get one trigger token's metadata by `trigger_id`.                                                                                                                              |
+| `gitlab_create_pipeline_trigger` | **Yes**  | Create a trigger token. Params: `description` (required), optional `expires_at`. Returns the token once.                                                                       |
+| `gitlab_update_pipeline_trigger` | **Yes**  | Change a trigger token's `description`.                                                                                                                                        |
+| `gitlab_delete_pipeline_trigger` | **Yes**  | Permanently delete a trigger token; systems using it can no longer start pipelines.                                                                                            |
+| `gitlab_trigger_pipeline`        | **Yes**  | Start a pipeline with a trigger or CI/CD job `token` and `ref`. Supports `variables` (`{KEY: value}`) and `inputs`. Prefer `gitlab_create_pipeline` with your own credentials. |
+
+---
+
 ## CI/CD Variables
 
 Requires both the `ci-variables` toolset (or `all`) and `GITLAB_ENABLE_CI_VARIABLE_TOOLS=true` (default: `false`). Project and group variants support list, get, create, update, and delete. List endpoints support `page` and `per_page`; list, get, update, and delete accept `filter.environment_scope` to select an environment scope or disambiguate duplicate keys.
