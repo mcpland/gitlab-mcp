@@ -191,13 +191,7 @@ if (rawApiUrls.length === 0) {
   throw new Error("GITLAB_API_URL must contain at least one URL");
 }
 
-const normalizedApiUrls = rawApiUrls.map((item) => {
-  try {
-    return normalizeApiUrl(item);
-  } catch {
-    throw new Error(`Invalid GITLAB_API_URL entry: '${item}'`);
-  }
-});
+const normalizedApiUrls = rawApiUrls.map((item, index) => normalizeConfiguredApiUrl(item, index));
 
 if (data.ENABLE_DYNAMIC_API_URL === "true" && data.REMOTE_AUTHORIZATION !== "true") {
   throw new Error("ENABLE_DYNAMIC_API_URL=true requires REMOTE_AUTHORIZATION=true");
@@ -298,10 +292,37 @@ export const env = {
 
 export type AppEnv = typeof env;
 
+/**
+ * Validate one GITLAB_API_URL entry without ever echoing it: an entry may
+ * embed credentials (https://user:token@host), and startup errors end up in
+ * process logs and supervisor output.
+ */
+function normalizeConfiguredApiUrl(rawUrl: string, index: number): string {
+  const label = `GITLAB_API_URL entry #${index + 1}`;
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`Invalid ${label}: expected an absolute http(s) URL`);
+  }
+
+  if (!isHttpUrl(url)) {
+    throw new Error(`Invalid ${label}: only http and https URLs are supported`);
+  }
+
+  if (url.username || url.password) {
+    throw new Error(
+      `${label} (${url.protocol}//${url.host}) must not include credentials; configure GITLAB_PERSONAL_ACCESS_TOKEN, GITLAB_JOB_TOKEN, OAuth, or remote authorization instead`
+    );
+  }
+
+  return normalizeApiUrl(rawUrl);
+}
+
 function normalizeApiUrl(rawUrl: string): string {
   const url = new URL(rawUrl);
   if (!isHttpUrl(url)) {
-    throw new Error(`Invalid protocol in GITLAB_API_URL entry: '${rawUrl}'`);
+    throw new Error("Invalid protocol in GITLAB_API_URL entry");
   }
   const pathname = url.pathname.replace(/\/+$/, "");
 

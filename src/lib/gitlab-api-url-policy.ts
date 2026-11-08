@@ -52,7 +52,7 @@ function addAllowedApiUrl(
   const url = parseHttpUrl(candidate, setting);
   if (url.username || url.password || url.search || url.hash) {
     throw new Error(
-      `${setting} entry must not include credentials, query, or fragment: '${value}'`
+      `${setting} entry for host '${url.host}' must not include credentials, query, or fragment`
     );
   }
 
@@ -81,7 +81,7 @@ function parseHttpUrl(value: string, setting: string): URL {
   try {
     url = new URL(value);
   } catch {
-    throw new Error(`Invalid ${setting} value: '${value}'`);
+    throw new Error(`Invalid ${setting} value: expected an absolute http(s) URL`);
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {

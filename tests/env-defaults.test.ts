@@ -79,6 +79,37 @@ describe("environment defaults", () => {
     ).toBe("d".repeat(32));
   });
 
+  it("rejects GITLAB_API_URL credentials without echoing them", () => {
+    const secret = "glpat-super-secret-value";
+    let message = "";
+    try {
+      readEnvironmentValue(
+        "env.GITLAB_API_URL",
+        `GITLAB_API_URL=https://gitlab.example.com,https://oauth2:${secret}@gitlab.internal.example.com\n`
+      );
+    } catch (error) {
+      message = `${(error as Error).message}\n${String((error as { stderr?: unknown }).stderr ?? "")}`;
+    }
+
+    expect(message).toContain(
+      "GITLAB_API_URL entry #2 (https://gitlab.internal.example.com) must not include credentials"
+    );
+    expect(message).not.toContain(secret);
+  });
+
+  it("reports unparsable GITLAB_API_URL entries without echoing them", () => {
+    const secret = "not-a-url-secret";
+    let message = "";
+    try {
+      readEnvironmentValue("env.GITLAB_API_URL", `GITLAB_API_URL=${secret}\n`);
+    } catch (error) {
+      message = `${(error as Error).message}\n${String((error as { stderr?: unknown }).stderr ?? "")}`;
+    }
+
+    expect(message).toContain("Invalid GITLAB_API_URL entry #1");
+    expect(message).not.toContain(secret);
+  });
+
   it("rejects combining remote authorization with MCP OAuth", () => {
     expect(() =>
       readEnvironmentValue(

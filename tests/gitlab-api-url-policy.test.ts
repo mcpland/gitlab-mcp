@@ -53,6 +53,44 @@ describe("GitLab API URL policy", () => {
     expect(() => policy.resolve("https://attacker.example.com/api/v4")).toThrow("not allowed");
   });
 
+  it("never echoes credentials or unparsable values in errors", () => {
+    const secret = "pa55-w0rd-secret";
+    let message = "";
+    try {
+      buildGitLabApiUrlPolicy({
+        GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
+        GITLAB_ALLOWED_HOSTS: [`https://deploy:${secret}@gitlab.other.example.com?x=1`],
+        GITLAB_POOL_MAX_SIZE: 100
+      });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("must not include");
+    expect(message).not.toContain(secret);
+
+    expect(() =>
+      buildGitLabApiUrlPolicy({
+        GITLAB_API_URLS: [`https://gitlab.example.com/api/v4?private_token=${secret}`],
+        GITLAB_POOL_MAX_SIZE: 100
+      })
+    ).toThrow(
+      "entry for host 'gitlab.example.com' must not include credentials, query, or fragment"
+    );
+
+    const policy = buildGitLabApiUrlPolicy({
+      GITLAB_API_URLS: ["https://gitlab.example.com/api/v4"],
+      GITLAB_POOL_MAX_SIZE: 100
+    });
+    expect(() => policy.resolve(`not a url ${secret}`)).toThrow(
+      "Invalid X-GitLab-API-URL value: expected an absolute http(s) URL"
+    );
+    try {
+      policy.resolve(`not a url ${secret}`);
+    } catch (error) {
+      expect((error as Error).message).not.toContain(secret);
+    }
+  });
+
   it("bounds the configured origin pool", () => {
     expect(() =>
       buildGitLabApiUrlPolicy({

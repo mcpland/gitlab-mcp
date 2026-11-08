@@ -23,13 +23,13 @@ node dist/http.js --env-file=.env.production
 
 ## GitLab API
 
-| Variable                       | Type   | Default                     | Description                                                                                                                                       |
-| ------------------------------ | ------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GITLAB_API_URL`               | string | `https://gitlab.com/api/v4` | Base API URL. Supports **comma-separated** URLs for multi-instance rotation. Each URL is automatically normalized to end with `/api/v4`.          |
-| `GITLAB_ALLOWED_HOSTS`         | CSV    | —                           | Additional canonical hosts, `host:port` pairs, or API URLs selectable by `X-GitLab-API-URL`.                                                      |
-| `GITLAB_POOL_MAX_SIZE`         | number | `100`                       | Maximum number of distinct configured GitLab API `host:port` entries (1–1000).                                                                    |
-| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —                           | Static default token for requests in default mode (`REMOTE_AUTHORIZATION=false`). If omitted, runtime can still resolve OAuth/script/file tokens. |
-| `GITLAB_JOB_TOKEN`             | string | —                           | Static CI job token fallback. Used with the `JOB-TOKEN` header only when `GITLAB_PERSONAL_ACCESS_TOKEN` is not configured.                        |
+| Variable                       | Type   | Default                     | Description                                                                                                                                                                                                                                                           |
+| ------------------------------ | ------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GITLAB_API_URL`               | string | `https://gitlab.com/api/v4` | Base API URL. Supports **comma-separated** URLs for multi-instance rotation. Each URL is automatically normalized to end with `/api/v4`. Entries that embed credentials (`https://user:token@host`) are rejected at startup, and startup errors never echo the entry. |
+| `GITLAB_ALLOWED_HOSTS`         | CSV    | —                           | Additional canonical hosts, `host:port` pairs, or API URLs selectable by `X-GitLab-API-URL`.                                                                                                                                                                          |
+| `GITLAB_POOL_MAX_SIZE`         | number | `100`                       | Maximum number of distinct configured GitLab API `host:port` entries (1–1000).                                                                                                                                                                                        |
+| `GITLAB_PERSONAL_ACCESS_TOKEN` | string | —                           | Static default token for requests in default mode (`REMOTE_AUTHORIZATION=false`). If omitted, runtime can still resolve OAuth/script/file tokens.                                                                                                                     |
+| `GITLAB_JOB_TOKEN`             | string | —                           | Static CI job token fallback. Used with the `JOB-TOKEN` header only when `GITLAB_PERSONAL_ACCESS_TOKEN` is not configured.                                                                                                                                            |
 
 ### Multi-Instance Example
 
