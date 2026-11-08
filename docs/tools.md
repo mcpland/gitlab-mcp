@@ -48,6 +48,21 @@ Optional boolean arguments accept JSON booleans and the spellings `"true"`/`"fal
 
 `gitlab_update_project` accepts only: `name`, `description`, `visibility`, `topics`, `request_access_enabled`, `remove_source_branch_after_merge`, `only_allow_merge_if_pipeline_succeeds`, `only_allow_merge_if_all_discussions_are_resolved`, `squash_option`, `merge_method`, `issues_access_level`, `merge_requests_access_level`, `builds_access_level`, `wiki_access_level`, `snippets_access_level`, `container_registry_access_level`, `environments_access_level`, `forking_access_level`, `package_registry_access_level`, and `pages_access_level`. Other GitLab project-update fields are rejected. Use `gitlab_update_default_branch` for the default branch.
 
+### Iterations & Cadences
+
+Iterations are a Premium/Ultimate feature. Cadence tools and iteration create/update/delete use GraphQL (GitLab has no REST write API for them), so they also need the `graphql` capability. Group iteration tools are group scoped and hidden under `GITLAB_ALLOWED_PROJECT_IDS`; update and delete first verify that the iteration or cadence belongs to `group_id`. IDs accept the numeric ID or the matching global ID.
+
+| Tool                                    | Mutating | Description                                                                                                                                                  |
+| --------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gitlab_list_project_iterations`        | No       | List iterations available to a project. Supports `state`, `search`, `search_in`, `include_ancestors`, date filters.                                          |
+| `gitlab_create_group_iteration`         | **Yes**  | Create a group iteration (`title`, `description`, `start_date`, `due_date` as `YYYY-MM-DD`, `iterations_cadence_id`).                                        |
+| `gitlab_update_group_iteration`         | **Yes**  | Update an iteration's title, description, or dates.                                                                                                          |
+| `gitlab_delete_group_iteration`         | **Yes**  | Permanently delete a group iteration.                                                                                                                        |
+| `gitlab_list_group_iteration_cadences`  | No       | List iteration cadences with `active`, `automatic`, `title`, `duration_in_weeks`, `include_ancestor_groups` filters.                                         |
+| `gitlab_create_group_iteration_cadence` | **Yes**  | Create a cadence. Params: `title`, `automatic`, `active` (required); `start_date`, `duration_in_weeks`, `iterations_in_advance`, `roll_over`, `description`. |
+| `gitlab_update_group_iteration_cadence` | **Yes**  | Update a cadence's settings.                                                                                                                                 |
+| `gitlab_delete_group_iteration_cadence` | **Yes**  | Permanently delete a cadence and its iterations.                                                                                                             |
+
 ---
 
 ## Users & Namespaces

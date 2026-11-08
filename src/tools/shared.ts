@@ -399,3 +399,35 @@ export function jsonBody(payload: unknown): GitLabRequestOptions {
     headers: { "Content-Type": "application/json" }
   };
 }
+
+/**
+ * Run a GraphQL document and return its data, turning GraphQL-level errors
+ * (which GitLab reports with HTTP 200) into exceptions.
+ */
+export async function executeGraphqlData<T>(
+  context: AppContext,
+  query: string,
+  variables: Record<string, unknown> = {}
+): Promise<T> {
+  const response = (await context.gitlab.executeGraphql(query, variables)) as
+    | { data?: T; errors?: Array<{ message?: string }> }
+    | T;
+
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "errors" in response &&
+    Array.isArray((response as { errors?: unknown }).errors)
+  ) {
+    const errors = (response as { errors: Array<{ message?: string }> }).errors;
+    throw new Error(
+      `GraphQL errors: ${errors.map((item) => item.message ?? String(item)).join(", ")}`
+    );
+  }
+
+  if (typeof response === "object" && response !== null && "data" in response) {
+    return (response as { data?: T }).data as T;
+  }
+
+  return response as T;
+}

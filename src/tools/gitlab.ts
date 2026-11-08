@@ -76,6 +76,7 @@ import type { AppContext } from "../types/context.js";
 import { deploymentToolDefinitions } from "./deployments.js";
 import { environmentToolDefinitions } from "./environments.js";
 import { GROUP_MILESTONE_TOOL_NAMES, groupMilestoneToolDefinitions } from "./group-milestones.js";
+import { GROUP_ITERATION_TOOL_NAMES, iterationToolDefinitions } from "./iterations.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
 import { pipelineJobToolDefinitions } from "./pipeline-jobs.js";
 import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
@@ -85,6 +86,7 @@ import {
   adminCapabilities,
   adminDeleteCapabilities,
   ciVariableKeySchema,
+  executeGraphqlData,
   adminGraphqlCapabilities,
   deleteCapabilities,
   deleteGraphqlCapabilities,
@@ -137,6 +139,7 @@ export type { GitLabToolDefinition, GitLabToolScope, GitLabToolScopeMetadata } f
 
 const GROUP_SCOPED_TOOL_NAMES = new Set([
   ...GROUP_MILESTONE_TOOL_NAMES,
+  ...GROUP_ITERATION_TOOL_NAMES,
   "gitlab_create_group",
   "gitlab_list_group_projects",
   "gitlab_list_group_iterations",
@@ -5515,7 +5518,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...deploymentToolDefinitions,
     ...pipelineToolDefinitions,
     ...pipelineJobToolDefinitions,
-    ...groupMilestoneToolDefinitions
+    ...groupMilestoneToolDefinitions,
+    ...iterationToolDefinitions
   ];
 
   return definitions.map((definition) => {
@@ -5723,34 +5727,6 @@ const WORK_ITEM_GRAPHQL_TYPES: Record<WorkItemType, string> = {
   requirement: "REQUIREMENT",
   ticket: "TICKET"
 };
-
-async function executeGraphqlData<T>(
-  context: AppContext,
-  query: string,
-  variables: Record<string, unknown> = {}
-): Promise<T> {
-  const response = (await context.gitlab.executeGraphql(query, variables)) as
-    | { data?: T; errors?: Array<{ message?: string }> }
-    | T;
-
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "errors" in response &&
-    Array.isArray((response as { errors?: unknown }).errors)
-  ) {
-    const errors = (response as { errors: Array<{ message?: string }> }).errors;
-    throw new Error(
-      `GraphQL errors: ${errors.map((item) => item.message ?? String(item)).join(", ")}`
-    );
-  }
-
-  if (typeof response === "object" && response !== null && "data" in response) {
-    return (response as { data?: T }).data as T;
-  }
-
-  return response as T;
-}
 
 async function listCiCatalogResources(args: ToolArgs, context: AppContext): Promise<unknown> {
   const data = await executeGraphqlData<{
