@@ -68,6 +68,7 @@ import {
   getPaginationMetadata
 } from "../lib/pagination.js";
 import { redactSuccessfulResponse } from "../lib/redact-success.js";
+import { MAX_JOB_TRACE_CONTEXT_LINES, MAX_JOB_TRACE_MAX_MATCHES } from "../lib/job-trace-search.js";
 import { sanitizeToolArguments } from "../lib/sanitize.js";
 import { classifyTransportFailure, describeTransportFailure } from "../lib/transport-error.js";
 import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
@@ -3444,24 +3445,50 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       name: "gitlab_get_pipeline_job_output",
       title: "Get Pipeline Job Output",
       description:
-        "Get a bounded, untrusted job trace window. Returns at most 1,000 lines from the end.",
+        "Get a bounded, untrusted job trace window (at most 1,000 lines from the end), or pass search (a substring or list of substrings, case-insensitive by default) to return only matching lines with context from the loaded log.",
       capabilities: readCapabilities,
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: optionalProjectIdSchema,
         job_id: z.string().min(1),
         limit: z.number().int().min(1).max(1000).optional(),
-        offset: z.number().int().min(0).max(1_000_000).optional()
+        offset: z.number().int().min(0).max(1_000_000).optional(),
+        search: z
+          .preprocess(
+            (value) => (value === "" || value === null ? undefined : value),
+            z
+              .union([
+                z.string().min(1).max(500),
+                z.array(z.string().min(1).max(500)).min(1).max(10)
+              ])
+              .optional()
+          )
+          .optional(),
+        case_sensitive: optionalBoolean,
+        context_lines: z.number().int().min(0).max(MAX_JOB_TRACE_CONTEXT_LINES).optional(),
+        max_matches: z.number().int().min(1).max(MAX_JOB_TRACE_MAX_MATCHES).optional()
       },
-      handler: async (args, context) =>
-        context.gitlab.getPipelineJobOutput(
+      handler: async (args, context) => {
+        const search = args.search;
+        return context.gitlab.getPipelineJobOutput(
           resolveProjectId(args, context, true),
           getString(args, "job_id"),
           {
             limit: getOptionalNumber(args, "limit"),
-            offset: getOptionalNumber(args, "offset")
+            offset: getOptionalNumber(args, "offset"),
+            ...(search === undefined
+              ? {}
+              : {
+                  search: {
+                    patterns: Array.isArray(search) ? (search as string[]) : [String(search)],
+                    caseSensitive: getOptionalBoolean(args, "case_sensitive"),
+                    contextLines: getOptionalNumber(args, "context_lines"),
+                    maxMatches: getOptionalNumber(args, "max_matches")
+                  }
+                })
           }
-        )
+        );
+      }
     },
     {
       name: "gitlab_validate_ci_lint",
