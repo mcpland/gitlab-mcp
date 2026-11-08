@@ -1467,10 +1467,10 @@ describe("GitLabClient", () => {
       expect(getPaginationMetadata(result)).toEqual({ next_page_token: "abc123" });
     });
 
-    it("uses x-next-page as keyset repository tree token fallback", async () => {
+    it("reports offset next_page instead of a token when GitLab ignores keyset", async () => {
       fetchMock.mockResolvedValue(
         jsonResponse([{ name: "b.ts", type: "blob" }], 200, {
-          "x-next-page": "fallback-token"
+          "x-next-page": "2"
         })
       );
 
@@ -1481,8 +1481,25 @@ describe("GitLabClient", () => {
 
       expect(result).toMatchObject({
         items: [{ name: "b.ts", type: "blob" }],
-        next_page_token: "fallback-token"
+        next_page: 2
       });
+      expect(result).not.toHaveProperty("next_page_token");
+      expect((result as { pagination_note: string }).pagination_note).toContain("offset");
+    });
+
+    it("reads the keyset cursor from the next Link header", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse([{ name: "c.ts", type: "blob" }], 200, {
+          link: '<https://gitlab.example.com/api/v4/projects/1/repository/tree?id=1&page_token=7f3a2b&pagination=keyset&per_page=20>; rel="next"'
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.getRepositoryTree("proj", {
+        query: { pagination: "keyset", per_page: 20 }
+      });
+
+      expect(result).toMatchObject({ next_page_token: "7f3a2b" });
     });
 
     it("gets file contents with ref", async () => {

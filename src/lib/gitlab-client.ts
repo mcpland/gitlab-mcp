@@ -582,16 +582,16 @@ export class GitLabClient {
     }
 
     const usesKeyset = options.query?.pagination === "keyset";
-    const nextPageToken =
-      response.headers.get("x-next-page-token") ??
-      (usesKeyset ? response.headers.get("x-next-page") : null) ??
-      undefined;
-
     const pagination = extractGitLabPaginationMetadata(response.headers);
+    const nextPageToken = pagination?.next_page_token;
     if (!usesKeyset && !nextPageToken) {
       return attachPaginationMetadata(body, pagination);
     }
 
+    // x-next-page is an offset page number, never a keyset cursor: GitLab can
+    // answer a keyset request with offset pagination, and passing that number
+    // back as page_token would silently restart the listing.
+    const nextPage = pagination?.next_page;
     return attachPaginationMetadata(
       {
         items: Array.isArray(body) ? body : [],
@@ -601,9 +601,15 @@ export class GitLabClient {
               pagination_note:
                 "Pass next_page_token as page_token with pagination=keyset to retrieve the next page."
             }
-          : {
-              pagination_note: "No next_page_token was returned; this is the final keyset page."
-            })
+          : nextPage
+            ? {
+                next_page: nextPage,
+                pagination_note:
+                  "GitLab answered with offset pagination; pass next_page as page (without pagination=keyset) to retrieve the next page."
+              }
+            : {
+                pagination_note: "No further page was returned; this is the final page."
+              })
       },
       pagination
     );

@@ -946,13 +946,16 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_get_repository_tree",
       title: "Get Repository Tree",
-      description: "List files and directories in a repository tree.",
+      description:
+        "List files and directories in a repository tree. For large trees pass pagination=keyset and follow next_page_token as page_token; offset page/per_page also work.",
       capabilities: readCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
         path: optionalString,
         ref: optionalRefLikeSchema,
         recursive: optionalBoolean,
+        pagination: z.enum(["keyset"]).optional(),
+        page_token: nullableOptional(z.string().min(1).max(1024)),
         ...paginationShape
       },
       handler: async (args, context) => {
