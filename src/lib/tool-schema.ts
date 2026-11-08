@@ -23,6 +23,38 @@ export function nullableOptional<T extends z.ZodTypeAny>(schema: T) {
   return schema.nullable().optional();
 }
 
+/**
+ * Accept JSON booleans plus the string and numeric spellings that MCP clients
+ * commonly send ("true"/"false", "1"/"0", 1/0). Unlike z.coerce.boolean(),
+ * which runs Boolean(value), the string "false" parses as false and any other
+ * string is rejected instead of silently becoming true.
+ */
+export function parseBooleanLike(value: unknown): unknown {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0") {
+      return false;
+    }
+    return value;
+  }
+
+  if (value === 1) {
+    return true;
+  }
+  if (value === 0) {
+    return false;
+  }
+
+  return value;
+}
+
+export const booleanLikeSchema = z.preprocess(parseBooleanLike, z.boolean());
+
+export const optionalBooleanLikeSchema = nullableOptional(booleanLikeSchema);
+
 export const projectIdSchema = z
   .string()
   .min(1)

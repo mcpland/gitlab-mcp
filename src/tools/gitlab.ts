@@ -234,7 +234,6 @@ const workItemTypeSchema = z.preprocess(
 const optionalWorkItemType = nullableOptional(workItemTypeSchema);
 const workItemIidSchema = z.coerce.number().int().positive();
 const optionalCoercedNumber = nullableOptional(z.coerce.number());
-const optionalCoercedBoolean = nullableOptional(z.coerce.boolean());
 const workItemReferenceSchema = z.object({
   project_id: optionalProjectIdSchema,
   iid: workItemIidSchema
@@ -4960,7 +4959,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         due_date: optionalString,
         milestone_id: optionalString,
         iteration_id: optionalString,
-        confidential: optionalCoercedBoolean
+        confidential: optionalBoolean
       },
       handler: async (args, context) => {
         const type = getOptionalString(args, "type") as WorkItemType | undefined;
@@ -5005,7 +5004,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         status: optionalString,
         parent_iid: workItemIidSchema.optional(),
         parent_project_id: optionalProjectIdSchema,
-        remove_parent: optionalCoercedBoolean,
+        remove_parent: optionalBoolean,
         children_to_add: nullableOptional(z.array(workItemReferenceSchema)),
         children_to_remove: nullableOptional(z.array(workItemReferenceSchema)),
         health_status: z.enum(["onTrack", "needsAttention", "atRisk"]).optional(),
@@ -5013,7 +5012,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         due_date: optionalString,
         milestone_id: optionalString,
         iteration_id: optionalString,
-        confidential: optionalCoercedBoolean,
+        confidential: optionalBoolean,
         linked_items_to_add: nullableOptional(z.array(linkedWorkItemReferenceSchema)),
         linked_items_to_remove: nullableOptional(z.array(workItemReferenceSchema)),
         custom_fields: nullableOptional(z.array(customFieldValueSchema)),
@@ -5163,7 +5162,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: optionalProjectIdSchema,
         iid: workItemIidSchema,
         body: bodySchema,
-        internal: optionalCoercedBoolean,
+        internal: optionalBoolean,
         discussion_id: optionalString
       },
       handler: async (args, context) =>

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { isGitLabProjectIdentityAllowed } from "../lib/gitlab-path.js";
 import type { ToolCapability } from "../lib/tool-capabilities.js";
-import { nullableOptional } from "../lib/tool-schema.js";
+import { nullableOptional, optionalBooleanLikeSchema } from "../lib/tool-schema.js";
 import type { AppContext } from "../types/context.js";
 
 /*
@@ -60,7 +60,7 @@ export const optionalPositiveIntegerFromEmptyString = z
     z.coerce.number().int().positive().optional()
   )
   .optional();
-export const optionalBoolean = nullableOptional(z.boolean());
+export const optionalBoolean = optionalBooleanLikeSchema;
 export const optionalStringArray = nullableOptional(z.array(z.string()));
 export const optionalNumberArray = nullableOptional(z.array(z.number()));
 export const optionalStringOrNumber = nullableOptional(z.union([z.string(), z.number()]));

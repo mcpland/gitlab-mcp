@@ -6,6 +6,8 @@ All project-scoped tools accept an optional `project_id` parameter. When `GITLAB
 
 Most list endpoints support `page` and `per_page`. Notable exceptions are `gitlab_list_merge_request_versions` and `gitlab_list_draft_notes`.
 
+Optional boolean arguments accept JSON booleans and the spellings `"true"`/`"false"` and `"1"`/`"0"`; any other string is rejected instead of being treated as `true`.
+
 ---
 
 ## Health
