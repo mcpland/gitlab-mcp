@@ -71,37 +71,58 @@ import { sanitizeToolArguments } from "../lib/sanitize.js";
 import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
+import {
+  adminCapabilities,
+  adminDeleteCapabilities,
+  adminGraphqlCapabilities,
+  deleteCapabilities,
+  deleteGraphqlCapabilities,
+  getBoolean,
+  getIdString,
+  getNumber,
+  getOptionalArray,
+  getOptionalBoolean,
+  getOptionalNumber,
+  getOptionalNumberArray,
+  getOptionalRecord,
+  getOptionalString,
+  getOptionalStringArray,
+  getRequiredStringArray,
+  getString,
+  hasValue,
+  isObjectRecord,
+  isRecord,
+  omit,
+  optionalBoolean,
+  optionalNumber,
+  optionalNumberArray,
+  optionalPositiveIntegerFromEmptyString,
+  optionalRecord,
+  optionalString,
+  optionalStringArray,
+  optionalStringOrNumber,
+  optionalStringOrStringArray,
+  paginationShape,
+  pickPresentFields,
+  pickRecordFields,
+  readCapabilities,
+  readGraphqlCapabilities,
+  requireArrayValue,
+  resolveExplicitProjectId,
+  resolveOptionalExplicitProjectId,
+  resolveProjectId,
+  toCsvValue,
+  toQuery,
+  writeCapabilities,
+  writeGraphqlCapabilities,
+  type GitLabToolDefinition,
+  type GitLabToolDefinitionInput,
+  type GitLabToolScopeMetadata,
+  type ToolArgs,
+  type ToolSchemaShape
+} from "./shared.js";
 
-type ToolArgs = Record<string, unknown>;
-
-type ToolSchemaShape = Record<string, z.ZodTypeAny>;
-
-export interface GitLabToolDefinition {
-  name: string;
-  title: string;
-  description: string;
-  capabilities: ToolCapability[];
-  scope: GitLabToolScopeMetadata;
-  requiresAuth?: boolean;
-  requiresFeature?: "wiki" | "milestone" | "pipeline" | "release";
-  requiresExplicitEnable?: "ciVariables" | "dependencyProxy";
-  requiresLocalFileTools?: boolean;
-  compatibilityAlias?: boolean;
-  sensitiveArguments?: readonly string[];
-  inputSchema?: ToolSchemaShape;
-  handler: (args: ToolArgs, context: AppContext) => Promise<unknown>;
-}
-
-type GitLabToolDefinitionInput = Omit<GitLabToolDefinition, "scope">;
-
-export type GitLabToolScope = "project" | "group" | "global" | "rawGraphQL";
-
-export interface GitLabToolScopeMetadata {
-  kind: GitLabToolScope;
-  projectIdArguments?: readonly string[];
-  groupIdArguments?: readonly string[];
-  projectScopedMode: "allow" | "filter" | "deny";
-}
+export type { GitLabToolDefinition, GitLabToolScope, GitLabToolScopeMetadata } from "./shared.js";
 
 const GROUP_SCOPED_TOOL_NAMES = new Set([
   "gitlab_create_group",
@@ -169,30 +190,6 @@ const GROUP_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
   ["gitlab_get_webhook_event", ["group_id"]]
 ]);
 
-const readCapabilities: ToolCapability[] = ["read"];
-const writeCapabilities: ToolCapability[] = ["write"];
-const deleteCapabilities: ToolCapability[] = ["delete"];
-const adminCapabilities: ToolCapability[] = ["admin"];
-const adminGraphqlCapabilities: ToolCapability[] = ["admin", "graphql"];
-const adminDeleteCapabilities: ToolCapability[] = ["admin", "delete"];
-const readGraphqlCapabilities: ToolCapability[] = ["read", "graphql"];
-const writeGraphqlCapabilities: ToolCapability[] = ["write", "graphql"];
-const deleteGraphqlCapabilities: ToolCapability[] = ["delete", "graphql"];
-
-const optionalString = nullableOptional(z.string());
-const optionalNumber = nullableOptional(z.number());
-const optionalPositiveIntegerFromEmptyString = z
-  .preprocess(
-    (value) => (value === "" || value === null ? undefined : value),
-    z.coerce.number().int().positive().optional()
-  )
-  .optional();
-const optionalBoolean = nullableOptional(z.boolean());
-const optionalStringArray = nullableOptional(z.array(z.string()));
-const optionalNumberArray = nullableOptional(z.array(z.number()));
-const optionalStringOrNumber = nullableOptional(z.union([z.string(), z.number()]));
-const optionalStringOrStringArray = nullableOptional(z.union([z.string(), z.array(z.string())]));
-const optionalRecord = nullableOptional(z.record(z.string(), z.unknown()));
 const pipelineInputValueSchema = z.union([
   z.string(),
   z.number(),
@@ -204,10 +201,6 @@ const optionalPipelineInputsRecord = nullableOptional(
 );
 const excludedFilePatternsSchema = nullableOptional(z.array(z.string().min(1).max(200)).max(20));
 
-const paginationShape = {
-  page: optionalNumber,
-  per_page: optionalNumber
-} satisfies ToolSchemaShape;
 const protectedBranchAccessLevelSchema = z.union([
   z.literal(0),
   z.literal(30),
@@ -6118,23 +6111,6 @@ async function resolveDependencyProxyGroupFullPath(
   return fullPath;
 }
 
-function resolveExplicitProjectId(context: AppContext, projectId: string): string {
-  const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
-  if (allowed.length > 0 && !isGitLabProjectIdentityAllowed(projectId, allowed)) {
-    throw new Error(
-      `Project '${projectId}' is not in GITLAB_ALLOWED_PROJECT_IDS: ${allowed.join(", ")}`
-    );
-  }
-  return projectId;
-}
-
-function resolveOptionalExplicitProjectId(
-  context: AppContext,
-  projectId: string | undefined
-): string | undefined {
-  return projectId ? resolveExplicitProjectId(context, projectId) : undefined;
-}
-
 function filterProjectScopedResponse(
   value: unknown,
   context: AppContext,
@@ -6197,10 +6173,6 @@ function recordMatchesAllowedProject(
       (typeof candidate === "string" || typeof candidate === "number") &&
       isGitLabProjectIdentityAllowed(String(candidate), allowedProjectIds)
   );
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function discoverGitLabTools(args: ToolArgs, context: AppContext): Record<string, unknown> {
@@ -7980,41 +7952,6 @@ function assertToolCanExecuteInProjectScope(
   }
 }
 
-function hasValue(value: unknown): boolean {
-  return value !== undefined && value !== null && value !== "";
-}
-
-function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean): string {
-  const fromArgs = getOptionalString(args, "project_id");
-  const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
-
-  if (allowed.length > 0) {
-    if (fromArgs && !isGitLabProjectIdentityAllowed(fromArgs, allowed)) {
-      throw new Error(
-        `Project '${fromArgs}' is not in GITLAB_ALLOWED_PROJECT_IDS: ${allowed.join(", ")}`
-      );
-    }
-
-    if (!fromArgs && allowed.length === 1) {
-      return requireArrayValue(allowed, 0, "GITLAB_ALLOWED_PROJECT_IDS is empty");
-    }
-
-    if (!fromArgs && allowed.length > 1) {
-      throw new Error(
-        `Multiple allowed projects configured (${allowed.join(", ")}). Please specify project_id.`
-      );
-    }
-
-    return fromArgs ?? requireArrayValue(allowed, 0, "GITLAB_ALLOWED_PROJECT_IDS is empty");
-  }
-
-  if (required && !fromArgs) {
-    throw new Error("project_id is required");
-  }
-
-  return fromArgs ?? "";
-}
-
 async function withCiLintHttpDiagnostics(operation: () => Promise<unknown>): Promise<unknown> {
   try {
     return await operation();
@@ -8194,65 +8131,6 @@ function maybeDecodeRepositoryFileContents(value: unknown, shouldDecode?: boolea
     content: Buffer.from(file.content, "base64").toString("utf8"),
     encoding: "utf8"
   };
-}
-
-function omit(args: ToolArgs, keys: string[]): ToolArgs {
-  const result: ToolArgs = {};
-  for (const [key, value] of Object.entries(args)) {
-    if (!keys.includes(key)) {
-      result[key] = value;
-    }
-  }
-
-  return result;
-}
-
-function pickPresentFields(args: ToolArgs, fields: readonly string[]): ToolArgs {
-  const result: ToolArgs = {};
-  for (const field of fields) {
-    if (Object.prototype.hasOwnProperty.call(args, field) && args[field] !== undefined) {
-      result[field] = args[field];
-    }
-  }
-  return result;
-}
-
-function toQuery(args: ToolArgs): Record<string, string | number | boolean | undefined> {
-  const output: Record<string, string | number | boolean | undefined> = {};
-
-  for (const [key, value] of Object.entries(args)) {
-    if (value === undefined || value === null) {
-      continue;
-    }
-
-    if (Array.isArray(value)) {
-      output[key] = value.join(",");
-      continue;
-    }
-
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      output[key] = value;
-    }
-  }
-
-  return output;
-}
-
-function toCsvValue(value: unknown): string | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    const items = value.filter((item): item is string => typeof item === "string");
-    return items.length > 0 ? items.join(",") : undefined;
-  }
-
-  return undefined;
 }
 
 async function resolveMergeRequestIid(
@@ -8661,21 +8539,6 @@ function slimUpdatedIssue(issue: unknown): unknown {
   ]);
 }
 
-function pickRecordFields(
-  record: Record<string, unknown>,
-  fields: string[]
-): Record<string, unknown> {
-  return Object.fromEntries(
-    fields
-      .filter((field) => Object.prototype.hasOwnProperty.call(record, field))
-      .map((field) => [field, record[field]])
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 async function resolveWikiUpdateTitle(
   slug: string,
   providedTitle: string | undefined,
@@ -8705,116 +8568,6 @@ function getExistingWikiTitle(page: unknown): string {
     return frontMatterTitle;
   }
   return title || (typeof frontMatterTitle === "string" ? frontMatterTitle : "");
-}
-
-function getString(args: ToolArgs, key: string): string {
-  const value = args[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`'${key}' must be a non-empty string`);
-  }
-
-  return value;
-}
-
-function getIdString(args: ToolArgs, key: string): string {
-  const value = args[key];
-  if ((typeof value !== "string" && typeof value !== "number") || String(value).length === 0) {
-    throw new Error(`'${key}' must be a non-empty string or number`);
-  }
-
-  return String(value);
-}
-
-function getOptionalString(args: ToolArgs, key: string): string | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "string") {
-    throw new Error(`'${key}' must be a string`);
-  }
-
-  return value;
-}
-
-function getOptionalStringArray(args: ToolArgs, key: string): string[] | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new Error(`'${key}' must be string[]`);
-  }
-
-  return value;
-}
-
-function getBoolean(args: ToolArgs, key: string): boolean {
-  const value = args[key];
-  if (typeof value !== "boolean") {
-    throw new Error(`'${key}' must be boolean`);
-  }
-
-  return value;
-}
-
-function getNumber(args: ToolArgs, key: string): number {
-  const value = args[key];
-  const numericValue = typeof value === "string" ? Number(value) : value;
-  if (typeof numericValue !== "number" || Number.isNaN(numericValue)) {
-    throw new Error(`'${key}' must be number`);
-  }
-
-  return numericValue;
-}
-
-function getRequiredStringArray(args: ToolArgs, key: string): string[] {
-  const value = getOptionalStringArray(args, key);
-  if (!value || value.length === 0) {
-    throw new Error(`'${key}' must be a non-empty string array`);
-  }
-  return value;
-}
-
-function getOptionalBoolean(args: ToolArgs, key: string): boolean | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "boolean") {
-    throw new Error(`'${key}' must be boolean`);
-  }
-
-  return value;
-}
-
-function getOptionalNumber(args: ToolArgs, key: string): number | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    throw new Error(`'${key}' must be number`);
-  }
-
-  return value;
-}
-
-function getOptionalArray(args: ToolArgs, key: string): unknown[] | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (!Array.isArray(value)) {
-    throw new Error(`'${key}' must be array`);
-  }
-
-  return value;
 }
 
 function getWorkItemReferences(
@@ -8875,32 +8628,6 @@ function getLinkedWorkItemReferences(
   });
 }
 
-function getOptionalNumberArray(args: ToolArgs, key: string): number[] | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "number")) {
-    throw new Error(`'${key}' must be number[]`);
-  }
-
-  return value;
-}
-
-function getOptionalRecord(args: ToolArgs, key: string): Record<string, unknown> | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`'${key}' must be an object`);
-  }
-
-  return value as Record<string, unknown>;
-}
-
 function getOptionalPipelineInputsRecord(
   args: ToolArgs,
   key: string
@@ -8919,15 +8646,6 @@ function getOptionalPipelineInputsRecord(
   }
 
   return value as Record<string, GitLabPipelineInputValue>;
-}
-
-function requireArrayValue<T>(items: T[], index: number, errorMessage: string): T {
-  const value = items[index];
-  if (value === undefined) {
-    throw new Error(errorMessage);
-  }
-
-  return value;
 }
 
 function redactSensitive(value: unknown, options: SensitiveRedactionOptions = {}): unknown {
