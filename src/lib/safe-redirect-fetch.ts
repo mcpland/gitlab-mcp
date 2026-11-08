@@ -69,6 +69,13 @@ export async function fetchDownloadWithSafeRedirects(
       throw error;
     }
 
+    // A download that started on HTTPS must not continue in cleartext, where
+    // the artifact could be read or altered in transit.
+    if (currentUrl.protocol === "https:" && nextUrl.protocol === "http:") {
+      await cancelResponseBody(response);
+      throw new Error("Download redirect from HTTPS to HTTP was refused");
+    }
+
     const identity = redirectIdentity(nextUrl);
     if (visited.has(identity)) {
       await cancelResponseBody(response);

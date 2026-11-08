@@ -102,6 +102,26 @@ describe("fetchDownloadWithSafeRedirects", () => {
     expect(assetHeaders?.get("cookie")).toBe("_gitlab_session=cookie-secret");
   });
 
+  it("refuses to downgrade an HTTPS download to HTTP", async () => {
+    const calls: string[] = [];
+    const fetchImpl = (async (input: URL | RequestInfo) => {
+      calls.push(String(input));
+      return new Response(null, {
+        status: 302,
+        headers: { Location: "http://objects.example.com/artifact.zip" }
+      });
+    }) as typeof fetch;
+
+    await expect(
+      fetchDownloadWithSafeRedirects(
+        new URL("https://gitlab.example.com/api/v4/projects/1/jobs/2/artifacts"),
+        { headers: { "Private-Token": "secret" } },
+        { fetchImpl }
+      )
+    ).rejects.toThrow("from HTTPS to HTTP was refused");
+    expect(calls).toEqual(["https://gitlab.example.com/api/v4/projects/1/jobs/2/artifacts"]);
+  });
+
   it("fails on redirect loops, unsafe protocols, and more than five redirects", async () => {
     let redirectRequests = 0;
     const server = await listen((req, res) => {

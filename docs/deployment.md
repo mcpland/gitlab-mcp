@@ -111,6 +111,8 @@ Scrape `GET /metrics` with `Authorization: Bearer <secret>`. Host validation alw
 
 When exactly one trusted reverse proxy sits in front of the server, set `MCP_TRUST_PROXY=true` so the MCP transport, download-proxy, and OAuth endpoint limiters use the proxy-provided client address. Leave it `false` when clients can connect directly; otherwise they can spoof `X-Forwarded-For`. Proxy-added IPv4/IPv6 ports are stripped and IPv6 clients are grouped by `/56` to prevent address-rotation bypasses. `MAX_REQUESTS_PER_MINUTE_PER_IP` controls the outer `/mcp`, `/sse`, `/messages`, and `/downloads` limiter, while `MAX_REQUESTS_PER_MINUTE` remains the per-session and per-download-credential limit.
 
+Artifact, release-asset, and attachment downloads (both the `/downloads` proxy and inline downloads) follow at most five redirects, drop every GitLab credential header once a redirect leaves the GitLab origin, and refuse a redirect that would downgrade an HTTPS download to HTTP.
+
 ### MCP OAuth with a Pre-registered GitLab Application
 
 Create one GitLab OAuth application with callback `https://your-server.example.com/callback` (or `<MCP_SERVER_URL path>/callback`) and the required `api`/`read_api` scope, then configure:
