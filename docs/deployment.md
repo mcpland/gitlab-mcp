@@ -155,6 +155,7 @@ Clients connect with their credentials:
 {
   "status": "ok",
   "server": "gitlab-mcp",
+  "version": "1.6.1",
   "activeSessions": 3,
   "activeSseSessions": 0,
   "pendingSessions": 0,

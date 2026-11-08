@@ -496,6 +496,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
         ? "degraded"
         : "ok",
       server: appEnv.MCP_SERVER_NAME,
+      version: appEnv.MCP_SERVER_VERSION,
       activeSessions: sessions.size,
       activeSseSessions: sseSessions.size,
       pendingSessions: pendingSessions.size,

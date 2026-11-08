@@ -324,6 +324,17 @@ describe("http app pending session handling", () => {
     expect(body.readOnlyMode).toBe(false);
   });
 
+  it("reports the server name and version for deployment checks", async () => {
+    running = await startServerForContext(buildContext());
+
+    const body = (await (await fetch(`${running.baseUrl}/healthz`)).json()) as {
+      server: string;
+      version: string;
+    };
+
+    expect(body).toMatchObject({ server: "http-app-test", version: "0.0.1" });
+  });
+
   it("shutdown closes uninitialized pending sessions", async () => {
     const context = buildContext();
     const setup = setupMcpHttpApp({
