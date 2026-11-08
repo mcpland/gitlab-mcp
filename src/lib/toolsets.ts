@@ -17,7 +17,10 @@ export const GITLAB_TOOLSETS = [
   "work-items",
   "webhooks",
   "identity",
-  "graphql"
+  "vulnerabilities",
+  "graphql",
+  "api",
+  "orbit"
 ] as const;
 
 export type GitLabToolset = (typeof GITLAB_TOOLSETS)[number];
@@ -78,10 +81,10 @@ const TOOLSET_PATTERNS: ReadonlyArray<{
   { toolset: "issues", pattern: /(?:issue|todo)/ },
   {
     toolset: "pipelines",
-    pattern: /(?:pipeline|\bjob|job_|artifact|deployment|environment|ci_lint)/
+    pattern: /(?:pipeline|\bjob|job_|_job$|artifact|deployment|environment|ci_lint|runner)/
   },
   { toolset: "ci-catalog", pattern: /ci_catalog/ },
-  { toolset: "ci-variables", pattern: /(?:project|group)_variable/ },
+  { toolset: "ci-variables", pattern: /(?:project|group|schedule)_variable/ },
   { toolset: "dependency-proxy", pattern: /dependency_proxy/ },
   { toolset: "wiki", pattern: /wiki/ },
   { toolset: "milestones", pattern: /milestone/ },
@@ -89,7 +92,10 @@ const TOOLSET_PATTERNS: ReadonlyArray<{
   { toolset: "labels", pattern: /label/ },
   { toolset: "work-items", pattern: /(?:work_item|custom_field|timeline_event)/ },
   { toolset: "webhooks", pattern: /webhook/ },
+  { toolset: "vulnerabilities", pattern: /vulnerabilit/ },
   { toolset: "graphql", pattern: /graphql/ },
+  { toolset: "api", pattern: /^gitlab_api_request$/ },
+  { toolset: "orbit", pattern: /^gitlab_orbit_/ },
   {
     toolset: "groups",
     pattern: /(?:create_group|group_|namespace)/

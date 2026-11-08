@@ -23,6 +23,20 @@ export function isGitLabProjectIdentityAllowed(
   );
 }
 
+/**
+ * Encode one opaque value (an ID, IID, SHA, key, or name) as a single URL
+ * path segment. encodeURIComponent leaves "." and ".." untouched, and URL
+ * resolution then treats them as dot segments: a note_id of ".." turns
+ * DELETE .../merge_requests/7/notes/.. into DELETE .../merge_requests/7.
+ */
+export function encodeGitLabPathSegment(value: string, label = "path segment"): string {
+  if (value.length === 0 || value === "." || value === "..") {
+    throw new Error(`Invalid GitLab ${label}: empty, '.', and '..' values are not allowed`);
+  }
+
+  return encodeURIComponent(value);
+}
+
 /** Encode a numeric group ID or nested group path exactly once. */
 export function encodeGitLabGroupId(value: string): string {
   return encodeGitLabPathId(value, "group");

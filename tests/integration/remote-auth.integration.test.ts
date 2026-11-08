@@ -24,6 +24,17 @@ const MCP_HEADERS = {
 let gitLabServer: HttpServer;
 let gitLabApiUrl: string;
 
+/** Tokens named alice-* and bob-* belong to two different GitLab users. */
+function userForToken(token: string): Record<string, unknown> {
+  if (token.startsWith("alice-")) {
+    return { id: 101, username: "alice" };
+  }
+  if (token.startsWith("bob-")) {
+    return { id: 202, username: "bob" };
+  }
+  return {};
+}
+
 beforeAll(async () => {
   gitLabServer = createServer((req, res) => {
     if (req.url === "/api/v4/user") {
@@ -31,7 +42,8 @@ beforeAll(async () => {
         req.headers["private-token"] ?? req.headers.authorization?.replace(/^Bearer\s+/i, "");
       const valid = typeof token === "string" && !token.startsWith("invalid-");
       res.statusCode = valid ? 200 : 401;
-      res.end(valid ? "{}" : "unauthorized");
+      res.setHeader("content-type", "application/json");
+      res.end(valid ? JSON.stringify(userForToken(token)) : "unauthorized");
       return;
     }
 
@@ -470,6 +482,135 @@ describe("Remote Authorization - Auth propagation", () => {
       await new Promise<void>((resolve, reject) => {
         server.close((err) => (err ? reject(err) : resolve()));
       });
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Tests — session ownership                                          */
+/* ------------------------------------------------------------------ */
+
+describe("Remote Authorization - session ownership", () => {
+  async function startRemoteAuthServer() {
+    const ctx = buildRemoteAuthContext();
+    const result = setupMcpHttpApp({ context: ctx, env: ctx.env, logger: ctx.logger });
+    const server = createServer(result.app);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const addr = server.address();
+    const url = typeof addr === "object" && addr !== null ? `http://127.0.0.1:${addr.port}` : "";
+
+    return {
+      ctx,
+      result,
+      url,
+      async close() {
+        for (const sessionId of result.sessions.keys()) {
+          await result.closeSession(sessionId, "shutdown");
+        }
+        await new Promise<void>((resolve, reject) => {
+          server.close((err) => (err ? reject(err) : resolve()));
+        });
+      }
+    };
+  }
+
+  async function initialize(url: string, headers: Record<string, string>): Promise<string> {
+    const res = await fetch(`${url}/mcp`, {
+      method: "POST",
+      headers: { ...MCP_HEADERS, ...headers },
+      body: initializeBody()
+    });
+    expect(res.status).toBe(200);
+    return res.headers.get("mcp-session-id")!;
+  }
+
+  function ping(url: string, sessionId: string, headers: Record<string, string>) {
+    return fetch(`${url}/mcp`, {
+      method: "POST",
+      headers: {
+        ...MCP_HEADERS,
+        "mcp-session-id": sessionId,
+        "mcp-protocol-version": "2025-03-26",
+        ...headers
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "ping" })
+    });
+  }
+
+  it("treats another user's credential as an unknown session", async () => {
+    const running = await startRemoteAuthServer();
+    try {
+      const sessionId = await initialize(running.url, { "Private-Token": "alice-token-1" });
+
+      const hijack = await ping(running.url, sessionId, { "Private-Token": "bob-token-1" });
+      expect(hijack.status).toBe(404);
+      const body = (await hijack.json()) as { error?: { message?: string } };
+      expect(body.error?.message).toBe("Unknown session");
+      expect(body.error?.message).not.toContain(sessionId);
+
+      const session = running.result.sessions.get(sessionId);
+      expect(session?.auth?.token).toBe("alice-token-1");
+
+      for (const method of ["GET", "DELETE"]) {
+        const res = await fetch(`${running.url}/mcp`, {
+          method,
+          headers: {
+            Accept: "application/json, text/event-stream",
+            "mcp-session-id": sessionId,
+            "mcp-protocol-version": "2025-03-26",
+            "Private-Token": "bob-token-1"
+          }
+        });
+        expect(res.status, method).toBe(404);
+        await res.body?.cancel();
+      }
+      expect(running.result.sessions.has(sessionId)).toBe(true);
+    } finally {
+      await running.close();
+    }
+  });
+
+  it("accepts a rotated token of the same user and stores it", async () => {
+    const running = await startRemoteAuthServer();
+    try {
+      const sessionId = await initialize(running.url, { "Private-Token": "alice-token-1" });
+
+      const res = await ping(running.url, sessionId, { Authorization: "Bearer alice-token-2" });
+      expect(res.status).toBe(200);
+      expect(running.result.sessions.get(sessionId)?.auth?.token).toBe("alice-token-2");
+    } finally {
+      await running.close();
+    }
+  });
+
+  it("binds sessions to the exact token when GitLab returns no user id", async () => {
+    const running = await startRemoteAuthServer();
+    try {
+      const sessionId = await initialize(running.url, { "Private-Token": "anonymous-a" });
+
+      expect((await ping(running.url, sessionId, { "Private-Token": "anonymous-b" })).status).toBe(
+        404
+      );
+      expect((await ping(running.url, sessionId, { "Private-Token": "anonymous-a" })).status).toBe(
+        200
+      );
+    } finally {
+      await running.close();
+    }
+  });
+
+  it("logs a digest instead of the raw session id", async () => {
+    const running = await startRemoteAuthServer();
+    try {
+      const sessionId = await initialize(running.url, { "Private-Token": "alice-token-1" });
+      const info = running.ctx.logger.info as unknown as { mock: { calls: unknown[][] } };
+      const serialized = JSON.stringify(info.mock.calls);
+
+      expect(serialized).toContain("MCP session initialized");
+      expect(serialized).not.toContain(sessionId);
+      expect(serialized).toMatch(/sha256:[0-9a-f]{12}/u);
+    } finally {
+      await running.close();
     }
   });
 });

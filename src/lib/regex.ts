@@ -58,7 +58,8 @@ interface GroupState {
   containsQuantifiedToken: boolean;
 }
 
-function hasNestedQuantifiers(pattern: string): boolean {
+/** Detect nested quantifiers such as (a+)+, the usual source of catastrophic backtracking. */
+export function hasNestedQuantifiers(pattern: string): boolean {
   const stack: GroupState[] = [];
   let escaped = false;
   let inCharacterClass = false;

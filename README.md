@@ -8,12 +8,13 @@ A production-ready [MCP](https://modelcontextprotocol.io/) server for GitLab. It
 
 ## Highlights
 
-- **Comprehensive GitLab coverage** — projects, merge requests (with code-context analysis), issues, pipelines, wikis, milestones, releases, labels, commits, branches, GraphQL, and file management
+- **Comprehensive GitLab coverage** — projects, merge requests (with code-context analysis and rebase), issues, pipelines (schedules, triggers, test reports, waits, log search), environments and deployments, wikis, milestones and iterations, releases, protected branches and tags, snippets, webhooks, vulnerabilities, labels, commits, GraphQL, and file management
 - **Multiple transports** — stdio for local CLI usage, Streamable HTTP for remote deployments, optional SSE
 - **Flexible authentication** — personal access tokens, OAuth 2.0 PKCE, external token scripts, token files, cookie-based auth, and per-request remote authorization
 - **Policy engine** — readonly/modify/full modes, tool allowlist/denylist, feature toggles, and project-scoped restrictions
 - **Enterprise networking** — HTTP/HTTPS proxy, custom CA certificates, Cloudflare bypass, multi-instance API rotation
-- **Output control** — JSON, compact JSON, or YAML formatting with configurable response size limits
+- **Output control** — JSON, compact JSON, or YAML formatting with configurable response size limits, optional JMESPath projection, and an optional masking policy for tokens, IPs, and keywords
+- **Agent guidance** — initialize instructions, workflow prompts (review an MR, triage a pipeline failure or vulnerabilities), and recovery hints on errors
 
 ## Usage
 
@@ -331,26 +332,33 @@ pnpm start:http -- --env-file .env.local
 
 Tools are organized into these categories. All GitLab tools use the `gitlab_` prefix, except `health_check`.
 
-| Category            | Examples                                                                     |
-| ------------------- | ---------------------------------------------------------------------------- |
-| **Projects**        | `get_project`, `list_projects`, `create_repository`, `update_project`        |
-| **Repository**      | `get_repository_tree`, `get_file_contents`, `push_files`, protected branches |
-| **Merge Requests**  | `list_merge_requests`, `get_merge_request_conflicts`, `merge_merge_request`  |
-| **MR Code Context** | `get_merge_request_code_context` (advanced code review)                      |
-| **MR Discussions**  | `list_merge_request_discussions`, `create_merge_request_thread`              |
-| **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                      |
-| **Draft Notes**     | `list_draft_notes`, `create_draft_note`, `bulk_publish_draft_notes`          |
-| **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                   |
-| **Pipelines**       | `list_pipelines`, `list_deployments`, `get_job_artifact_file`                |
-| **Commits**         | `list_commits`, `get_commit`, `get_commit_diff`                              |
-| **Labels**          | `list_labels`, `create_label`, `update_label`                                |
-| **Milestones**      | `list_milestones`, `create_milestone`, burndown events                       |
-| **Releases**        | `list_releases`, `create_release`, `download_release_asset`                  |
-| **Wiki**            | `list_wiki_pages`, `create_wiki_page`, `update_wiki_page`                    |
-| **Uploads**         | `upload_markdown`, `download_attachment`                                     |
-| **GraphQL**         | `execute_graphql_query`, `execute_graphql_mutation`                          |
-| **Users & Groups**  | `get_users`, `list_namespaces`, `list_events`                                |
-| **Health**          | `health_check`                                                               |
+| Category            | Examples                                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------------------ |
+| **Projects**        | `get_project`, `list_projects`, `create_repository`, `update_project`                            |
+| **Repository**      | `get_repository_tree`, `get_file_contents`, `push_files`, protected branches                     |
+| **Merge Requests**  | `list_merge_requests`, `get_merge_request_conflicts`, `merge_merge_request`                      |
+| **MR Code Context** | `get_merge_request_code_context` (advanced code review)                                          |
+| **MR Discussions**  | `list_merge_request_discussions`, `create_merge_request_thread`                                  |
+| **MR Notes**        | `list_merge_request_notes`, `create_merge_request_note`                                          |
+| **Draft Notes**     | `list_draft_notes`, `create_draft_note`, `bulk_publish_draft_notes`                              |
+| **Issues**          | `list_issues`, `create_issue`, `update_issue`, issue links                                       |
+| **Pipelines**       | `list_pipelines`, `list_pipeline_schedules`, `get_pipeline_test_report`, `wait_for_pipeline`     |
+| **Deployments**     | `create_environment`, `stop_environment`, `approve_deployment`, `list_deployment_merge_requests` |
+| **Commits**         | `list_commits`, `get_commit`, `get_commit_diff`                                                  |
+| **Labels**          | `list_labels`, `create_label`, `update_label`                                                    |
+| **Milestones**      | `list_milestones`, `list_group_milestones`, `create_group_iteration`, burndown events            |
+| **Snippets**        | `list_project_snippets`, `create_project_snippet`                                                |
+| **Security**        | `list_project_vulnerabilities`, `dismiss_vulnerability` (Ultimate)                               |
+| **Webhooks**        | `list_webhooks`, `create_webhook`, `list_webhook_events`                                         |
+| **Releases**        | `list_releases`, `create_release`, `download_release_asset`                                      |
+| **Wiki**            | `list_wiki_pages`, `create_wiki_page`, `update_wiki_page`                                        |
+| **Uploads**         | `upload_markdown`, `download_attachment`                                                         |
+| **GraphQL**         | `execute_graphql_query`, `execute_graphql_mutation`                                              |
+| **Users & Groups**  | `get_users`, `list_group_members`, `list_namespaces`, `list_events`                              |
+| **Opt-in**          | `api_request` (raw REST), `orbit_query` (GitLab Orbit)                                           |
+| **Health**          | `health_check` (optionally verifies GitLab connectivity and auth)                                |
+
+During `initialize`, the server also sends MCP `instructions`: a short briefing on ID formats, token-saving review and CI workflows, `gitlab_discover_tools`, untrusted content, and the active permission mode, project scope, and toolsets.
 
 See [docs/tools.md](docs/tools.md) for usage details and
 [docs/tools-index.md](docs/tools-index.md) for the generated complete registry.
@@ -413,7 +421,7 @@ GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS=true
 
 Unsafe or invalid `GITLAB_DENIED_TOOLS_REGEX` patterns fail startup.
 
-In `modify` mode, raw GraphQL mutation tools remain available for updates, but the server parses each document and blocks mutation-root fields containing `delete`, `destroy`, `remove`, `prune`, or `purge`. Aliases and fragment expansion cannot bypass the check, and documents that cannot be verified fail closed.
+In `modify` mode, raw GraphQL mutation tools remain available for updates, but the server parses each document and blocks mutation-root fields containing deletion or teardown verbs such as `delete`, `destroy`, `remove`, `purge`, `erase`, `revoke`, `unprotect`, or `stop`. Aliases and fragment expansion cannot bypass the check, and documents that cannot be verified fail closed.
 
 `GITLAB_ALLOWED_PROJECT_IDS` is a strict resource boundary, not just a default project. Project-scoped tools validate every supplied source, target, and parent project ID. Safe global list/search tools return only allowed projects (global code search is executed once per allowed project), while group-wide, namespace-wide, user-wide, event-wide, fork, and unscoped create operations are hidden. Todo reads are filtered and a single todo is verified before mutation. Raw GraphQL executors are always hidden because an arbitrary document cannot be proven project-safe; project-bound Work Item tools remain available and enforce the same allowlist. The legacy `GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE` variable is retained for configuration compatibility but cannot override this boundary.
 
@@ -442,6 +450,7 @@ node dist/http.js --env-file=.env.production
 | HTTP Server     | `HTTP_PORT`                               | `3333`                      | HTTP server port.                                                                                           |
 | HTTP Server     | `MCP_SERVER_URL`                          | —                           | Public base URL used when HTTP download tools return proxy URLs.                                            |
 | HTTP Server     | `HTTP_JSON_ONLY`                          | `false`                     | Force JSON-only responses (no streaming framing).                                                           |
+| HTTP Server     | `MCP_HTTP_MAX_BODY_BYTES`                 | `2097152`                   | Largest JSON request body in bytes (64 KiB to 50 MiB).                                                      |
 | HTTP Server     | `SSE`                                     | `false`                     | Enable legacy SSE endpoints (`/sse`, `/messages`). Not compatible with remote auth.                         |
 | Sessions        | `SESSION_TIMEOUT_SECONDS`                 | `3600`                      | Idle session timeout in HTTP mode.                                                                          |
 | Sessions        | `OAUTH_STATELESS_MODE`                    | `false`                     | Use stateless Streamable HTTP transports; clients must send auth on every request.                          |
@@ -453,7 +462,7 @@ node dist/http.js --env-file=.env.production
 | Policy          | `GITLAB_ALLOWED_TOOLS`                    | —                           | Tool allowlist (supports names with or without `gitlab_` prefix).                                           |
 | Policy          | `GITLAB_TOOLSETS`                         | `all`                       | Full registry by default; use presets like `core`, `merge-requests`, `issues`, or `pipelines` to reduce it. |
 | Policy          | `GITLAB_DISABLED_CAPABILITIES`            | —                           | Capability denylist. Valid values: `read`, `write`, `delete`, `admin`, `graphql`.                           |
-| Policy          | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | `false`                     | Second gate for CI/CD variable tools; also select `ci-variables` or `all`.                                  |
+| Policy          | `GITLAB_ENABLE_CI_VARIABLE_TOOLS`         | `false`                     | Second gate for CI/CD and schedule variable tools; also select `ci-variables` or `all`.                     |
 | Policy          | `GITLAB_ALLOW_CI_VARIABLE_VALUES`         | `false`                     | Allow values only when a list/get call also passes `include_value=true`.                                    |
 | Policy          | `GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS`    | `false`                     | Second gate for Dependency Proxy tools; also select `dependency-proxy` or `all`.                            |
 | Policy          | `GITLAB_DENIED_TOOLS_REGEX`               | —                           | Regex denylist for tool names.                                                                              |

@@ -50,6 +50,7 @@ const defaultEnv: AppContext["env"] = {
   GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS: undefined,
   GITLAB_MCP_OAUTH_CLIENT_TTL_SECONDS: 2_592_000,
   GITLAB_MCP_OAUTH_CODE_TTL_SECONDS: 600,
+  GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS: false,
   GITLAB_OAUTH_AUTO_OPEN_BROWSER: false,
   GITLAB_OAUTH_SCOPES: "api",
   GITLAB_OAUTH_ALLOWED_GROUPS: [],
@@ -64,6 +65,9 @@ const defaultEnv: AppContext["env"] = {
   GITLAB_ENABLE_CI_VARIABLE_TOOLS: false,
   GITLAB_ALLOW_CI_VARIABLE_VALUES: false,
   GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS: false,
+  GITLAB_ENABLE_JMESPATH: false,
+  GITLAB_ENABLE_RAW_API: false,
+  GITLAB_ENABLE_ORBIT_TOOLS: false,
   GITLAB_DISABLED_CAPABILITIES: [],
   GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: false,
   GITLAB_RESPONSE_MODE: "json",
@@ -90,6 +94,7 @@ const defaultEnv: AppContext["env"] = {
   REMOTE_AUTHORIZATION: false,
   ENABLE_DYNAMIC_API_URL: false,
   HTTP_JSON_ONLY: false,
+  MCP_HTTP_MAX_BODY_BYTES: 2_097_152,
   SSE: false,
   SESSION_TIMEOUT_SECONDS: 3600,
   OAUTH_STATELESS_MODE: false,
@@ -134,6 +139,9 @@ export interface BuildContextOptions {
   enableCiVariableTools?: boolean;
   allowCiVariableValues?: boolean;
   enableDependencyProxyTools?: boolean;
+  enableJmespath?: boolean;
+  enableRawApi?: boolean;
+  enableOrbitTools?: boolean;
   deniedToolsRegex?: RegExp;
   disabledCapabilities?: ToolCapability[];
   enabledFeatures?: typeof defaultFeatures;
@@ -167,6 +175,9 @@ export function buildContext(overrides?: BuildContextOptions): AppContext {
       GITLAB_ENABLE_CI_VARIABLE_TOOLS: overrides?.enableCiVariableTools ?? false,
       GITLAB_ALLOW_CI_VARIABLE_VALUES: overrides?.allowCiVariableValues ?? false,
       GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS: overrides?.enableDependencyProxyTools ?? false,
+      GITLAB_ENABLE_JMESPATH: overrides?.enableJmespath ?? false,
+      GITLAB_ENABLE_RAW_API: overrides?.enableRawApi ?? false,
+      GITLAB_ENABLE_ORBIT_TOOLS: overrides?.enableOrbitTools ?? false,
       GITLAB_DISABLED_CAPABILITIES: overrides?.disabledCapabilities ?? [],
       GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: overrides?.allowGraphqlWithProjectScope ?? false,
       GITLAB_MAX_RESPONSE_BYTES: overrides?.maxBytes ?? 200_000,
@@ -225,4 +236,31 @@ export async function createLinkedPair(context: AppContext): Promise<{
   await client.connect(clientTransport);
 
   return { client, server, clientTransport, serverTransport, context };
+}
+
+/* ------------------------------------------------------------------ */
+/*  callTool                                                           */
+/* ------------------------------------------------------------------ */
+
+/** Call one tool on a fresh linked pair and close both transports. */
+export async function callToolWithContext(
+  context: AppContext,
+  name: string,
+  args: Record<string, unknown> = {}
+): Promise<Awaited<ReturnType<Client["callTool"]>>> {
+  const { client, clientTransport, serverTransport } = await createLinkedPair(context);
+  try {
+    return await client.callTool({ name, arguments: args });
+  } finally {
+    await clientTransport.close();
+    await serverTransport.close();
+  }
+}
+
+/** Parse the JSON text payload of a tool result. */
+export function parseToolText(result: Awaited<ReturnType<Client["callTool"]>>): unknown {
+  const text = (result.content as Array<{ type: string; text?: string }>).find(
+    (item) => item.type === "text"
+  )?.text;
+  return text === undefined ? undefined : JSON.parse(text);
 }

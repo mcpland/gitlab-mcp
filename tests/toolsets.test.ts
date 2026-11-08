@@ -24,6 +24,7 @@ describe("GitLab toolsets", () => {
       expect.arrayContaining(["wiki", "groups"])
     );
     expect(toolsetsForTool("gitlab_list_ci_catalog_resources")).toEqual(["ci-catalog"]);
+    expect(toolsetsForTool("gitlab_wait_for_job")).toEqual(["pipelines"]);
     expect(toolsetsForTool("gitlab_get_project_variable")).toEqual(
       expect.arrayContaining(["ci-variables", "projects"])
     );

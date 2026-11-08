@@ -1,0 +1,75 @@
+name: Bug report
+description: Report a defect in the MCP server.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report a security vulnerability here; use private vulnerability reporting instead.
+        Remove tokens, passwords, cookies, session IDs, and `Authorization`, `Private-Token`, or `Job-Token` headers from everything you paste.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Package version from your lockfile or `npm ls gitlab-mcp`; the health_check tool also reports it.
+      placeholder: "1.x.y"
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      description: Client name and version, such as Claude Code, Cursor, or VS Code.
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - stdio
+        - Streamable HTTP
+        - Streamable HTTP (stateless)
+        - Legacy SSE
+    validations:
+      required: true
+  - type: dropdown
+    id: auth
+    attributes:
+      label: Authentication
+      options:
+        - Personal access token
+        - CI job token
+        - Local OAuth (PKCE)
+        - Remote authorization headers
+        - MCP OAuth proxy
+        - Token script or file
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant settings
+      description: Non-secret settings that affect the bug, such as GITLAB_PERMISSION_MODE, GITLAB_TOOLSETS, or GITLAB_ALLOWED_PROJECT_IDS.
+      render: shell
+  - type: input
+    id: gitlab
+    attributes:
+      label: GitLab
+      description: gitlab.com or self-managed, with the GitLab version if known (the health_check tool with check_gitlab=true reports it).
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Tool name and arguments, what you expected, and what happened.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or tool output
+      render: text

@@ -42,6 +42,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS: undefined,
       GITLAB_MCP_OAUTH_CLIENT_TTL_SECONDS: 2_592_000,
       GITLAB_MCP_OAUTH_CODE_TTL_SECONDS: 600,
+      GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS: false,
       GITLAB_OAUTH_AUTO_OPEN_BROWSER: false,
       GITLAB_OAUTH_SCOPES: "api",
       GITLAB_OAUTH_ALLOWED_GROUPS: [],
@@ -56,6 +57,9 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       GITLAB_ENABLE_CI_VARIABLE_TOOLS: false,
       GITLAB_ALLOW_CI_VARIABLE_VALUES: false,
       GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS: false,
+      GITLAB_ENABLE_JMESPATH: false,
+      GITLAB_ENABLE_RAW_API: false,
+      GITLAB_ENABLE_ORBIT_TOOLS: false,
       GITLAB_DISABLED_CAPABILITIES: [],
       GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: false,
       GITLAB_RESPONSE_MODE: "json",
@@ -82,6 +86,7 @@ function buildContext(overrides?: { maxSessions?: number }): AppContext {
       REMOTE_AUTHORIZATION: false,
       ENABLE_DYNAMIC_API_URL: false,
       HTTP_JSON_ONLY: false,
+      MCP_HTTP_MAX_BODY_BYTES: 2_097_152,
       SSE: false,
       SESSION_TIMEOUT_SECONDS: 3600,
       OAUTH_STATELESS_MODE: false,
@@ -247,8 +252,29 @@ describe("http app pending session handling", () => {
     expect(response.status).toBe(413);
     expect(body.jsonrpc).toBe("2.0");
     expect(body.error?.code).toBe(-32013);
-    expect(body.error?.message).toContain("2mb");
+    expect(body.error?.message).toContain("2097152-byte limit");
     expect(running.pendingSessions.size).toBe(0);
+  });
+
+  it("honors a configured request body limit", async () => {
+    const context = buildContext();
+    context.env.MCP_HTTP_MAX_BODY_BYTES = 65_536;
+    running = await startServerForContext(context);
+
+    const response = await fetch(`${running.baseUrl}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { blob: "x".repeat(70_000) }
+      })
+    });
+    const body = (await response.json()) as { error?: { message?: string } };
+
+    expect(response.status).toBe(413);
+    expect(body.error?.message).toContain("65536-byte limit (MCP_HTTP_MAX_BODY_BYTES)");
   });
 
   it("releases pending session for invalid initial POST requests", async () => {
@@ -322,6 +348,17 @@ describe("http app pending session handling", () => {
 
     expect(body.permissionMode).toBe("modify");
     expect(body.readOnlyMode).toBe(false);
+  });
+
+  it("reports the server name and version for deployment checks", async () => {
+    running = await startServerForContext(buildContext());
+
+    const body = (await (await fetch(`${running.baseUrl}/healthz`)).json()) as {
+      server: string;
+      version: string;
+    };
+
+    expect(body).toMatchObject({ server: "http-app-test", version: "0.0.1" });
   });
 
   it("shutdown closes uninitialized pending sessions", async () => {
@@ -1211,6 +1248,35 @@ describe("http app MCP OAuth", () => {
     }
   });
 
+  it("advertises only the authorization_code grant when refresh tokens are disabled", async () => {
+    for (const serverUrl of ["https://mcp.example.com", "https://mcp.example.com/gitlab-mcp"]) {
+      const context = buildContext();
+      context.env.GITLAB_MCP_OAUTH = true;
+      context.env.GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS = true;
+      context.env.MCP_SERVER_URL = serverUrl;
+      context.env.GITLAB_PERSONAL_ACCESS_TOKEN = undefined;
+      running = await startServerForContext(context);
+
+      const paths = serverUrl.endsWith("/gitlab-mcp")
+        ? [
+            "/.well-known/oauth-authorization-server",
+            "/.well-known/oauth-authorization-server/gitlab-mcp"
+          ]
+        : ["/.well-known/oauth-authorization-server"];
+      for (const path of paths) {
+        const metadata = (await (await fetch(`${running.baseUrl}${path}`)).json()) as {
+          grant_types_supported?: string[];
+        };
+        expect(metadata.grant_types_supported, `${serverUrl} ${path}`).toEqual([
+          "authorization_code"
+        ]);
+      }
+
+      await running.close();
+      running = undefined;
+    }
+  });
+
   it("exposes OAuth metadata and rejects unauthenticated MCP requests", async () => {
     const context = buildContext();
     context.env.GITLAB_MCP_OAUTH = true;
@@ -1391,7 +1457,42 @@ describe("http app MCP OAuth", () => {
         scope: "api",
         state: "client-state"
       }).toString();
-      const authorize = await fetch(authorizeUrl, { redirect: "manual" });
+      const consentPage = await fetch(authorizeUrl, { redirect: "manual" });
+      expect(consentPage.status).toBe(200);
+      expect(consentPage.headers.get("x-frame-options")).toBe("DENY");
+      const consentHtml = await consentPage.text();
+      expect(consentHtml).toContain("HTTP integration client");
+      expect(consentHtml).toContain('action="https://mcp.example.com/gitlab-mcp/consent"');
+      const consentRequest = /name="request" value="([^"]+)"/.exec(consentHtml)?.[1];
+      const consentCsrf = /name="csrf" value="([^"]+)"/.exec(consentHtml)?.[1];
+      const csrfCookie = consentPage.headers.get("set-cookie")?.split(";")[0];
+      expect(csrfCookie).toBe(`mcp_oauth_consent_csrf=${consentCsrf}`);
+
+      const forgedConsent = await fetch(`${running.baseUrl}/gitlab-mcp/consent`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          request: consentRequest!,
+          csrf: consentCsrf!,
+          decision: "approve"
+        }),
+        redirect: "manual"
+      });
+      expect(forgedConsent.status).toBe(400);
+
+      const authorize = await fetch(`${running.baseUrl}/gitlab-mcp/consent`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          cookie: csrfCookie!
+        },
+        body: new URLSearchParams({
+          request: consentRequest!,
+          csrf: consentCsrf!,
+          decision: "approve"
+        }),
+        redirect: "manual"
+      });
       expect(authorize.status).toBe(302);
       const gitLabAuthorize = new URL(authorize.headers.get("location")!);
       expect(gitLabAuthorize.searchParams.get("client_id")).toBe("test-gitlab-oauth-app");

@@ -40,6 +40,54 @@ describe("GitLabAuthValidator", () => {
     expect(paths).toEqual(["/api/v4/user", "/api/v4/job"]);
   });
 
+  it("reports the token owner from /user and the job user from /job", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === "/api/v4/user") {
+        return Response.json({ id: 7, username: "alice" });
+      }
+      return Response.json({ id: 99, user: { id: 8 } });
+    });
+    const validator = new GitLabAuthValidator({ ttlMs: 30_000, timeoutMs: 5_000, fetchImpl });
+
+    await expect(
+      validator.authenticate({
+        apiUrl: "https://gitlab.example.com/api/v4",
+        header: "private-token",
+        token: "pat"
+      })
+    ).resolves.toEqual({ valid: true, principal: "user:7" });
+
+    fetchImpl.mockImplementation(async (input) =>
+      new URL(String(input)).pathname === "/api/v4/user"
+        ? new Response("forbidden", { status: 403 })
+        : Response.json({ id: 99, user: { id: 8 } })
+    );
+    await expect(
+      validator.authenticate({
+        apiUrl: "https://gitlab.example.com/api/v4",
+        header: "job-token",
+        token: "job"
+      })
+    ).resolves.toEqual({ valid: true, principal: "user:8" });
+  });
+
+  it("leaves the principal unset when GitLab returns no usable user id", async () => {
+    const validator = new GitLabAuthValidator({
+      ttlMs: 30_000,
+      timeoutMs: 5_000,
+      fetchImpl: vi.fn<typeof fetch>(async () => new Response("not json", { status: 200 }))
+    });
+
+    await expect(
+      validator.authenticate({
+        apiUrl: "https://gitlab.example.com/api/v4",
+        header: "private-token",
+        token: "pat"
+      })
+    ).resolves.toEqual({ valid: true, principal: undefined });
+  });
+
   it("caches positive and negative results for the short TTL", async () => {
     let now = 0;
     const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {

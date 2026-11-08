@@ -118,9 +118,12 @@ Membership is checked with the user's OAuth token against `GET /api/v4/groups` u
 
 ### Notes
 
-- The callback server listens for up to 3 minutes before timing out
+- The callback server listens for up to 3 minutes before timing out, and only on the loopback host named in `GITLAB_OAUTH_REDIRECT_URI` (`127.0.0.1`, `localhost`, or `[::1]`)
+- Callback requests with the wrong `state` are rejected with HTTP 400 without aborting the login in progress
 - Token files are stored with `0600` permissions
-- If refresh fails, the server falls back to interactive authorization
+- If GitLab rejects the refresh token (HTTP 400/401, for example `invalid_grant`), the server falls back to interactive authorization
+- Network errors, rate limits, and GitLab 5xx responses during refresh fail only the current call and keep the stored token, so a transient outage never opens a browser
+- Token endpoint failures are logged with the HTTP status and OAuth error code only, never the response text
 
 ---
 
@@ -276,8 +279,10 @@ The header host and port must match `GITLAB_API_URL` or `GITLAB_ALLOWED_HOSTS`. 
 1. Client sends a request with auth headers
 2. The server extracts the token and required API URL (when dynamic API URLs are enabled) from headers
 3. Auth context is stored in `AsyncLocalStorage` for the duration of the request
-4. All GitLab API calls within that request use the per-session credentials
+4. All GitLab API calls within that request use the credential sent with that request
 5. Requests missing required headers are rejected before tool execution
+
+Stateful sessions are bound to the GitLab user that initialized them (the user ID from `GET /user`, the job's user for job tokens, or `resource_owner_id` for MCP OAuth bearer tokens, combined with the API URL). A `POST`, `GET`, or `DELETE` that presents another user's credential with that `Mcp-Session-Id` receives the same `404 Unknown session` as an unknown ID and cannot replace the stored credential. A rotated token of the same user keeps working. When GitLab returns no user ID, the session is bound to the exact token. Logs record a `sha256:` digest prefix instead of the raw session ID.
 
 ### MCP OAuth Discovery
 
@@ -294,7 +299,9 @@ Public MCP OAuth issuers must use HTTPS. Plain HTTP is accepted only for loopbac
 
 Create a normal GitLab OAuth application before starting the server. Register the single fixed callback `<MCP_SERVER_URL without trailing slash>/callback` (for a prefixed issuer, for example `https://mcp.example.com/gitlab-mcp/callback`) and permit the configured `GITLAB_OAUTH_SCOPES`. Set `GITLAB_OAUTH_APP_SECRET` only for a confidential application. The proxy intentionally does not call GitLab `/oauth/register`: GitLab dynamically registered applications cannot obtain the `api` or `read_api` scope needed by this server.
 
-The HTTP server exposes OAuth metadata plus local authorize/token/register/revoke and fixed callback endpoints. DCR returns an encrypted virtual client ID. The proxy uses its pre-registered GitLab app and a separate PKCE challenge, then binds the resulting proxy code to the virtual client, exact redirect URI, and client PKCE verifier. The encrypted proxy code contains the still-single-use GitLab authorization code, so GitLab enforces replay rejection when `/token` performs the exchange. Returned refresh tokens are encrypted and bound to the same virtual client.
+The HTTP server exposes OAuth metadata plus local authorize/token/register/revoke and fixed callback endpoints. DCR returns an encrypted virtual client ID. The proxy uses its pre-registered GitLab app and a separate PKCE challenge, then binds the resulting proxy code to the virtual client, exact redirect URI, and client PKCE verifier. The encrypted proxy code contains the still-single-use GitLab authorization code, so GitLab enforces replay rejection when `/token` performs the exchange. Returned refresh tokens are encrypted and bound to the same virtual client. When GitLab rejects a code or refresh token, `/token` answers `invalid_grant`; when GitLab is unavailable or rate-limits the exchange (HTTP 5xx or 429), it answers `server_error` so clients retry instead of discarding a still-valid refresh token.
+
+Before redirecting to GitLab, `/authorize` shows a consent page that names the requesting client, its redirect URI host, the GitLab instance, and the scopes. Every dynamically registered client shares one GitLab application, and GitLab may skip its own consent screen for an application the user already authorized, so without this step a link to `/authorize` with an attacker-registered client could deliver the user's authorization to the attacker (the confused-deputy problem in the MCP security best practices). The form posts to `<MCP_SERVER_URL>/consent` and is protected by a CSRF value that must match both an `HttpOnly`, `SameSite=Strict` cookie and the encrypted request. The page cannot be framed (`X-Frame-Options: DENY`, `frame-ancestors 'none'`). Denying returns `access_denied` to the client. An approval is remembered per browser for the same client and exact redirect URI for the virtual-client TTL.
 
 `/mcp` accepts only tokens whose GitLab token-info response identifies the configured application and contains every configured scope. `Private-Token` and `Job-Token` headers remain supported as validated direct bypass headers only when `GITLAB_OAUTH_ALLOWED_GROUPS` is empty.
 

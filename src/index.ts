@@ -8,6 +8,7 @@ import { logger } from "./lib/logger.js";
 import { configureNetworkRuntime } from "./lib/network.js";
 import { OutputFormatter } from "./lib/output.js";
 import { ToolPolicyEngine } from "./lib/policy.js";
+import { loadResponseMasker } from "./lib/response-masking.js";
 import { compileDeniedToolsRegex } from "./lib/regex.js";
 import { GitLabRequestRuntime } from "./lib/request-runtime.js";
 import { createMcpServer } from "./server/build-server.js";
@@ -54,7 +55,8 @@ async function main(): Promise<void> {
       responseMode: env.GITLAB_RESPONSE_MODE,
       maxBytes: env.GITLAB_MAX_RESPONSE_BYTES
     }),
-    allowLocalFileTools: true
+    allowLocalFileTools: true,
+    responseMasker: loadResponseMasker(env.GITLAB_RESPONSE_MASKING_FILE, logger)
   };
 
   const server = createMcpServer(context);

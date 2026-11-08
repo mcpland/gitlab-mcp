@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  encodeGitLabPathSegment,
   encodeGitLabGroupId,
   encodeGitLabNamespaceId,
   encodeGitLabProjectId,
@@ -130,5 +131,23 @@ describe("encodeGitLabSlashPath", () => {
     expect(() => encodeGitLabSlashPath(input, "artifact_path")).toThrow(
       /Invalid GitLab artifact_path/u
     );
+  });
+});
+
+describe("encodeGitLabPathSegment", () => {
+  it("encodes opaque values as one segment", () => {
+    expect(encodeGitLabPathSegment("42")).toBe("42");
+    expect(encodeGitLabPathSegment("feature/x")).toBe("feature%2Fx");
+    expect(encodeGitLabPathSegment("v1.2.0")).toBe("v1.2.0");
+    expect(encodeGitLabPathSegment("...")).toBe("...");
+    expect(encodeGitLabPathSegment("%2E%2E")).toBe("%252E%252E");
+  });
+
+  it("rejects empty and dot-segment values that URL resolution would collapse", () => {
+    for (const value of ["", ".", ".."]) {
+      expect(() => encodeGitLabPathSegment(value, "note_id"), JSON.stringify(value)).toThrow(
+        "Invalid GitLab note_id"
+      );
+    }
   });
 });

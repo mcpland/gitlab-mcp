@@ -7,7 +7,9 @@ import type { GitLabToolDefinition } from "../src/tools/gitlab.js";
 
 const EXPLICIT_ENABLE_FLAGS = {
   ciVariables: "GITLAB_ENABLE_CI_VARIABLE_TOOLS=true",
-  dependencyProxy: "GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS=true"
+  dependencyProxy: "GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS=true",
+  rawApi: "GITLAB_ENABLE_RAW_API=true",
+  orbit: "GITLAB_ENABLE_ORBIT_TOOLS=true"
 } as const;
 
 export function describeToolAvailability(definition: GitLabToolDefinition): string {

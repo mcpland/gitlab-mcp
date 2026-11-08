@@ -96,6 +96,7 @@ const envSchema = z.object({
     .max(31_536_000)
     .default(2_592_000),
   GITLAB_MCP_OAUTH_CODE_TTL_SECONDS: z.coerce.number().int().min(60).max(3_600).default(600),
+  GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS: z.enum(["true", "false"]).default("false"),
   GITLAB_OAUTH_CLIENT_ID: z.string().optional(),
   GITLAB_OAUTH_CLIENT_SECRET: z.string().optional(),
   GITLAB_OAUTH_GITLAB_URL: z.string().optional(),
@@ -139,6 +140,10 @@ const envSchema = z.object({
   GITLAB_AUTH_VALIDATION_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
   GITLAB_AUTH_VALIDATION_TTL_SECONDS: z.coerce.number().int().min(1).max(300).default(30),
   GITLAB_ERROR_DETAIL_MODE: errorDetailModeSchema.optional(),
+  GITLAB_RESPONSE_MASKING_FILE: optionalNonEmptyString,
+  GITLAB_ENABLE_JMESPATH: z.enum(["true", "false"]).default("false"),
+  GITLAB_ENABLE_RAW_API: z.enum(["true", "false"]).default("false"),
+  GITLAB_ENABLE_ORBIT_TOOLS: z.enum(["true", "false"]).default("false"),
   GITLAB_AUTH_COOKIE_PATH: z.string().optional(),
   GITLAB_COOKIE_WARMUP_PATH: z.string().default("/user"),
   GITLAB_CLOUDFLARE_BYPASS: z.enum(["true", "false"]).default("false"),
@@ -170,6 +175,7 @@ const envSchema = z.object({
   HTTP_HOST: z.string().min(1).default("127.0.0.1"),
   HTTP_PORT: z.coerce.number().int().min(1).max(65_535).default(3333),
   HTTP_JSON_ONLY: z.enum(["true", "false"]).default("false"),
+  MCP_HTTP_MAX_BODY_BYTES: z.coerce.number().int().min(65_536).max(52_428_800).default(2_097_152),
   SSE: z.enum(["true", "false"]).default("false")
 });
 
@@ -191,13 +197,7 @@ if (rawApiUrls.length === 0) {
   throw new Error("GITLAB_API_URL must contain at least one URL");
 }
 
-const normalizedApiUrls = rawApiUrls.map((item) => {
-  try {
-    return normalizeApiUrl(item);
-  } catch {
-    throw new Error(`Invalid GITLAB_API_URL entry: '${item}'`);
-  }
-});
+const normalizedApiUrls = rawApiUrls.map((item, index) => normalizeConfiguredApiUrl(item, index));
 
 if (data.ENABLE_DYNAMIC_API_URL === "true" && data.REMOTE_AUTHORIZATION !== "true") {
   throw new Error("ENABLE_DYNAMIC_API_URL=true requires REMOTE_AUTHORIZATION=true");
@@ -254,6 +254,10 @@ export const env = {
     data.GITLAB_ERROR_DETAIL_MODE ?? (data.NODE_ENV === "production" ? "safe" : "full"),
   GITLAB_USE_OAUTH: parseBoolean(data.GITLAB_USE_OAUTH, false),
   GITLAB_MCP_OAUTH: parseBoolean(data.GITLAB_MCP_OAUTH, false),
+  GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS: parseBoolean(
+    data.GITLAB_MCP_OAUTH_DISABLE_REFRESH_TOKENS,
+    false
+  ),
   GITLAB_OAUTH_AUTO_OPEN_BROWSER: parseBoolean(data.GITLAB_OAUTH_AUTO_OPEN_BROWSER, true),
   GITLAB_OAUTH_ALLOWED_GROUPS: oauthAllowedGroups,
   GITLAB_CLOUDFLARE_BYPASS: parseBoolean(data.GITLAB_CLOUDFLARE_BYPASS, false),
@@ -286,6 +290,9 @@ export const env = {
     data.GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS,
     false
   ),
+  GITLAB_ENABLE_JMESPATH: parseBoolean(data.GITLAB_ENABLE_JMESPATH, false),
+  GITLAB_ENABLE_RAW_API: parseBoolean(data.GITLAB_ENABLE_RAW_API, false),
+  GITLAB_ENABLE_ORBIT_TOOLS: parseBoolean(data.GITLAB_ENABLE_ORBIT_TOOLS, false),
   GITLAB_DISABLED_CAPABILITIES: parseCapabilities(data.GITLAB_DISABLED_CAPABILITIES),
   GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: parseBoolean(
     data.GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE,
@@ -298,10 +305,37 @@ export const env = {
 
 export type AppEnv = typeof env;
 
+/**
+ * Validate one GITLAB_API_URL entry without ever echoing it: an entry may
+ * embed credentials (https://user:token@host), and startup errors end up in
+ * process logs and supervisor output.
+ */
+function normalizeConfiguredApiUrl(rawUrl: string, index: number): string {
+  const label = `GITLAB_API_URL entry #${index + 1}`;
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error(`Invalid ${label}: expected an absolute http(s) URL`);
+  }
+
+  if (!isHttpUrl(url)) {
+    throw new Error(`Invalid ${label}: only http and https URLs are supported`);
+  }
+
+  if (url.username || url.password) {
+    throw new Error(
+      `${label} (${url.protocol}//${url.host}) must not include credentials; configure GITLAB_PERSONAL_ACCESS_TOKEN, GITLAB_JOB_TOKEN, OAuth, or remote authorization instead`
+    );
+  }
+
+  return normalizeApiUrl(rawUrl);
+}
+
 function normalizeApiUrl(rawUrl: string): string {
   const url = new URL(rawUrl);
   if (!isHttpUrl(url)) {
-    throw new Error(`Invalid protocol in GITLAB_API_URL entry: '${rawUrl}'`);
+    throw new Error("Invalid protocol in GITLAB_API_URL entry");
   }
   const pathname = url.pathname.replace(/\/+$/, "");
 

@@ -18,6 +18,7 @@ import {
   type PushFileAction
 } from "../lib/gitlab-client.js";
 import {
+  encodeGitLabPathSegment,
   encodeGitLabProjectId,
   encodeGitLabSlashPath,
   isGitLabProjectIdentityAllowed
@@ -67,44 +68,97 @@ import {
   getPaginationMetadata
 } from "../lib/pagination.js";
 import { redactSuccessfulResponse } from "../lib/redact-success.js";
+import { MAX_JOB_TRACE_CONTEXT_LINES, MAX_JOB_TRACE_MAX_MATCHES } from "../lib/job-trace-search.js";
+import {
+  applyJmespath,
+  assertValidJmespath,
+  JMESPATH_ARGUMENT,
+  MAX_JMESPATH_LENGTH
+} from "../lib/result-filter.js";
 import { sanitizeToolArguments } from "../lib/sanitize.js";
+import { classifyTransportFailure, describeTransportFailure } from "../lib/transport-error.js";
+import { nextStepForGitLabStatus, nextStepForMessage } from "../lib/error-hints.js";
 import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
+import { API_REQUEST_TOOL_NAME, apiRequestToolDefinitions } from "./api-request.js";
+import { deploymentToolDefinitions } from "./deployments.js";
+import { environmentToolDefinitions } from "./environments.js";
+import { GROUP_MILESTONE_TOOL_NAMES, groupMilestoneToolDefinitions } from "./group-milestones.js";
+import { GROUP_ITERATION_TOOL_NAMES, iterationToolDefinitions } from "./iterations.js";
+import { mergeRequestRebaseToolDefinitions } from "./merge-request-rebase.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
+import { ORBIT_TOOL_NAMES, orbitToolDefinitions } from "./orbit.js";
+import { pipelineJobToolDefinitions } from "./pipeline-jobs.js";
+import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
+import { pipelineTriggerToolDefinitions } from "./pipeline-triggers.js";
+import { pipelineToolDefinitions } from "./pipelines.js";
+import { protectedTagToolDefinitions } from "./protected-tags.js";
+import { runnerToolDefinitions } from "./runners.js";
+import { snippetToolDefinitions } from "./snippets.js";
+import { vulnerabilityToolDefinitions } from "./vulnerabilities.js";
+import {
+  adminCapabilities,
+  adminDeleteCapabilities,
+  ciVariableKeySchema,
+  executeGraphqlData,
+  adminGraphqlCapabilities,
+  deleteCapabilities,
+  deleteGraphqlCapabilities,
+  getBoolean,
+  getIdString,
+  getNumber,
+  getOptionalArray,
+  getOptionalBoolean,
+  getOptionalNumber,
+  getOptionalNumberArray,
+  getOptionalRecord,
+  getOptionalString,
+  getOptionalStringArray,
+  getRequiredStringArray,
+  getString,
+  hasValue,
+  isObjectRecord,
+  isRecord,
+  jsonBody,
+  omit,
+  optionalBoolean,
+  optionalNumber,
+  optionalNumberArray,
+  optionalPositiveIntegerFromEmptyString,
+  optionalRecord,
+  optionalString,
+  optionalStringArray,
+  optionalStringOrNumber,
+  optionalStringOrStringArray,
+  paginationShape,
+  pickPresentFields,
+  pickRecordFields,
+  projectApiPath,
+  readCapabilities,
+  readGraphqlCapabilities,
+  requireArrayValue,
+  resolveExplicitProjectId,
+  resolveOptionalExplicitProjectId,
+  resolveProjectId,
+  toCsvValue,
+  toQuery,
+  writeCapabilities,
+  writeGraphqlCapabilities,
+  type GitLabToolDefinition,
+  type GitLabToolDefinitionInput,
+  type GitLabToolScopeMetadata,
+  type ToolArgs,
+  type ToolSchemaShape
+} from "./shared.js";
 
-type ToolArgs = Record<string, unknown>;
-
-type ToolSchemaShape = Record<string, z.ZodTypeAny>;
-
-export interface GitLabToolDefinition {
-  name: string;
-  title: string;
-  description: string;
-  capabilities: ToolCapability[];
-  scope: GitLabToolScopeMetadata;
-  requiresAuth?: boolean;
-  requiresFeature?: "wiki" | "milestone" | "pipeline" | "release";
-  requiresExplicitEnable?: "ciVariables" | "dependencyProxy";
-  requiresLocalFileTools?: boolean;
-  compatibilityAlias?: boolean;
-  sensitiveArguments?: readonly string[];
-  inputSchema?: ToolSchemaShape;
-  handler: (args: ToolArgs, context: AppContext) => Promise<unknown>;
-}
-
-type GitLabToolDefinitionInput = Omit<GitLabToolDefinition, "scope">;
-
-export type GitLabToolScope = "project" | "group" | "global" | "rawGraphQL";
-
-export interface GitLabToolScopeMetadata {
-  kind: GitLabToolScope;
-  projectIdArguments?: readonly string[];
-  groupIdArguments?: readonly string[];
-  projectScopedMode: "allow" | "filter" | "deny";
-}
+export type { GitLabToolDefinition, GitLabToolScope, GitLabToolScopeMetadata } from "./shared.js";
 
 const GROUP_SCOPED_TOOL_NAMES = new Set([
+  ...GROUP_MILESTONE_TOOL_NAMES,
+  ...GROUP_ITERATION_TOOL_NAMES,
   "gitlab_create_group",
+  "gitlab_list_group_members",
+  "gitlab_list_group_merge_requests",
   "gitlab_list_group_projects",
   "gitlab_list_group_iterations",
   "gitlab_search_group_code",
@@ -132,6 +186,8 @@ const RAW_GRAPHQL_TOOL_NAMES = new Set([
 
 const GLOBAL_TOOL_PROJECT_SCOPE_MODES = new Map<string, "allow" | "filter" | "deny">([
   ["gitlab_discover_tools", "allow"],
+  [API_REQUEST_TOOL_NAME, "deny"],
+  ...ORBIT_TOOL_NAMES.map((name) => [name, "deny"] as const),
   ["gitlab_list_projects", "filter"],
   ["gitlab_search_repositories", "filter"],
   ["gitlab_search_code", "filter"],
@@ -152,6 +208,9 @@ const GLOBAL_TOOL_PROJECT_SCOPE_MODES = new Map<string, "allow" | "filter" | "de
 ]);
 
 const PROJECT_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
+  ["gitlab_create_webhook", ["project_id"]],
+  ["gitlab_update_webhook", ["project_id"]],
+  ["gitlab_delete_webhook", ["project_id"]],
   ["gitlab_create_merge_request", ["project_id", "target_project_id"]],
   ["gitlab_create_issue_link", ["project_id", "target_project_id"]],
   ["gitlab_update_work_item", ["project_id", "parent_project_id"]],
@@ -164,35 +223,14 @@ const PROJECT_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
 
 const GROUP_ID_ARGUMENTS_BY_TOOL = new Map<string, readonly string[]>([
   ["gitlab_create_group", []],
+  ["gitlab_create_webhook", ["group_id"]],
+  ["gitlab_update_webhook", ["group_id"]],
+  ["gitlab_delete_webhook", ["group_id"]],
   ["gitlab_list_webhooks", ["group_id"]],
   ["gitlab_list_webhook_events", ["group_id"]],
   ["gitlab_get_webhook_event", ["group_id"]]
 ]);
 
-const readCapabilities: ToolCapability[] = ["read"];
-const writeCapabilities: ToolCapability[] = ["write"];
-const deleteCapabilities: ToolCapability[] = ["delete"];
-const adminCapabilities: ToolCapability[] = ["admin"];
-const adminGraphqlCapabilities: ToolCapability[] = ["admin", "graphql"];
-const adminDeleteCapabilities: ToolCapability[] = ["admin", "delete"];
-const readGraphqlCapabilities: ToolCapability[] = ["read", "graphql"];
-const writeGraphqlCapabilities: ToolCapability[] = ["write", "graphql"];
-const deleteGraphqlCapabilities: ToolCapability[] = ["delete", "graphql"];
-
-const optionalString = nullableOptional(z.string());
-const optionalNumber = nullableOptional(z.number());
-const optionalPositiveIntegerFromEmptyString = z
-  .preprocess(
-    (value) => (value === "" || value === null ? undefined : value),
-    z.coerce.number().int().positive().optional()
-  )
-  .optional();
-const optionalBoolean = nullableOptional(z.boolean());
-const optionalStringArray = nullableOptional(z.array(z.string()));
-const optionalNumberArray = nullableOptional(z.array(z.number()));
-const optionalStringOrNumber = nullableOptional(z.union([z.string(), z.number()]));
-const optionalStringOrStringArray = nullableOptional(z.union([z.string(), z.array(z.string())]));
-const optionalRecord = nullableOptional(z.record(z.string(), z.unknown()));
 const pipelineInputValueSchema = z.union([
   z.string(),
   z.number(),
@@ -203,17 +241,76 @@ const optionalPipelineInputsRecord = nullableOptional(
   z.record(z.string(), pipelineInputValueSchema)
 );
 const excludedFilePatternsSchema = nullableOptional(z.array(z.string().min(1).max(200)).max(20));
+// GitLab milestone IDs; 0 removes the milestone. Numeric strings are accepted,
+// while "" and null mean "not provided" rather than coercing to 0.
+const optionalMilestoneIdSchema = z
+  .preprocess(
+    (value) => (value === "" || value === null ? undefined : value),
+    z.coerce.number().int().min(0).optional()
+  )
+  .optional();
 
-const paginationShape = {
-  page: optionalNumber,
-  per_page: optionalNumber
-} satisfies ToolSchemaShape;
 const protectedBranchAccessLevelSchema = z.union([
   z.literal(0),
   z.literal(30),
   z.literal(40),
   z.literal(60)
 ]);
+function protectedBranchAccessEntrySchema(allowDeployKeys: boolean) {
+  return z
+    .object({
+      id: z.number().int().positive().optional(),
+      _destroy: optionalBoolean,
+      access_level: protectedBranchAccessLevelSchema.optional(),
+      user_id: z.number().int().positive().optional(),
+      group_id: z.number().int().positive().optional(),
+      ...(allowDeployKeys ? { deploy_key_id: z.number().int().positive().optional() } : {})
+    })
+    .superRefine((entry, issue) => {
+      const record = entry as Record<string, unknown>;
+      const targets = ["access_level", "user_id", "group_id", "deploy_key_id"].filter(
+        (key) => record[key] !== undefined
+      );
+      if (record._destroy === true && record.id === undefined) {
+        issue.addIssue({ code: "custom", message: "_destroy requires the entry id" });
+      }
+      if (record.id === undefined && targets.length !== 1) {
+        issue.addIssue({
+          code: "custom",
+          message: `a new entry needs exactly one of access_level, user_id, group_id${
+            allowDeployKeys ? ", deploy_key_id" : ""
+          }`
+        });
+      }
+    });
+}
+
+/**
+ * Refuse protected-branch updates that would remove every unprotect grant,
+ * which would leave the rule unremovable by anyone but an administrator.
+ */
+function assertUnprotectAccessRemains(current: unknown, changes: unknown[]): void {
+  const existing =
+    isRecord(current) && Array.isArray(current.unprotect_access_levels)
+      ? current.unprotect_access_levels.filter(isRecord)
+      : [];
+  const destroyed = new Set(
+    changes
+      .filter((change) => isRecord(change) && change._destroy === true && change.id !== undefined)
+      .map((change) => String((change as Record<string, unknown>).id))
+  );
+  const added = changes.filter(
+    (change) => isRecord(change) && change.id === undefined && change._destroy !== true
+  );
+  const remaining = existing.filter((entry) => !destroyed.has(String(entry.id)));
+
+  if (remaining.length + added.length === 0) {
+    throw new Error(
+      "Refusing to remove every allowed_to_unprotect entry; add a replacement entry in the same request"
+    );
+  }
+}
+
 const protectedBranchUnprotectAccessLevelSchema = z.union([
   z.literal(30),
   z.literal(40),
@@ -241,7 +338,6 @@ const workItemTypeSchema = z.preprocess(
 const optionalWorkItemType = nullableOptional(workItemTypeSchema);
 const workItemIidSchema = z.coerce.number().int().positive();
 const optionalCoercedNumber = nullableOptional(z.coerce.number());
-const optionalCoercedBoolean = nullableOptional(z.coerce.boolean());
 const workItemReferenceSchema = z.object({
   project_id: optionalProjectIdSchema,
   iid: workItemIidSchema
@@ -258,11 +354,43 @@ const customFieldValueSchema = z.object({
   selected_option_ids: optionalStringArray,
   date_value: optionalString
 });
-const ciVariableKeySchema = z
+const webhookUrlSchema = z
   .string()
-  .min(1)
-  .max(255)
-  .regex(/^[A-Za-z0-9_]+$/, "CI/CD variable keys may contain only letters, digits, and '_'");
+  .url()
+  .max(2048)
+  .regex(/^https?:\/\//iu, "url must use http or https");
+const webhookEventFlags = [
+  "push_events",
+  "tag_push_events",
+  "merge_requests_events",
+  "issues_events",
+  "confidential_issues_events",
+  "note_events",
+  "confidential_note_events",
+  "job_events",
+  "pipeline_events",
+  "wiki_page_events",
+  "deployment_events",
+  "releases_events",
+  "feature_flag_events",
+  "emoji_events",
+  "resource_access_token_events",
+  "member_events",
+  "project_events",
+  "subgroup_events",
+  "vulnerability_events",
+  "enable_ssl_verification"
+] as const;
+const webhookSettingsShape: ToolSchemaShape = {
+  name: nullableOptional(z.string().max(255)),
+  description: nullableOptional(z.string().max(2048)),
+  token: nullableOptional(z.string().max(255)),
+  push_events_branch_filter: optionalString,
+  branch_filter_strategy: z.enum(["wildcard", "regex", "all_branches"]).optional(),
+  ...Object.fromEntries(webhookEventFlags.map((flag) => [flag, optionalBoolean]))
+};
+const WEBHOOK_SETTING_FIELDS = Object.keys(webhookSettingsShape);
+const webhookSensitiveArguments = ["token", "url"] as const;
 const ciVariableFilterSchema = z
   .object({
     environment_scope: z.string().min(1)
@@ -279,6 +407,13 @@ const ciVariableMutationFields: ToolSchemaShape = {
 };
 const ciVariableSensitiveArguments = ["value"] as const;
 
+const jmespathArgumentSchema = nullableOptional(z.string().max(MAX_JMESPATH_LENGTH));
+
+function readJmespathArgument(args: ToolArgs | undefined): string | undefined {
+  const value = args?.[JMESPATH_ARGUMENT];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 function isExplicitlyEnabled(definition: GitLabToolDefinition, context: AppContext): boolean {
   if (definition.requiresExplicitEnable === "ciVariables") {
     return context.env.GITLAB_ENABLE_CI_VARIABLE_TOOLS;
@@ -286,6 +421,14 @@ function isExplicitlyEnabled(definition: GitLabToolDefinition, context: AppConte
 
   if (definition.requiresExplicitEnable === "dependencyProxy") {
     return context.env.GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS;
+  }
+
+  if (definition.requiresExplicitEnable === "rawApi") {
+    return context.env.GITLAB_ENABLE_RAW_API;
+  }
+
+  if (definition.requiresExplicitEnable === "orbit") {
+    return context.env.GITLAB_ENABLE_ORBIT_TOOLS;
   }
 
   return true;
@@ -321,16 +464,26 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
       continue;
     }
 
+    const jmespathEnabled = context.env.GITLAB_ENABLE_JMESPATH === true;
     server.registerTool(
       definition.name,
       {
         title: definition.title,
         description: definition.description,
-        inputSchema: definition.inputSchema ?? {},
-        annotations: annotationsForCapabilities(definition.capabilities)
+        inputSchema: jmespathEnabled
+          ? { ...(definition.inputSchema ?? {}), [JMESPATH_ARGUMENT]: jmespathArgumentSchema }
+          : (definition.inputSchema ?? {}),
+        annotations: definition.annotations ?? annotationsForCapabilities(definition.capabilities)
       },
-      async (rawArgs) => {
+      async (rawArgs, extra) => {
         try {
+          const expression = jmespathEnabled
+            ? readJmespathArgument(rawArgs as ToolArgs | undefined)
+            : undefined;
+          if (expression) {
+            // Validate before the handler so a write tool never runs with a bad filter.
+            assertValidJmespath(expression);
+          }
           context.policy.assertCanExecute({
             name: definition.name,
             capabilities: definition.capabilities,
@@ -341,10 +494,21 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
             assertAuthReady(context);
           }
 
-          const args = sanitizeToolArguments(definition.name, (rawArgs ?? {}) as ToolArgs);
+          const args = sanitizeToolArguments(
+            definition.name,
+            omit((rawArgs ?? {}) as ToolArgs, [JMESPATH_ARGUMENT])
+          );
           assertToolCanExecuteInProjectScope(definition, args, context);
-          const result = redactSuccessfulResponse(await definition.handler(args, context));
-          const pagination = getPaginationMetadata(result);
+          const redacted = redactSuccessfulResponse(
+            await definition.handler(args, context, { signal: extra.signal })
+          );
+          const masked = context.responseMasker
+            ? context.responseMasker.maskValue(redacted)
+            : redacted;
+          const pagination = getPaginationMetadata(masked);
+          // Filter after masking so a predicate cannot probe masked values.
+          const filtered = expression ? applyJmespath(masked, expression) : undefined;
+          const result = filtered?.ok ? filtered.value : masked;
           const formatted = context.formatter.format(result);
           const structuredResult = formatted.truncated
             ? { truncated: true }
@@ -362,15 +526,23 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
               meta: {
                 truncated: formatted.truncated,
                 bytes: formatted.bytes,
-                ...(pagination ? { pagination } : {})
+                ...(pagination ? { pagination } : {}),
+                ...(filtered && !filtered.ok
+                  ? {
+                      jmespath_error: `The tool succeeded but the jmespath filter failed, so the unfiltered result is returned: ${filtered.error}`
+                    }
+                  : {})
               }
             }
           };
         } catch (error) {
-          return toToolError(error, context, {
+          const errorResult = toToolError(error, context, {
             extraKeys: definition.sensitiveArguments,
             extraValues: getSensitiveArgumentValues(rawArgs, definition.sensitiveArguments)
           });
+          return context.responseMasker
+            ? { ...errorResult, content: context.responseMasker.maskValue(errorResult.content) }
+            : errorResult;
         }
       }
     );
@@ -628,6 +800,34 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_list_group_members",
+      title: "List Group Members",
+      description:
+        "List direct group members by default, for example to find reviewers or assignees by name; set include_inheritance=true to include members inherited from parent groups.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        group_id: z.string().min(1),
+        query: optionalString,
+        user_ids: optionalNumberArray,
+        skip_users: optionalNumberArray,
+        include_inheritance: optionalBoolean,
+        ...paginationShape
+      },
+      handler: async (args, context) => {
+        const userIds = getOptionalNumberArray(args, "user_ids");
+        const skipUsers = getOptionalNumberArray(args, "skip_users");
+        const includeInheritance = getOptionalBoolean(args, "include_inheritance");
+        return context.gitlab.listGroupMembers(getString(args, "group_id"), {
+          query: {
+            ...toQuery(omit(args, ["group_id", "user_ids", "skip_users", "include_inheritance"])),
+            ...(userIds ? { user_ids: userIds } : {}),
+            ...(skipUsers ? { skip_users: skipUsers } : {})
+          },
+          ...(includeInheritance !== undefined ? { includeInheritance } : {})
+        });
+      }
+    },
+    {
       name: "gitlab_list_group_projects",
       title: "List Group Projects",
       description: "List projects under a group.",
@@ -798,13 +998,16 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_get_repository_tree",
       title: "Get Repository Tree",
-      description: "List files and directories in a repository tree.",
+      description:
+        "List files and directories in a repository tree. For large trees pass pagination=keyset and follow next_page_token as page_token; offset page/per_page also work.",
       capabilities: readCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
         path: optionalString,
         ref: optionalRefLikeSchema,
         recursive: optionalBoolean,
+        pagination: z.enum(["keyset"]).optional(),
+        page_token: nullableOptional(z.string().min(1).max(1024)),
         ...paginationShape
       },
       handler: async (args, context) => {
@@ -1096,6 +1299,48 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         })
     },
     {
+      name: "gitlab_update_protected_branch",
+      title: "Update Protected Branch",
+      description:
+        "Change an existing branch protection rule in place: allow_force_push, code_owner_approval_required, and allowed_to_push/allowed_to_merge/allowed_to_unprotect entries. Add an entry with one of access_level, user_id, group_id, or deploy_key_id (push only); change one with its id; remove one with {id, _destroy: true}. Read entry ids with gitlab_get_protected_branch. Changes that would leave nobody allowed to unprotect are refused.",
+      capabilities: adminCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        branch: protectedBranchNameSchema,
+        allow_force_push: optionalBoolean,
+        code_owner_approval_required: optionalBoolean,
+        allowed_to_push: nullableOptional(z.array(protectedBranchAccessEntrySchema(true)).max(50)),
+        allowed_to_merge: nullableOptional(
+          z.array(protectedBranchAccessEntrySchema(false)).max(50)
+        ),
+        allowed_to_unprotect: nullableOptional(
+          z.array(protectedBranchAccessEntrySchema(false)).max(50)
+        )
+      },
+      handler: async (args, context) => {
+        const projectId = resolveProjectId(args, context, true);
+        const branch = getString(args, "branch");
+        const payload = pickPresentFields(args, [
+          "allow_force_push",
+          "code_owner_approval_required",
+          "allowed_to_push",
+          "allowed_to_merge",
+          "allowed_to_unprotect"
+        ]);
+        if (Object.keys(payload).length === 0) {
+          throw new Error("Provide at least one protected branch setting to update");
+        }
+
+        const unprotectChanges = getOptionalArray(args, "allowed_to_unprotect");
+        if (unprotectChanges && unprotectChanges.length > 0) {
+          const current = await context.gitlab.getProtectedBranch(projectId, branch);
+          assertUnprotectAccessRemains(current, unprotectChanges);
+        }
+
+        return context.gitlab.updateProtectedBranch(projectId, branch, payload);
+      }
+    },
+    {
       name: "gitlab_unprotect_branch",
       title: "Unprotect Branch",
       description:
@@ -1340,6 +1585,62 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_list_group_merge_requests",
+      title: "List Group Merge Requests",
+      description:
+        "List merge requests across every project in a group and its subgroups, with the same filters as gitlab_list_merge_requests. non_archived=true skips archived projects.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        group_id: z.string().min(1),
+        assignee_id: optionalStringOrNumber,
+        assignee_username: optionalString,
+        author_id: optionalStringOrNumber,
+        author_username: optionalString,
+        reviewer_id: optionalStringOrNumber,
+        reviewer_username: optionalString,
+        approved_by_usernames: optionalStringArray,
+        created_after: optionalString,
+        created_before: optionalString,
+        updated_after: optionalString,
+        updated_before: optionalString,
+        labels: optionalStringOrStringArray,
+        milestone: optionalString,
+        state: optionalString,
+        scope: optionalString,
+        order_by: z
+          .enum([
+            "created_at",
+            "updated_at",
+            "priority",
+            "label_priority",
+            "milestone_due",
+            "popularity"
+          ])
+          .optional(),
+        sort: z.enum(["asc", "desc"]).optional(),
+        source_branch: optionalRefLikeSchema,
+        target_branch: optionalRefLikeSchema,
+        search: optionalString,
+        wip: z.enum(["yes", "no"]).optional(),
+        with_labels_details: optionalBoolean,
+        non_archived: optionalBoolean,
+        ...paginationShape
+      },
+      handler: async (args, context) => {
+        const normalized = normalizeIdUsernameFilters(
+          omit(args, ["group_id"]),
+          MERGE_REQUEST_ID_USERNAME_PAIRS
+        );
+        const approvedByUsernames = getOptionalStringArray(normalized, "approved_by_usernames");
+        return context.gitlab.listGroupMergeRequests(getString(args, "group_id"), {
+          query: {
+            ...toQuery(omit(normalized, ["approved_by_usernames"])),
+            ...(approvedByUsernames ? { approved_by_usernames: approvedByUsernames } : {})
+          }
+        });
+      }
+    },
+    {
       name: "gitlab_get_merge_request",
       title: "Get Merge Request",
       description: "Get one merge request.",
@@ -1416,6 +1717,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         assignee_ids: optionalNumberArray,
         reviewer_ids: optionalNumberArray,
         labels: optionalStringOrStringArray,
+        milestone_id: optionalMilestoneIdSchema,
         allow_collaboration: optionalBoolean,
         remove_source_branch: optionalBoolean,
         squash: optionalBoolean,
@@ -1435,6 +1737,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           assignee_ids: getOptionalNumberArray(args, "assignee_ids"),
           reviewer_ids: getOptionalNumberArray(args, "reviewer_ids"),
           labels: toCsvValue(args.labels),
+          milestone_id: getOptionalNumber(args, "milestone_id"),
           allow_collaboration: getOptionalBoolean(args, "allow_collaboration"),
           remove_source_branch: getOptionalBoolean(args, "remove_source_branch"),
           squash: getOptionalBoolean(args, "squash"),
@@ -1475,7 +1778,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_update_merge_request",
       title: "Update Merge Request",
-      description: "Update merge request fields.",
+      description:
+        "Update merge request fields. labels replaces every label; add_labels and remove_labels change only the named ones. milestone_id 0 unassigns the milestone.",
       capabilities: writeCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
@@ -1488,10 +1792,15 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         reviewer_ids: optionalNumberArray,
         reviewers: optionalStringArray,
         labels: optionalStringOrStringArray,
-        state_event: optionalString,
+        add_labels: optionalStringOrStringArray,
+        remove_labels: optionalStringOrStringArray,
+        milestone_id: optionalMilestoneIdSchema,
+        state_event: z.enum(["close", "reopen"]).optional(),
         squash: optionalBoolean,
         draft: optionalBoolean,
-        remove_source_branch: optionalBoolean
+        remove_source_branch: optionalBoolean,
+        allow_collaboration: optionalBoolean,
+        discussion_locked: optionalBoolean
       },
       handler: async (args, context) => {
         const projectId = resolveProjectId(args, context, true);
@@ -1499,8 +1808,10 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           string,
           unknown
         >;
-        if (payload.labels === undefined) {
-          payload.labels = toCsvValue(args.labels);
+        for (const field of ["labels", "add_labels", "remove_labels"]) {
+          if (payload[field] === undefined) {
+            payload[field] = toCsvValue(args[field]);
+          }
         }
         if (Array.isArray(args.assignee_ids)) {
           payload.assignee_ids = args.assignee_ids as number[];
@@ -1854,6 +2165,24 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         )
     },
     {
+      name: "gitlab_get_merge_request_discussion",
+      title: "Get Merge Request Discussion",
+      description:
+        "Get one MR discussion thread by discussion_id with all its notes and resolution state. Use gitlab_list_merge_request_discussions to find IDs.",
+      capabilities: readCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        merge_request_iid: z.string().min(1),
+        discussion_id: z.string().min(1)
+      },
+      handler: async (args, context) =>
+        context.gitlab.getMergeRequestDiscussion(
+          resolveProjectId(args, context, true),
+          getString(args, "merge_request_iid"),
+          getString(args, "discussion_id")
+        )
+    },
+    {
       name: "gitlab_create_merge_request_thread",
       title: "Create Merge Request Thread",
       description: "Create a new MR discussion thread (supports diff positions).",
@@ -2161,16 +2490,25 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_bulk_publish_draft_notes",
       title: "Bulk Publish Draft Notes",
-      description: "Publish all merge-request draft notes.",
+      description:
+        "Publish all merge-request draft notes. On GitLab 19.2+ it can also set your reviewer state (requested_changes or reviewed; not a formal approval) and post a summary note, even with no drafts.",
       capabilities: writeCapabilities,
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        merge_request_iid: z.string().min(1)
+        merge_request_iid: z.string().min(1),
+        reviewer_state: z.enum(["requested_changes", "reviewed"]).optional(),
+        note: optionalBodySchema,
+        internal: optionalBoolean
       },
       handler: async (args, context) =>
         context.gitlab.bulkPublishDraftNotes(
           resolveProjectId(args, context, true),
-          getString(args, "merge_request_iid")
+          getString(args, "merge_request_iid"),
+          pickPresentFields(args, ["reviewer_state", "note", "internal"]) as {
+            reviewer_state?: "requested_changes" | "reviewed";
+            note?: string;
+            internal?: boolean;
+          }
         )
     },
     {
@@ -2607,8 +2945,10 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           string,
           unknown
         >;
-        if (payload.labels === undefined) {
-          payload.labels = toCsvValue(args.labels);
+        for (const field of ["labels", "add_labels", "remove_labels"]) {
+          if (payload[field] === undefined) {
+            payload[field] = toCsvValue(args[field]);
+          }
         }
         if (Array.isArray(args.assignee_ids)) {
           payload.assignee_ids = args.assignee_ids as number[];
@@ -2620,6 +2960,35 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
           payload
         );
         return getOptionalBoolean(args, "full_response") ? issue : slimUpdatedIssue(issue);
+      }
+    },
+    {
+      name: "gitlab_reorder_issue",
+      title: "Reorder Issue",
+      description:
+        "Change an issue's relative position in boards and manually sorted lists. move_after_id and move_before_id take global issue IDs (the id field, not iid) of the neighbors: move_after_id is the issue that should follow this one and move_before_id the issue that should precede it.",
+      capabilities: writeCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        issue_iid: z.coerce.string().min(1),
+        move_after_id: nullableOptional(z.coerce.number().int().positive()),
+        move_before_id: nullableOptional(z.coerce.number().int().positive())
+      },
+      handler: async (args, context) => {
+        const payload = pickPresentFields(args, ["move_after_id", "move_before_id"]);
+        if (Object.keys(payload).length === 0) {
+          throw new Error("Provide move_after_id, move_before_id, or both");
+        }
+
+        return context.gitlab.put(
+          projectApiPath(
+            resolveProjectId(args, context, true),
+            "issues",
+            getString(args, "issue_iid"),
+            "reorder"
+          ),
+          jsonBody(payload)
+        );
       }
     },
     {
@@ -3417,24 +3786,50 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       name: "gitlab_get_pipeline_job_output",
       title: "Get Pipeline Job Output",
       description:
-        "Get a bounded, untrusted job trace window. Returns at most 1,000 lines from the end.",
+        "Get a bounded, untrusted job trace window (at most 1,000 lines from the end), or pass search (a substring or list of substrings, case-insensitive by default) to return only matching lines with context from the loaded log.",
       capabilities: readCapabilities,
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: optionalProjectIdSchema,
         job_id: z.string().min(1),
         limit: z.number().int().min(1).max(1000).optional(),
-        offset: z.number().int().min(0).max(1_000_000).optional()
+        offset: z.number().int().min(0).max(1_000_000).optional(),
+        search: z
+          .preprocess(
+            (value) => (value === "" || value === null ? undefined : value),
+            z
+              .union([
+                z.string().min(1).max(500),
+                z.array(z.string().min(1).max(500)).min(1).max(10)
+              ])
+              .optional()
+          )
+          .optional(),
+        case_sensitive: optionalBoolean,
+        context_lines: z.number().int().min(0).max(MAX_JOB_TRACE_CONTEXT_LINES).optional(),
+        max_matches: z.number().int().min(1).max(MAX_JOB_TRACE_MAX_MATCHES).optional()
       },
-      handler: async (args, context) =>
-        context.gitlab.getPipelineJobOutput(
+      handler: async (args, context) => {
+        const search = args.search;
+        return context.gitlab.getPipelineJobOutput(
           resolveProjectId(args, context, true),
           getString(args, "job_id"),
           {
             limit: getOptionalNumber(args, "limit"),
-            offset: getOptionalNumber(args, "offset")
+            offset: getOptionalNumber(args, "offset"),
+            ...(search === undefined
+              ? {}
+              : {
+                  search: {
+                    patterns: Array.isArray(search) ? (search as string[]) : [String(search)],
+                    caseSensitive: getOptionalBoolean(args, "case_sensitive"),
+                    contextLines: getOptionalNumber(args, "context_lines"),
+                    maxMatches: getOptionalNumber(args, "max_matches")
+                  }
+                })
           }
-        )
+        );
+      }
     },
     {
       name: "gitlab_validate_ci_lint",
@@ -4005,49 +4400,66 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_retry_pipeline_job",
       title: "Retry Pipeline Job",
-      description: "Retry one failed job.",
+      description:
+        "Retry one failed job. job_inputs overrides typed values for the job's inputs definitions.",
       capabilities: writeCapabilities,
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        job_id: z.string().min(1)
+        job_id: z.string().min(1),
+        job_inputs: optionalRecord
       },
       handler: async (args, context) =>
         context.gitlab.retryPipelineJob(
           resolveProjectId(args, context, true),
-          getString(args, "job_id")
+          getString(args, "job_id"),
+          { job_inputs: getOptionalRecord(args, "job_inputs") }
         )
     },
     {
       name: "gitlab_cancel_pipeline_job",
       title: "Cancel Pipeline Job",
-      description: "Cancel one running job.",
+      description:
+        "Cancel one running job. force=true also cancels a job stuck in the canceling state.",
       capabilities: writeCapabilities,
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        job_id: z.string().min(1)
+        job_id: z.string().min(1),
+        force: optionalBoolean
       },
       handler: async (args, context) =>
         context.gitlab.cancelPipelineJob(
           resolveProjectId(args, context, true),
-          getString(args, "job_id")
+          getString(args, "job_id"),
+          { force: getOptionalBoolean(args, "force") }
         )
     },
     {
       name: "gitlab_play_pipeline_job",
       title: "Play Pipeline Job",
-      description: "Play a manual job.",
+      description:
+        "Play a manual job, optionally with job_variables_attributes ([{key, value}]) and typed job_inputs.",
       capabilities: writeCapabilities,
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        job_id: z.string().min(1)
+        job_id: z.string().min(1),
+        job_variables_attributes: nullableOptional(
+          z.array(z.object({ key: ciVariableKeySchema, value: z.string() })).max(100)
+        ),
+        job_inputs: optionalRecord
       },
       handler: async (args, context) =>
         context.gitlab.playPipelineJob(
           resolveProjectId(args, context, true),
-          getString(args, "job_id")
+          getString(args, "job_id"),
+          {
+            job_variables_attributes: getOptionalArray(args, "job_variables_attributes") as
+              | Array<{ key: string; value: string }>
+              | undefined,
+            job_inputs: getOptionalRecord(args, "job_inputs")
+          }
         )
     },
     {
@@ -4783,6 +5195,74 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
       }
     },
     {
+      name: "gitlab_create_webhook",
+      title: "Create Webhook",
+      description:
+        "Create a project or group webhook. GitLab then sends the selected event payloads to url, so only target endpoints you trust. token and url are redacted from errors and never returned.",
+      capabilities: adminCapabilities,
+      sensitiveArguments: webhookSensitiveArguments,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        group_id: optionalProjectIdSchema,
+        url: webhookUrlSchema,
+        ...webhookSettingsShape
+      },
+      handler: async (args, context) =>
+        context.gitlab.createWebhook(
+          resolveWebhookScope(args, context),
+          pickPresentFields(args, ["url", ...WEBHOOK_SETTING_FIELDS])
+        )
+    },
+    {
+      name: "gitlab_update_webhook",
+      title: "Update Webhook",
+      description:
+        "Update a project or group webhook's URL, secret token, events, or SSL verification. Omitted fields keep their values.",
+      capabilities: adminCapabilities,
+      sensitiveArguments: webhookSensitiveArguments,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        group_id: optionalProjectIdSchema,
+        hook_id: z.union([z.string().min(1), z.number()]),
+        url: nullableOptional(webhookUrlSchema),
+        ...webhookSettingsShape
+      },
+      handler: async (args, context) => {
+        const payload = pickPresentFields(args, ["url", ...WEBHOOK_SETTING_FIELDS]);
+        if (Object.keys(payload).length === 0) {
+          throw new Error("Provide at least one webhook field to update");
+        }
+
+        return context.gitlab.updateWebhook(
+          resolveWebhookScope(args, context),
+          getIdString(args, "hook_id"),
+          payload
+        );
+      }
+    },
+    {
+      name: "gitlab_delete_webhook",
+      title: "Delete Webhook",
+      description:
+        "Delete a project or group webhook permanently; GitLab stops sending its events. Irreversible. Requires hook_id. Recommended pre-check: gitlab_list_webhooks.",
+      capabilities: adminDeleteCapabilities,
+      inputSchema: {
+        project_id: optionalProjectIdSchema,
+        group_id: optionalProjectIdSchema,
+        hook_id: z.union([z.string().min(1), z.number()])
+      },
+      handler: async (args, context) => {
+        const scope = resolveWebhookScope(args, context);
+        const hookId = getIdString(args, "hook_id");
+        await context.gitlab.deleteWebhook(scope, hookId);
+        return {
+          status: "deleted",
+          ...(scope.projectId ? { project_id: scope.projectId } : { group_id: scope.groupId }),
+          hook_id: hookId
+        };
+      }
+    },
+    {
       name: "gitlab_upload_markdown",
       title: "Upload Markdown",
       description: "Upload markdown file/attachment to project.",
@@ -4856,7 +5336,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
               );
             }
 
-            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
+            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeGitLabPathSegment(upload.secret, "upload secret")}/${encodeGitLabPathSegment(upload.filename, "filename")}`;
             return context.gitlab.downloadAttachment(apiRelativePath);
           }
 
@@ -4876,7 +5356,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
               );
             }
 
-            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(upload.secret)}/${encodeURIComponent(upload.filename)}`;
+            const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeGitLabPathSegment(upload.secret, "upload secret")}/${encodeGitLabPathSegment(upload.filename, "filename")}`;
             return context.gitlab.downloadAttachment(apiRelativePath);
           }
 
@@ -4892,7 +5372,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         }
 
         const projectId = resolveProjectId(args, context, true);
-        const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeURIComponent(secret)}/${encodeURIComponent(filename)}`;
+        const apiRelativePath = `api/v4/projects/${encodeGitLabProjectId(projectId)}/uploads/${encodeGitLabPathSegment(secret, "upload secret")}/${encodeGitLabPathSegment(filename, "filename")}`;
         if (shouldReturnDownloadProxy(context)) {
           return buildDownloadProxyResult(
             context,
@@ -4967,7 +5447,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         due_date: optionalString,
         milestone_id: optionalString,
         iteration_id: optionalString,
-        confidential: optionalCoercedBoolean
+        confidential: optionalBoolean
       },
       handler: async (args, context) => {
         const type = getOptionalString(args, "type") as WorkItemType | undefined;
@@ -5012,7 +5492,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         status: optionalString,
         parent_iid: workItemIidSchema.optional(),
         parent_project_id: optionalProjectIdSchema,
-        remove_parent: optionalCoercedBoolean,
+        remove_parent: optionalBoolean,
         children_to_add: nullableOptional(z.array(workItemReferenceSchema)),
         children_to_remove: nullableOptional(z.array(workItemReferenceSchema)),
         health_status: z.enum(["onTrack", "needsAttention", "atRisk"]).optional(),
@@ -5020,7 +5500,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         due_date: optionalString,
         milestone_id: optionalString,
         iteration_id: optionalString,
-        confidential: optionalCoercedBoolean,
+        confidential: optionalBoolean,
         linked_items_to_add: nullableOptional(z.array(linkedWorkItemReferenceSchema)),
         linked_items_to_remove: nullableOptional(z.array(workItemReferenceSchema)),
         custom_fields: nullableOptional(z.array(customFieldValueSchema)),
@@ -5170,7 +5650,7 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
         project_id: optionalProjectIdSchema,
         iid: workItemIidSchema,
         body: bodySchema,
-        internal: optionalCoercedBoolean,
+        internal: optionalBoolean,
         discussion_id: optionalString
       },
       handler: async (args, context) =>
@@ -5435,7 +5915,22 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
 
         return context.gitlab.executeGraphql(query, getOptionalRecord(args, "variables"));
       }
-    }
+    },
+    ...pipelineScheduleToolDefinitions,
+    ...pipelineTriggerToolDefinitions,
+    ...environmentToolDefinitions,
+    ...deploymentToolDefinitions,
+    ...pipelineToolDefinitions,
+    ...pipelineJobToolDefinitions,
+    ...groupMilestoneToolDefinitions,
+    ...iterationToolDefinitions,
+    ...snippetToolDefinitions,
+    ...protectedTagToolDefinitions,
+    ...runnerToolDefinitions,
+    ...vulnerabilityToolDefinitions,
+    ...mergeRequestRebaseToolDefinitions,
+    ...apiRequestToolDefinitions,
+    ...orbitToolDefinitions
   ];
 
   return definitions.map((definition) => {
@@ -5643,34 +6138,6 @@ const WORK_ITEM_GRAPHQL_TYPES: Record<WorkItemType, string> = {
   requirement: "REQUIREMENT",
   ticket: "TICKET"
 };
-
-async function executeGraphqlData<T>(
-  context: AppContext,
-  query: string,
-  variables: Record<string, unknown> = {}
-): Promise<T> {
-  const response = (await context.gitlab.executeGraphql(query, variables)) as
-    | { data?: T; errors?: Array<{ message?: string }> }
-    | T;
-
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "errors" in response &&
-    Array.isArray((response as { errors?: unknown }).errors)
-  ) {
-    const errors = (response as { errors: Array<{ message?: string }> }).errors;
-    throw new Error(
-      `GraphQL errors: ${errors.map((item) => item.message ?? String(item)).join(", ")}`
-    );
-  }
-
-  if (typeof response === "object" && response !== null && "data" in response) {
-    return (response as { data?: T }).data as T;
-  }
-
-  return response as T;
-}
 
 async function listCiCatalogResources(args: ToolArgs, context: AppContext): Promise<unknown> {
   const data = await executeGraphqlData<{
@@ -6118,23 +6585,6 @@ async function resolveDependencyProxyGroupFullPath(
   return fullPath;
 }
 
-function resolveExplicitProjectId(context: AppContext, projectId: string): string {
-  const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
-  if (allowed.length > 0 && !isGitLabProjectIdentityAllowed(projectId, allowed)) {
-    throw new Error(
-      `Project '${projectId}' is not in GITLAB_ALLOWED_PROJECT_IDS: ${allowed.join(", ")}`
-    );
-  }
-  return projectId;
-}
-
-function resolveOptionalExplicitProjectId(
-  context: AppContext,
-  projectId: string | undefined
-): string | undefined {
-  return projectId ? resolveExplicitProjectId(context, projectId) : undefined;
-}
-
 function filterProjectScopedResponse(
   value: unknown,
   context: AppContext,
@@ -6197,10 +6647,6 @@ function recordMatchesAllowedProject(
       (typeof candidate === "string" || typeof candidate === "number") &&
       isGitLabProjectIdentityAllowed(String(candidate), allowedProjectIds)
   );
-}
-
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function discoverGitLabTools(args: ToolArgs, context: AppContext): Record<string, unknown> {
@@ -7742,7 +8188,12 @@ export function containsGraphqlMutation(query: string): boolean {
   }
 }
 
-const DESTRUCTIVE_GRAPHQL_MUTATION_FIELD_PATTERN = /(?:delete|destroy|remove|prune|purge)/iu;
+// GitLab exposes destructive mutations whose names do not contain "delete"
+// (jobErase, *TokenRevoke, *Unprotect, environmentStop, ...), so modify mode
+// blocks teardown and revocation verbs as well as deletion verbs. Pipeline and
+// job cancellation stay allowed, matching the REST cancel tools.
+const DESTRUCTIVE_GRAPHQL_MUTATION_FIELD_PATTERN =
+  /(?:delete|destroy|remove|prune|purge|erase|wipe|revoke|unprotect|stop|terminate|deactivate|disable|drop)/iu;
 
 export function assertGraphqlDocumentAllowedByPermissionMode(
   query: string,
@@ -7980,41 +8431,6 @@ function assertToolCanExecuteInProjectScope(
   }
 }
 
-function hasValue(value: unknown): boolean {
-  return value !== undefined && value !== null && value !== "";
-}
-
-function resolveProjectId(args: ToolArgs, context: AppContext, required: boolean): string {
-  const fromArgs = getOptionalString(args, "project_id");
-  const allowed = context.env.GITLAB_ALLOWED_PROJECT_IDS;
-
-  if (allowed.length > 0) {
-    if (fromArgs && !isGitLabProjectIdentityAllowed(fromArgs, allowed)) {
-      throw new Error(
-        `Project '${fromArgs}' is not in GITLAB_ALLOWED_PROJECT_IDS: ${allowed.join(", ")}`
-      );
-    }
-
-    if (!fromArgs && allowed.length === 1) {
-      return requireArrayValue(allowed, 0, "GITLAB_ALLOWED_PROJECT_IDS is empty");
-    }
-
-    if (!fromArgs && allowed.length > 1) {
-      throw new Error(
-        `Multiple allowed projects configured (${allowed.join(", ")}). Please specify project_id.`
-      );
-    }
-
-    return fromArgs ?? requireArrayValue(allowed, 0, "GITLAB_ALLOWED_PROJECT_IDS is empty");
-  }
-
-  if (required && !fromArgs) {
-    throw new Error("project_id is required");
-  }
-
-  return fromArgs ?? "";
-}
-
 async function withCiLintHttpDiagnostics(operation: () => Promise<unknown>): Promise<unknown> {
   try {
     return await operation();
@@ -8112,6 +8528,15 @@ function toToolError(
     const payload: Record<string, unknown> = {
       error: `GitLab API error ${error.status}`
     };
+    if (error.retryAfterSeconds !== undefined) {
+      payload.retry_after_seconds = error.retryAfterSeconds;
+    }
+    const nextStep = nextStepForGitLabStatus(error.status, error.details, {
+      remoteCredentials: Boolean(context?.env.REMOTE_AUTHORIZATION || context?.env.GITLAB_MCP_OAUTH)
+    });
+    if (nextStep) {
+      payload.next_step = nextStep;
+    }
     if (detailMode === "full") {
       payload.details = redactSensitive(error.details, redactionOptions);
     }
@@ -8127,11 +8552,30 @@ function toToolError(
     };
   }
 
-  if (error instanceof Error) {
+  const transportFailure = classifyTransportFailure(error);
+  if (transportFailure) {
     const message =
+      detailMode === "full"
+        ? String(redactSensitive(describeTransportFailure(transportFailure), redactionOptions))
+        : `GitLab request failed before an HTTP response (${transportFailure.kind})`;
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: message
+        }
+      ]
+    };
+  }
+
+  if (error instanceof Error) {
+    const nextStep = nextStepForMessage(error.message);
+    const baseMessage =
       detailMode === "full"
         ? String(redactSensitive(error.message, redactionOptions))
         : "Request failed";
+    const message = nextStep ? `${baseMessage}\nNext: ${nextStep}` : baseMessage;
     return {
       isError: true,
       content: [
@@ -8189,70 +8633,23 @@ function maybeDecodeRepositoryFileContents(value: unknown, shouldDecode?: boolea
     return value;
   }
 
+  // Decode only when the bytes survive a UTF-8 round trip. Binary files
+  // (images, archives, compiled assets) would otherwise be replaced with
+  // U+FFFD characters and lose their content, so they stay base64.
+  const bytes = Buffer.from(file.content, "base64");
+  const text = bytes.toString("utf8");
+  if (!Buffer.from(text, "utf8").equals(bytes)) {
+    return {
+      ...file,
+      decode_note: "Content is not valid UTF-8 text and was left base64-encoded."
+    };
+  }
+
   return {
     ...file,
-    content: Buffer.from(file.content, "base64").toString("utf8"),
+    content: text,
     encoding: "utf8"
   };
-}
-
-function omit(args: ToolArgs, keys: string[]): ToolArgs {
-  const result: ToolArgs = {};
-  for (const [key, value] of Object.entries(args)) {
-    if (!keys.includes(key)) {
-      result[key] = value;
-    }
-  }
-
-  return result;
-}
-
-function pickPresentFields(args: ToolArgs, fields: readonly string[]): ToolArgs {
-  const result: ToolArgs = {};
-  for (const field of fields) {
-    if (Object.prototype.hasOwnProperty.call(args, field) && args[field] !== undefined) {
-      result[field] = args[field];
-    }
-  }
-  return result;
-}
-
-function toQuery(args: ToolArgs): Record<string, string | number | boolean | undefined> {
-  const output: Record<string, string | number | boolean | undefined> = {};
-
-  for (const [key, value] of Object.entries(args)) {
-    if (value === undefined || value === null) {
-      continue;
-    }
-
-    if (Array.isArray(value)) {
-      output[key] = value.join(",");
-      continue;
-    }
-
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      output[key] = value;
-    }
-  }
-
-  return output;
-}
-
-function toCsvValue(value: unknown): string | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    const items = value.filter((item): item is string => typeof item === "string");
-    return items.length > 0 ? items.join(",") : undefined;
-  }
-
-  return undefined;
 }
 
 async function resolveMergeRequestIid(
@@ -8661,21 +9058,6 @@ function slimUpdatedIssue(issue: unknown): unknown {
   ]);
 }
 
-function pickRecordFields(
-  record: Record<string, unknown>,
-  fields: string[]
-): Record<string, unknown> {
-  return Object.fromEntries(
-    fields
-      .filter((field) => Object.prototype.hasOwnProperty.call(record, field))
-      .map((field) => [field, record[field]])
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 async function resolveWikiUpdateTitle(
   slug: string,
   providedTitle: string | undefined,
@@ -8705,116 +9087,6 @@ function getExistingWikiTitle(page: unknown): string {
     return frontMatterTitle;
   }
   return title || (typeof frontMatterTitle === "string" ? frontMatterTitle : "");
-}
-
-function getString(args: ToolArgs, key: string): string {
-  const value = args[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`'${key}' must be a non-empty string`);
-  }
-
-  return value;
-}
-
-function getIdString(args: ToolArgs, key: string): string {
-  const value = args[key];
-  if ((typeof value !== "string" && typeof value !== "number") || String(value).length === 0) {
-    throw new Error(`'${key}' must be a non-empty string or number`);
-  }
-
-  return String(value);
-}
-
-function getOptionalString(args: ToolArgs, key: string): string | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "string") {
-    throw new Error(`'${key}' must be a string`);
-  }
-
-  return value;
-}
-
-function getOptionalStringArray(args: ToolArgs, key: string): string[] | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
-    throw new Error(`'${key}' must be string[]`);
-  }
-
-  return value;
-}
-
-function getBoolean(args: ToolArgs, key: string): boolean {
-  const value = args[key];
-  if (typeof value !== "boolean") {
-    throw new Error(`'${key}' must be boolean`);
-  }
-
-  return value;
-}
-
-function getNumber(args: ToolArgs, key: string): number {
-  const value = args[key];
-  const numericValue = typeof value === "string" ? Number(value) : value;
-  if (typeof numericValue !== "number" || Number.isNaN(numericValue)) {
-    throw new Error(`'${key}' must be number`);
-  }
-
-  return numericValue;
-}
-
-function getRequiredStringArray(args: ToolArgs, key: string): string[] {
-  const value = getOptionalStringArray(args, key);
-  if (!value || value.length === 0) {
-    throw new Error(`'${key}' must be a non-empty string array`);
-  }
-  return value;
-}
-
-function getOptionalBoolean(args: ToolArgs, key: string): boolean | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "boolean") {
-    throw new Error(`'${key}' must be boolean`);
-  }
-
-  return value;
-}
-
-function getOptionalNumber(args: ToolArgs, key: string): number | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "number" || Number.isNaN(value)) {
-    throw new Error(`'${key}' must be number`);
-  }
-
-  return value;
-}
-
-function getOptionalArray(args: ToolArgs, key: string): unknown[] | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (!Array.isArray(value)) {
-    throw new Error(`'${key}' must be array`);
-  }
-
-  return value;
 }
 
 function getWorkItemReferences(
@@ -8875,32 +9147,6 @@ function getLinkedWorkItemReferences(
   });
 }
 
-function getOptionalNumberArray(args: ToolArgs, key: string): number[] | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "number")) {
-    throw new Error(`'${key}' must be number[]`);
-  }
-
-  return value;
-}
-
-function getOptionalRecord(args: ToolArgs, key: string): Record<string, unknown> | undefined {
-  const value = args[key];
-  if (value === undefined) {
-    return undefined;
-  }
-
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`'${key}' must be an object`);
-  }
-
-  return value as Record<string, unknown>;
-}
-
 function getOptionalPipelineInputsRecord(
   args: ToolArgs,
   key: string
@@ -8919,15 +9165,6 @@ function getOptionalPipelineInputsRecord(
   }
 
   return value as Record<string, GitLabPipelineInputValue>;
-}
-
-function requireArrayValue<T>(items: T[], index: number, errorMessage: string): T {
-  const value = items[index];
-  if (value === undefined) {
-    throw new Error(errorMessage);
-  }
-
-  return value;
 }
 
 function redactSensitive(value: unknown, options: SensitiveRedactionOptions = {}): unknown {

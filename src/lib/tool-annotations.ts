@@ -21,5 +21,6 @@ export const healthToolAnnotations: ToolAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
-  openWorldHint: false
+  // check_gitlab=true contacts the configured GitLab instance.
+  openWorldHint: true
 };

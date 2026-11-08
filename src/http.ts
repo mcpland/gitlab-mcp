@@ -10,6 +10,7 @@ import { MetricsRegistry } from "./lib/metrics.js";
 import { configureNetworkRuntime } from "./lib/network.js";
 import { OutputFormatter } from "./lib/output.js";
 import { ToolPolicyEngine } from "./lib/policy.js";
+import { loadResponseMasker } from "./lib/response-masking.js";
 import { compileDeniedToolsRegex } from "./lib/regex.js";
 import { GitLabRequestRuntime } from "./lib/request-runtime.js";
 import { setupMcpHttpApp } from "./http-app.js";
@@ -63,7 +64,8 @@ const context: AppContext = {
     responseMode: env.GITLAB_RESPONSE_MODE,
     maxBytes: env.GITLAB_MAX_RESPONSE_BYTES
   }),
-  allowLocalFileTools: false
+  allowLocalFileTools: false,
+  responseMasker: loadResponseMasker(env.GITLAB_RESPONSE_MASKING_FILE, logger)
 };
 
 const { app, shutdown, garbageCollectSessions } = setupMcpHttpApp({

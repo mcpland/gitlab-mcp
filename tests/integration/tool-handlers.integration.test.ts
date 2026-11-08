@@ -607,6 +607,76 @@ describe("Tool handler: gitlab_get_file_contents", () => {
   });
 });
 
+describe("Tool handler: gitlab_get_file_contents binary files", () => {
+  it("keeps binary content base64-encoded when decoding is requested", async () => {
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00]);
+    const getFileContents = vi.fn().mockResolvedValue({
+      file_name: "logo.png",
+      content: pngBytes.toString("base64"),
+      encoding: "base64"
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getFileContents } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_file_contents",
+        arguments: {
+          project_id: "group/project",
+          file_path: "logo.png",
+          ref: "main",
+          decode_base64: true
+        }
+      });
+
+      const structured = (result as { structuredContent?: { result?: Record<string, unknown> } })
+        .structuredContent?.result;
+      expect(structured).toMatchObject({
+        file_name: "logo.png",
+        content: pngBytes.toString("base64"),
+        encoding: "base64"
+      });
+      expect(String(structured?.decode_note)).toContain("not valid UTF-8");
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+
+  it("decodes empty files as UTF-8 text", async () => {
+    const getFileContents = vi.fn().mockResolvedValue({
+      file_name: ".keep",
+      content: "",
+      encoding: "base64"
+    });
+
+    const { client, clientTransport, serverTransport } = await createLinkedPair(
+      buildContext({ gitlabStub: { getFileContents } })
+    );
+
+    try {
+      const result = await client.callTool({
+        name: "gitlab_get_file_contents",
+        arguments: {
+          project_id: "group/project",
+          file_path: ".keep",
+          ref: "main",
+          decode_base64: true
+        }
+      });
+
+      const structured = (result as { structuredContent?: { result?: Record<string, unknown> } })
+        .structuredContent?.result;
+      expect(structured).toMatchObject({ content: "", encoding: "utf8" });
+    } finally {
+      await clientTransport.close();
+      await serverTransport.close();
+    }
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /*  HTTP remote file transfer behavior                                 */
 /* ------------------------------------------------------------------ */

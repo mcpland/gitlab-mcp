@@ -33,6 +33,28 @@ interface TokenResponse {
   expires_in?: number;
 }
 
+/**
+ * A non-2xx answer from GitLab's /oauth/token. Only the HTTP status and the
+ * OAuth error code are kept: the response body is free text that should not
+ * reach logs.
+ */
+const LOOPBACK_CALLBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+export class OAuthTokenEndpointError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly oauthError: string | undefined
+  ) {
+    super(`OAuth token endpoint failed: ${String(status)}${oauthError ? ` ${oauthError}` : ""}`);
+    this.name = "OAuthTokenEndpointError";
+  }
+
+  /** True when GitLab rejected the grant itself, so a new authorization is needed. */
+  get grantRejected(): boolean {
+    return this.status === 400 || this.status === 401;
+  }
+}
+
 export class GitLabOAuthManager {
   private readonly tokenPath: string;
   private readonly callbackTimeoutMs = 180_000;
@@ -72,9 +94,15 @@ export class GitLabOAuthManager {
         await this.persistToken(refreshed);
         return refreshed.access_token;
       } catch (error) {
+        // A network failure, rate limit, or GitLab 5xx does not mean the
+        // refresh token is bad. Fail this call and keep the stored token for
+        // the next attempt instead of opening a browser for a transient blip.
+        if (!(error instanceof OAuthTokenEndpointError) || !error.grantRejected) {
+          throw error;
+        }
         this.logger.warn(
-          { err: error, forceRefresh },
-          "OAuth token refresh failed; running interactive auth"
+          { status: error.status, oauthError: error.oauthError, forceRefresh },
+          "OAuth refresh token was rejected; running interactive auth"
         );
       }
     }
@@ -88,6 +116,11 @@ export class GitLabOAuthManager {
     const redirectUrl = new URL(this.config.redirectUri);
     if (redirectUrl.protocol !== "http:") {
       throw new Error("Only http redirect URI is supported for local OAuth callback server");
+    }
+    if (!LOOPBACK_CALLBACK_HOSTS.has(redirectUrl.hostname.toLowerCase())) {
+      throw new Error(
+        "GITLAB_OAUTH_REDIRECT_URI must use a loopback host (127.0.0.1, localhost, or [::1]) so the OAuth callback server is not reachable from the network"
+      );
     }
 
     const challenge = await pkceChallenge();
@@ -155,12 +188,27 @@ export class GitLabOAuthManager {
 
         const code = requestUrl.searchParams.get("code");
         const state = requestUrl.searchParams.get("state");
-        if (!code || state !== expectedState) {
+        if (state !== expectedState) {
+          // A stray or forged request (another tab, a prefetch, a local page)
+          // must not abort the login the user is completing; keep waiting.
           res.statusCode = 400;
           res.end("Invalid OAuth callback");
+          return;
+        }
+
+        if (!code) {
+          const oauthError = requestUrl.searchParams.get("error");
+          res.statusCode = 400;
+          res.end("Authorization was not granted. You can close this tab.");
           finalize(() => {
             server.close();
-            reject(new Error("Invalid OAuth callback state or missing code"));
+            reject(
+              new Error(
+                `OAuth authorization was not granted${
+                  oauthError && /^[a-z_]{1,64}$/u.test(oauthError) ? `: ${oauthError}` : ""
+                }`
+              )
+            );
           });
           return;
         }
@@ -233,8 +281,7 @@ export class GitLabOAuthManager {
     });
 
     if (!response.ok) {
-      const raw = await response.text();
-      throw new Error(`OAuth token endpoint failed: ${response.status} ${raw.slice(0, 500)}`);
+      throw new OAuthTokenEndpointError(response.status, await readOAuthErrorCode(response));
     }
 
     const payload = (await response.json()) as TokenResponse;
@@ -290,4 +337,16 @@ export function deriveGitLabBaseUrl(apiUrl: string): string {
   const url = new URL(apiUrl);
   const prefix = url.pathname.replace(/\/api\/v4\/?$/, "");
   return new URL(prefix || "/", url.origin).toString().replace(/\/$/, "");
+}
+
+/** Read only the registered OAuth error code (RFC 6749 section 5.2) from an error body. */
+async function readOAuthErrorCode(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    return typeof body.error === "string" && /^[a-z_]{1,64}$/u.test(body.error)
+      ? body.error
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }

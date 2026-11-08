@@ -3,14 +3,20 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerGitLabTools } from "../tools/gitlab.js";
 import { registerHealthTool } from "../tools/health.js";
 import type { AppContext } from "../types/context.js";
+import { buildServerInstructions } from "./instructions.js";
+import { registerGitLabPrompts } from "./prompts.js";
 
 export function createMcpServer(context: AppContext): McpServer {
-  const server = new McpServer({
-    name: context.env.MCP_SERVER_NAME,
-    version: context.env.MCP_SERVER_VERSION
-  });
+  const server = new McpServer(
+    {
+      name: context.env.MCP_SERVER_NAME,
+      version: context.env.MCP_SERVER_VERSION
+    },
+    { instructions: buildServerInstructions(context) }
+  );
 
-  registerHealthTool(server);
+  registerHealthTool(server, context);
+  registerGitLabPrompts(server);
   registerGitLabTools(server, context);
 
   return server;

@@ -481,7 +481,66 @@ describe("GitLabClient", () => {
     });
   });
 
+  describe("path segments", () => {
+    it("refuses dot segments instead of letting URL resolution retarget the request", async () => {
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+
+      await expect(
+        Promise.resolve().then(() => client.deleteIssueLink("group/project", "5", ".."))
+      ).rejects.toThrow("Invalid GitLab path segment");
+      await expect(
+        Promise.resolve().then(() => client.getPipelineJob("group/project", "."))
+      ).rejects.toThrow("Invalid GitLab path segment");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("webhook management", () => {
+    it("targets project and group hook endpoints", async () => {
+      fetchMock.mockImplementation(async () => jsonResponse({ id: 3 }));
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+
+      await client.createWebhook({ projectId: "group/project" }, { url: "https://x.test/h" });
+      await client.updateWebhook({ groupId: "my-org/sub" }, "3", { push_events: false });
+      await client.deleteWebhook({ projectId: "7" }, "3");
+
+      const calls = fetchMock.mock.calls as Array<[URL | string, RequestInit]>;
+      expect(calls.map(([url, init]) => [init.method, new URL(String(url)).pathname])).toEqual([
+        ["POST", "/api/v4/projects/group%2Fproject/hooks"],
+        ["PUT", "/api/v4/groups/my-org%2Fsub/hooks/3"],
+        ["DELETE", "/api/v4/projects/7/hooks/3"]
+      ]);
+      expect(JSON.parse(String(calls[0]![1].body))).toEqual({ url: "https://x.test/h" });
+    });
+  });
+
   describe("query parameters", () => {
+    it("drops blank filter values and blank array entries", async () => {
+      fetchMock.mockResolvedValue(jsonResponse([]));
+
+      const client = new GitLabClient("https://gitlab.example.com");
+      await client.listMergeRequests("group/project", {
+        query: {
+          author_username: "",
+          created_after: "   ",
+          state: "opened",
+          labels: "bug",
+          iids: ["", "4", " "],
+          reviewer_username: [" ", ""]
+        }
+      });
+
+      const [requestUrl] = fetchMock.mock.calls[0] as [URL | string];
+      const url = new URL(String(requestUrl));
+
+      expect(url.searchParams.has("author_username")).toBe(false);
+      expect(url.searchParams.has("created_after")).toBe(false);
+      expect(url.searchParams.has("reviewer_username[]")).toBe(false);
+      expect(url.searchParams.get("state")).toBe("opened");
+      expect(url.searchParams.get("labels")).toBe("bug");
+      expect(url.searchParams.getAll("iids[]")).toEqual(["4"]);
+    });
+
     it("adds query params for project search", async () => {
       fetchMock.mockResolvedValue(jsonResponse([]));
 
@@ -1408,10 +1467,10 @@ describe("GitLabClient", () => {
       expect(getPaginationMetadata(result)).toEqual({ next_page_token: "abc123" });
     });
 
-    it("uses x-next-page as keyset repository tree token fallback", async () => {
+    it("reports offset next_page instead of a token when GitLab ignores keyset", async () => {
       fetchMock.mockResolvedValue(
         jsonResponse([{ name: "b.ts", type: "blob" }], 200, {
-          "x-next-page": "fallback-token"
+          "x-next-page": "2"
         })
       );
 
@@ -1422,8 +1481,25 @@ describe("GitLabClient", () => {
 
       expect(result).toMatchObject({
         items: [{ name: "b.ts", type: "blob" }],
-        next_page_token: "fallback-token"
+        next_page: 2
       });
+      expect(result).not.toHaveProperty("next_page_token");
+      expect((result as { pagination_note: string }).pagination_note).toContain("offset");
+    });
+
+    it("reads the keyset cursor from the next Link header", async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse([{ name: "c.ts", type: "blob" }], 200, {
+          link: '<https://gitlab.example.com/api/v4/projects/1/repository/tree?id=1&page_token=7f3a2b&pagination=keyset&per_page=20>; rel="next"'
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.getRepositoryTree("proj", {
+        query: { pagination: "keyset", per_page: 20 }
+      });
+
+      expect(result).toMatchObject({ next_page_token: "7f3a2b" });
     });
 
     it("gets file contents with ref", async () => {
@@ -1535,6 +1611,75 @@ describe("GitLabClient", () => {
         approved_by_usernames: ["bob"],
         source_endpoint: "approvals"
       });
+    });
+
+    it("reads /approvals when approval_state reports no approval rules", async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ rules: [] })).mockResolvedValueOnce(
+        jsonResponse({
+          approved: true,
+          user_has_approved: true,
+          user_can_approve: false,
+          approved_by: [{ user: { id: 3, username: "carol" } }]
+        })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      const result = await client.getMergeRequestApprovalState("proj", "7");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [secondUrl] = fetchMock.mock.calls[1] as [URL | string];
+      expect(new URL(String(secondUrl)).pathname).toBe(
+        "/api/v4/projects/proj/merge_requests/7/approvals"
+      );
+      expect(result).toMatchObject({
+        approved: true,
+        approved_by_usernames: ["carol"],
+        source_endpoint: "approvals"
+      });
+    });
+
+    it("keeps the empty approval_state answer when /approvals lists nobody or fails", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ rules: [] }))
+        .mockResolvedValueOnce(jsonResponse({ approved_by: [] }))
+        .mockResolvedValueOnce(jsonResponse({ rules: [] }))
+        .mockResolvedValueOnce(jsonResponse({ message: "500" }, 500));
+
+      const client = new GitLabClient("https://gitlab.example.com", "token", {
+        maxGetRetries: 0
+      });
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await expect(client.getMergeRequestApprovalState("proj", "7")).resolves.toMatchObject({
+          approved_by: [],
+          source_endpoint: "approval_state"
+        });
+      }
+    });
+
+    it("falls back to /approvals when approval rules are not licensed", async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse({ message: "403 Forbidden" }, 403))
+        .mockResolvedValueOnce(
+          jsonResponse({ approved_by: [{ user: { id: 4, username: "dan" } }] })
+        );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await expect(client.getMergeRequestApprovalState("proj", "7")).resolves.toMatchObject({
+        approved_by_usernames: ["dan"],
+        source_endpoint: "approvals"
+      });
+    });
+
+    it("does not query /approvals when approval rules exist but nobody approved yet", async () => {
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse({ rules: [{ approved: false, approved_by: [] }] })
+      );
+
+      const client = new GitLabClient("https://gitlab.example.com", "token");
+      await client.getMergeRequestApprovalState("proj", "7");
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
     it("uploads markdown file", async () => {

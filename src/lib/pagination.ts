@@ -27,7 +27,9 @@ export function extractGitLabPaginationMetadata(
     per_page: parsePaginationInteger(headers.get("x-per-page")),
     total: parsePaginationInteger(headers.get("x-total")),
     total_pages: parsePaginationInteger(headers.get("x-total-pages")),
-    next_page_token: parsePaginationToken(headers.get("x-next-page-token"))
+    next_page_token:
+      parsePaginationToken(headers.get("x-next-page-token")) ??
+      parseNextLinkPageToken(headers.get("link"))
   };
   const links = parseLinkHeader(headers.get("link"));
   if (Object.keys(links).length > 0) {
@@ -127,6 +129,29 @@ function parseLinkHeader(value: string | null): Partial<Record<PaginationLinkRel
     }
   }
   return links;
+}
+
+/** Keyset-paginated endpoints put the next cursor in the rel="next" Link as page_token. */
+function parseNextLinkPageToken(value: string | null): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const matcher = /<([^>]+)>\s*;\s*rel="?([^";,\s]+)"?/gu;
+  for (const match of value.matchAll(matcher)) {
+    const [, url, relation] = match;
+    if (!url || relation !== "next") {
+      continue;
+    }
+    try {
+      return parsePaginationToken(
+        new URL(url, "https://gitlab.invalid").searchParams.get("page_token")
+      );
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 function isPaginationLinkRelation(value: string | undefined): value is PaginationLinkRelation {
