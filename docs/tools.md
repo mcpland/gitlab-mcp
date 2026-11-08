@@ -314,9 +314,9 @@ Requires `USE_PIPELINE=true` (default).
 | `gitlab_create_pipeline`              | **Yes**  | Trigger a new pipeline. Params: `ref` (required). Supports `variables` array (`key`, `value`, `variable_type`) and typed `inputs` for `spec:inputs` (`string`, `number`, `boolean`, arrays). |
 | `gitlab_retry_pipeline`               | **Yes**  | Retry failed jobs in a pipeline.                                                                                                                                                             |
 | `gitlab_cancel_pipeline`              | **Yes**  | Cancel a running pipeline.                                                                                                                                                                   |
-| `gitlab_retry_pipeline_job`           | **Yes**  | Retry one failed job.                                                                                                                                                                        |
-| `gitlab_cancel_pipeline_job`          | **Yes**  | Cancel one running job.                                                                                                                                                                      |
-| `gitlab_play_pipeline_job`            | **Yes**  | Play/trigger a manual job.                                                                                                                                                                   |
+| `gitlab_retry_pipeline_job`           | **Yes**  | Retry one failed job. Optional typed `job_inputs`.                                                                                                                                           |
+| `gitlab_cancel_pipeline_job`          | **Yes**  | Cancel one running job. `force=true` also cancels a job stuck in `canceling`.                                                                                                                |
+| `gitlab_play_pipeline_job`            | **Yes**  | Play/trigger a manual job. Supports `job_variables_attributes` (`[{key, value}]`) and typed `job_inputs`.                                                                                    |
 
 ---
 

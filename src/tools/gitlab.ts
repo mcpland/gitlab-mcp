@@ -4027,49 +4027,66 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     {
       name: "gitlab_retry_pipeline_job",
       title: "Retry Pipeline Job",
-      description: "Retry one failed job.",
+      description:
+        "Retry one failed job. job_inputs overrides typed values for the job's inputs definitions.",
       capabilities: writeCapabilities,
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        job_id: z.string().min(1)
+        job_id: z.string().min(1),
+        job_inputs: optionalRecord
       },
       handler: async (args, context) =>
         context.gitlab.retryPipelineJob(
           resolveProjectId(args, context, true),
-          getString(args, "job_id")
+          getString(args, "job_id"),
+          { job_inputs: getOptionalRecord(args, "job_inputs") }
         )
     },
     {
       name: "gitlab_cancel_pipeline_job",
       title: "Cancel Pipeline Job",
-      description: "Cancel one running job.",
+      description:
+        "Cancel one running job. force=true also cancels a job stuck in the canceling state.",
       capabilities: writeCapabilities,
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        job_id: z.string().min(1)
+        job_id: z.string().min(1),
+        force: optionalBoolean
       },
       handler: async (args, context) =>
         context.gitlab.cancelPipelineJob(
           resolveProjectId(args, context, true),
-          getString(args, "job_id")
+          getString(args, "job_id"),
+          { force: getOptionalBoolean(args, "force") }
         )
     },
     {
       name: "gitlab_play_pipeline_job",
       title: "Play Pipeline Job",
-      description: "Play a manual job.",
+      description:
+        "Play a manual job, optionally with job_variables_attributes ([{key, value}]) and typed job_inputs.",
       capabilities: writeCapabilities,
       requiresFeature: "pipeline",
       inputSchema: {
         project_id: optionalProjectIdSchema,
-        job_id: z.string().min(1)
+        job_id: z.string().min(1),
+        job_variables_attributes: nullableOptional(
+          z.array(z.object({ key: ciVariableKeySchema, value: z.string() })).max(100)
+        ),
+        job_inputs: optionalRecord
       },
       handler: async (args, context) =>
         context.gitlab.playPipelineJob(
           resolveProjectId(args, context, true),
-          getString(args, "job_id")
+          getString(args, "job_id"),
+          {
+            job_variables_attributes: getOptionalArray(args, "job_variables_attributes") as
+              | Array<{ key: string; value: string }>
+              | undefined,
+            job_inputs: getOptionalRecord(args, "job_inputs")
+          }
         )
     },
     {

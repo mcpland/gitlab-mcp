@@ -155,6 +155,13 @@ export interface GitLabArtifactFileContent {
 
 export type GitLabPipelineInputValue = string | number | boolean | Array<string | number | boolean>;
 
+export interface GitLabJobRunPayload {
+  /** Variables for a manual job run (play only). */
+  job_variables_attributes?: Array<{ key: string; value: string }>;
+  /** Typed values for the job's `inputs` definitions. */
+  job_inputs?: Record<string, unknown>;
+}
+
 type AwardEmojiEntity = "issues" | "merge_requests";
 
 export interface GitLabApiErrorOptions {
@@ -2311,33 +2318,39 @@ export class GitLabClient {
   retryPipelineJob(
     projectId: string,
     jobId: string,
+    payload: GitLabJobRunPayload = {},
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
       `/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/retry`,
-      options
+      withOptionalJsonBody(payload, options)
     );
   }
 
   cancelPipelineJob(
     projectId: string,
     jobId: string,
+    cancel: { force?: boolean } = {},
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
-    return this.post(
-      `/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/cancel`,
-      options
-    );
+    return this.post(`/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/cancel`, {
+      ...options,
+      query: {
+        ...(options.query ?? {}),
+        ...(cancel.force === undefined ? {} : { force: cancel.force })
+      }
+    });
   }
 
   playPipelineJob(
     projectId: string,
     jobId: string,
+    payload: GitLabJobRunPayload = {},
     options: GitLabRequestOptions = {}
   ): Promise<unknown> {
     return this.post(
       `/projects/${encodeGitLabProjectId(projectId)}/jobs/${encode(jobId)}/play`,
-      options
+      withOptionalJsonBody(payload, options)
     );
   }
 
@@ -3734,6 +3747,28 @@ function parseContentLength(value: string | null): number | undefined {
   }
 
   return parsed;
+}
+
+/** Attach a JSON body only when the payload has fields, keeping bodiless POSTs unchanged. */
+function withOptionalJsonBody(
+  payload: object,
+  options: GitLabRequestOptions
+): GitLabRequestOptions {
+  const fields = Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined)
+  );
+  if (Object.keys(fields).length === 0) {
+    return options;
+  }
+
+  return {
+    ...options,
+    body: JSON.stringify(fields),
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers ?? {})
+    }
+  };
 }
 
 function appendQueryParameters(url: URL, query: GitLabRequestOptions["query"]): void {
