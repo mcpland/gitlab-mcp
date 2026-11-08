@@ -183,6 +183,13 @@ function installMcpOAuthRoutes(app: Express, options: InstallMcpOAuthRoutesOptio
   app.get(options.provider.callbackUrl.pathname, (req, res, next) => {
     void options.provider.handleCallback(req, res).catch(next);
   });
+  app.post(
+    options.provider.consentUrl.pathname,
+    express.urlencoded({ extended: false, limit: "16kb" }),
+    (req, res, next) => {
+      void options.provider.handleConsent(req, res).catch(next);
+    }
+  );
 
   app.use(mcpAuthRouter(routerOptions));
 
@@ -451,6 +458,7 @@ export function setupMcpHttpApp(deps: SetupMcpHttpAppDeps): SetupMcpHttpAppResul
           applicationId: appEnv.GITLAB_OAUTH_APP_ID!,
           applicationSecret: appEnv.GITLAB_OAUTH_APP_SECRET,
           callbackUrl: buildUrlWithPathPrefix(oauthIssuerUrl, "callback"),
+          consentUrl: buildUrlWithPathPrefix(oauthIssuerUrl, "consent"),
           stateSecret: appEnv.GITLAB_MCP_OAUTH_STATE_SECRET!,
           previousStateSecret: appEnv.GITLAB_MCP_OAUTH_STATE_SECRET_PREVIOUS,
           scopes: oauthScopes,

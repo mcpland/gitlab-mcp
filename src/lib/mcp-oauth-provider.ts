@@ -24,6 +24,14 @@ import {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { Request, Response } from "express";
 
+import {
+  CONSENT_CSRF_COOKIE,
+  CONSENT_PAGE_HEADERS,
+  consentGrantCookieName,
+  readCookie,
+  renderConsentPage,
+  serializeCookie
+} from "./mcp-oauth-consent.js";
 import { deriveGitLabBaseUrl } from "./oauth.js";
 import { OAuthGroupAuthorizer } from "./oauth-group-authorizer.js";
 import {
@@ -73,6 +81,8 @@ export interface GitLabMcpOAuthProviderOptions {
   applicationId: string;
   applicationSecret?: string;
   callbackUrl: string;
+  /** Absolute URL of the consent form endpoint; defaults to "consent" next to the callback. */
+  consentUrl?: string;
   stateSecret: string;
   previousStateSecret?: string;
   scopes: string[];
@@ -91,6 +101,7 @@ export interface GitLabMcpOAuthProviderOptions {
 export class GitLabMcpOAuthProvider implements OAuthServerProvider {
   readonly skipLocalPkceValidation = true;
   readonly callbackUrl: URL;
+  readonly consentUrl: URL;
 
   private readonly gitLabBaseUrl: string;
   private readonly applicationId: string;
@@ -99,6 +110,8 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
   private readonly resourceName: string;
   private readonly resourceServerUrl: string;
   private readonly codec: StatelessMcpOAuthCodec;
+  private readonly clientTtlSeconds: number;
+  private readonly codeTtlSeconds: number;
   private readonly groupAuthorizer?: OAuthGroupAuthorizer;
   private readonly timeoutMs: number;
   private readonly fetchImplementation: typeof fetch;
@@ -111,6 +124,9 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
       ? requireBoundedValue(options.applicationSecret, "GITLAB_OAUTH_APP_SECRET", 1_024)
       : undefined;
     this.callbackUrl = validateCallbackUrl(options.callbackUrl);
+    this.consentUrl = validateCallbackUrl(
+      options.consentUrl ?? new URL("consent", this.callbackUrl).href
+    );
     this.scopes = validateConfiguredScopes(options.scopes);
     this.resourceServerUrl = new URL(options.resourceServerUrl).href;
     this.resourceName = requireBoundedValue(
@@ -120,20 +136,22 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
     );
     this.timeoutMs = requireIntegerInRange(options.timeoutMs ?? 20_000, "timeoutMs", 500, 120_000);
     this.fetchImplementation = options.fetch ?? fetch;
+    this.clientTtlSeconds = requireIntegerInRange(
+      options.clientTtlSeconds ?? DEFAULT_CLIENT_TTL_SECONDS,
+      "clientTtlSeconds",
+      600,
+      31_536_000
+    );
+    this.codeTtlSeconds = requireIntegerInRange(
+      options.codeTtlSeconds ?? DEFAULT_CODE_TTL_SECONDS,
+      "codeTtlSeconds",
+      60,
+      3_600
+    );
     this.codec = new StatelessMcpOAuthCodec({
       keyRing: parseMcpOAuthKeyRing(options.stateSecret, options.previousStateSecret),
-      clientTtlSeconds: requireIntegerInRange(
-        options.clientTtlSeconds ?? DEFAULT_CLIENT_TTL_SECONDS,
-        "clientTtlSeconds",
-        600,
-        31_536_000
-      ),
-      codeTtlSeconds: requireIntegerInRange(
-        options.codeTtlSeconds ?? DEFAULT_CODE_TTL_SECONDS,
-        "codeTtlSeconds",
-        60,
-        3_600
-      ),
+      clientTtlSeconds: this.clientTtlSeconds,
+      codeTtlSeconds: this.codeTtlSeconds,
       now: options.now
     });
     this.groupAuthorizer = options.allowedGroups?.length
@@ -171,12 +189,146 @@ export class GitLabMcpOAuthProvider implements OAuthServerProvider {
       );
     }
 
+    const request = (res as Response & { req?: Request }).req;
+    const grant = readCookie(
+      request?.headers?.cookie,
+      consentGrantCookieName(hashMcpOAuthClientId(client.client_id))
+    );
+    if (grant && this.codec.isConsentGranted(grant, client.client_id, params.redirectUri)) {
+      this.redirectToGitLab(client.client_id, params, res);
+      return;
+    }
+
+    this.renderConsent(client, params, res);
+  }
+
+  /**
+   * Handle the consent form. The CSRF value must match both the cookie set
+   * with the page and the sealed request, so another site can neither submit
+   * the form nor replay a request token in the user's browser.
+   */
+  async handleConsent(req: Request, res: Response): Promise<void> {
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    const body = (typeof req.body === "object" && req.body !== null ? req.body : {}) as Record<
+      string,
+      unknown
+    >;
+    const requestToken = typeof body.request === "string" ? body.request : "";
+    const formCsrf = typeof body.csrf === "string" ? body.csrf : "";
+    const cookieCsrf = readCookie(req.headers.cookie, CONSENT_CSRF_COOKIE) ?? "";
+    const pending = this.codec.openConsentRequest(requestToken);
+    if (
+      !pending ||
+      !formCsrf ||
+      !safeStringEquals(formCsrf, cookieCsrf) ||
+      !safeStringEquals(formCsrf, pending.csrf)
+    ) {
+      res.status(400).send("Invalid or expired consent request; restart the authorization.");
+      return;
+    }
+
+    const client = this.codec.openClient(pending.clientId);
+    if (!client || !client.redirect_uris.includes(pending.redirectUri)) {
+      res.status(400).send("The client registration is no longer valid; register again.");
+      return;
+    }
+
+    res.append("Set-Cookie", this.consentCookie(CONSENT_CSRF_COOKIE, "", 0, "Strict"));
+
+    if (body.decision !== "approve") {
+      const callback = new URL(pending.redirectUri);
+      callback.searchParams.set("error", "access_denied");
+      callback.searchParams.set("error_description", "The user denied the authorization request");
+      if (pending.state !== undefined) {
+        callback.searchParams.set("state", pending.state);
+      }
+      res.redirect(302, callback.href);
+      return;
+    }
+
+    res.append(
+      "Set-Cookie",
+      this.consentCookie(
+        consentGrantCookieName(hashMcpOAuthClientId(pending.clientId)),
+        this.codec.sealConsentGrant(pending.clientId, pending.redirectUri),
+        this.clientTtlSeconds,
+        "Lax"
+      )
+    );
+    this.redirectToGitLab(
+      pending.clientId,
+      {
+        redirectUri: pending.redirectUri,
+        codeChallenge: pending.codeChallenge,
+        state: pending.state
+      },
+      res
+    );
+  }
+
+  private renderConsent(
+    client: OAuthClientInformationFull,
+    params: AuthorizationParams,
+    res: Response
+  ): void {
+    const csrf = randomBytes(24).toString("base64url");
+    const requestToken = this.codec.sealConsentRequest({
+      clientId: client.client_id,
+      redirectUri: params.redirectUri,
+      codeChallenge: params.codeChallenge,
+      state: params.state,
+      csrf
+    });
+
+    for (const [name, value] of Object.entries(CONSENT_PAGE_HEADERS)) {
+      res.setHeader(name, value);
+    }
+    res.append(
+      "Set-Cookie",
+      this.consentCookie(CONSENT_CSRF_COOKIE, csrf, this.codeTtlSeconds, "Strict")
+    );
+    res.status(200).send(
+      renderConsentPage({
+        serverName: this.resourceName,
+        clientName: client.client_name,
+        clientId: client.client_id,
+        redirectUri: params.redirectUri,
+        scopes: this.scopes,
+        gitLabBaseUrl: this.gitLabBaseUrl,
+        formAction: this.consentUrl.href,
+        requestToken,
+        csrf
+      })
+    );
+  }
+
+  private consentCookie(
+    name: string,
+    value: string,
+    maxAgeSeconds: number,
+    sameSite: "Strict" | "Lax"
+  ): string {
+    const issuerPath = new URL(".", this.consentUrl).pathname;
+    return serializeCookie(name, value, {
+      path: issuerPath,
+      maxAgeSeconds,
+      secure: this.consentUrl.protocol === "https:",
+      sameSite
+    });
+  }
+
+  private redirectToGitLab(
+    clientId: string,
+    params: Pick<AuthorizationParams, "redirectUri" | "codeChallenge" | "state">,
+    res: Response
+  ): void {
     const proxyCodeVerifier = randomBytes(32).toString("base64url");
     const proxyCodeChallenge = createHash("sha256")
       .update(proxyCodeVerifier, "utf8")
       .digest("base64url");
     const proxyState = this.codec.sealAuthorizationState({
-      clientId: client.client_id,
+      clientId,
       clientRedirectUri: params.redirectUri,
       clientCodeChallenge: params.codeChallenge,
       proxyCodeVerifier,

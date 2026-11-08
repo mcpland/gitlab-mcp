@@ -12,7 +12,7 @@ const MAX_TOKEN_LENGTH = 8_192;
 const FUTURE_CLOCK_SKEW_SECONDS = 60;
 const HKDF_SALT = Buffer.from("gitlab-mcp-oauth-proxy-v1", "utf8");
 
-type TokenPurpose = "client" | "state" | "code" | "refresh";
+type TokenPurpose = "client" | "state" | "code" | "refresh" | "consent" | "grant";
 
 interface TimedPayload {
   v: 1;
@@ -49,6 +49,29 @@ interface AuthorizationCodePayload extends TimedPayload {
 interface RefreshTokenPayload extends TimedPayload {
   gitLabRefreshToken: string;
   clientHash: string;
+}
+
+/** A pending authorization request shown on the consent page. */
+export interface ConsentRequestPayload extends TimedPayload {
+  clientId: string;
+  redirectUri: string;
+  codeChallenge: string;
+  state?: string;
+  csrf: string;
+}
+
+/** A remembered approval of one client and redirect URI by this browser. */
+interface ConsentGrantPayload extends TimedPayload {
+  clientHash: string;
+  redirectUri: string;
+}
+
+export interface ConsentRequestInput {
+  clientId: string;
+  redirectUri: string;
+  codeChallenge: string;
+  state?: string;
+  csrf: string;
 }
 
 export interface McpOAuthKeyRing {
@@ -207,6 +230,46 @@ export class StatelessMcpOAuthCodec {
     return payload && isRefreshTokenPayload(payload) ? payload : undefined;
   }
 
+  sealConsentRequest(input: ConsentRequestInput): string {
+    const payload: ConsentRequestPayload = {
+      v: 1,
+      iat: this.now(),
+      clientId: input.clientId,
+      redirectUri: input.redirectUri,
+      codeChallenge: input.codeChallenge,
+      csrf: input.csrf
+    };
+    if (input.state !== undefined) {
+      payload.state = input.state;
+    }
+    return this.seal("consent", payload);
+  }
+
+  openConsentRequest(token: string): ConsentRequestPayload | undefined {
+    const payload = this.open<ConsentRequestPayload>("consent", token, this.codeTtlSeconds);
+    return payload && isConsentRequestPayload(payload) ? payload : undefined;
+  }
+
+  sealConsentGrant(clientId: string, redirectUri: string): string {
+    return this.seal("grant", {
+      v: 1,
+      iat: this.now(),
+      clientHash: hashMcpOAuthClientId(clientId),
+      redirectUri
+    } satisfies ConsentGrantPayload);
+  }
+
+  /** True when the sealed grant approves exactly this client and redirect URI. */
+  isConsentGranted(token: string, clientId: string, redirectUri: string): boolean {
+    const payload = this.open<ConsentGrantPayload>("grant", token, this.clientTtlSeconds);
+    return (
+      payload !== undefined &&
+      isRecord(payload) &&
+      payload.clientHash === hashMcpOAuthClientId(clientId) &&
+      payload.redirectUri === redirectUri
+    );
+  }
+
   private seal<T extends TimedPayload>(purpose: TokenPurpose, payload: T): string {
     const key = deriveKey(this.keyRing.current, purpose);
     const nonce = randomBytes(NONCE_BYTES);
@@ -338,6 +401,19 @@ function isClientPayload(value: TimedPayload): value is ClientPayload {
       (typeof value.clientSecretExpiresAt === "number" &&
         Number.isInteger(value.clientSecretExpiresAt) &&
         value.clientSecretExpiresAt >= 0))
+  );
+}
+
+function isConsentRequestPayload(value: TimedPayload): value is ConsentRequestPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isNonEmptyString(value.clientId) &&
+    isNonEmptyString(value.redirectUri) &&
+    isNonEmptyString(value.codeChallenge) &&
+    isNonEmptyString(value.csrf) &&
+    isOptionalString(value.state)
   );
 }
 

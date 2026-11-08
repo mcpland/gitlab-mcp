@@ -146,7 +146,8 @@ describe("createGitLabMcpOAuthProvider", () => {
     expect(client).toBeDefined();
     const response = createResponseRecorder();
 
-    await providerB.authorize(
+    await authorizeThroughConsent(
+      providerB,
       client!,
       {
         redirectUri: CLIENT_REDIRECT_URI,
@@ -167,6 +168,144 @@ describe("createGitLabMcpOAuthProvider", () => {
     expect(authorizeUrl.searchParams.get("code_challenge")).not.toBe(CLIENT_CODE_CHALLENGE);
     expect(authorizeUrl.searchParams.get("state")).toMatch(/^v1\.state\./);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("asks the user to approve each client before redirecting to GitLab", async () => {
+    const provider = createProvider();
+    const client = await registerPublicClient(provider);
+    const page = createResponseRecorder();
+
+    await provider.authorize(
+      client,
+      {
+        redirectUri: CLIENT_REDIRECT_URI,
+        codeChallenge: CLIENT_CODE_CHALLENGE,
+        state: "client-state",
+        scopes: ["api"]
+      },
+      page.value
+    );
+
+    expect(() => page.redirectLocation()).toThrow("did not redirect");
+    expect(page.statusCode()).toBe(200);
+    expect(page.body()).toContain("Test MCP Client");
+    expect(page.body()).toContain(new URL(CLIENT_REDIRECT_URI).host);
+    expect(page.body()).toContain(`action="${new URL("consent", CALLBACK_URL).href}"`);
+    expect(page.headers["x-frame-options"]).toBe("DENY");
+    expect(page.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(page.cookies()[0]).toMatch(/^mcp_oauth_consent_csrf=[^;]+; .*HttpOnly; SameSite=Strict/);
+  });
+
+  it("escapes client-controlled names on the consent page", async () => {
+    const provider = createProvider();
+    const registerClient = provider.clientsStore.registerClient?.bind(provider.clientsStore);
+    const client = await registerClient!({
+      redirect_uris: [CLIENT_REDIRECT_URI],
+      token_endpoint_auth_method: "none",
+      grant_types: ["authorization_code"],
+      response_types: ["code"],
+      client_name: '<img src=x onerror="alert(1)">'
+    });
+    const page = createResponseRecorder();
+
+    await provider.authorize(
+      client,
+      { redirectUri: CLIENT_REDIRECT_URI, codeChallenge: CLIENT_CODE_CHALLENGE, scopes: ["api"] },
+      page.value
+    );
+
+    expect(page.body()).not.toContain("<img");
+    expect(page.body()).toContain("&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
+  });
+
+  it("rejects consent submissions without the matching CSRF cookie", async () => {
+    const provider = createProvider();
+    const client = await registerPublicClient(provider);
+    const page = createResponseRecorder();
+    await provider.authorize(
+      client,
+      { redirectUri: CLIENT_REDIRECT_URI, codeChallenge: CLIENT_CODE_CHALLENGE, scopes: ["api"] },
+      page.value
+    );
+    const fields = consentFormFields(page.body());
+
+    for (const cookie of ["", "mcp_oauth_consent_csrf=forged"]) {
+      const response = createResponseRecorder();
+      await provider.handleConsent(
+        { body: { ...fields, decision: "approve" }, headers: { cookie } } as unknown as Request,
+        response.value
+      );
+      expect(response.statusCode()).toBe(400);
+      expect(() => response.redirectLocation()).toThrow("did not redirect");
+    }
+
+    const forgedRequest = createResponseRecorder();
+    await provider.handleConsent(
+      {
+        body: { request: "v1.consent.forged", csrf: fields.csrf, decision: "approve" },
+        headers: { cookie: `mcp_oauth_consent_csrf=${fields.csrf}` }
+      } as unknown as Request,
+      forgedRequest.value
+    );
+    expect(forgedRequest.statusCode()).toBe(400);
+  });
+
+  it("returns access_denied to the client when the user denies", async () => {
+    const provider = createProvider();
+    const client = await registerPublicClient(provider);
+    const page = createResponseRecorder();
+    await provider.authorize(
+      client,
+      {
+        redirectUri: CLIENT_REDIRECT_URI,
+        codeChallenge: CLIENT_CODE_CHALLENGE,
+        state: "client-state",
+        scopes: ["api"]
+      },
+      page.value
+    );
+    const fields = consentFormFields(page.body());
+    const response = createResponseRecorder();
+
+    await provider.handleConsent(
+      {
+        body: { ...fields, decision: "deny" },
+        headers: { cookie: `mcp_oauth_consent_csrf=${fields.csrf}` }
+      } as unknown as Request,
+      response.value
+    );
+
+    const location = new URL(response.redirectLocation());
+    expect(location.origin + location.pathname).toBe(CLIENT_REDIRECT_URI);
+    expect(location.searchParams.get("error")).toBe("access_denied");
+    expect(location.searchParams.get("state")).toBe("client-state");
+  });
+
+  it("remembers an approval for the same client and redirect URI only", async () => {
+    const provider = createProvider();
+    const client = await registerPublicClient(provider);
+    const params = {
+      redirectUri: CLIENT_REDIRECT_URI,
+      codeChallenge: CLIENT_CODE_CHALLENGE,
+      scopes: ["api"]
+    };
+    const approval = createResponseRecorder();
+    await authorizeThroughConsent(provider, client, params, approval.value);
+    const grantCookie = approval
+      .cookies()
+      .find((cookie) => cookie.startsWith("mcp_oauth_consent_") && !cookie.includes("_csrf="));
+    expect(grantCookie).toMatch(/HttpOnly; SameSite=Lax/);
+    const cookieHeader = grantCookie!.split(";")[0]!;
+
+    const remembered = createResponseRecorder({ headers: { cookie: cookieHeader } });
+    await provider.authorize(client, params, remembered.value);
+    expect(new URL(remembered.redirectLocation()).pathname).toBe("/oauth/authorize");
+
+    const otherClient = await registerPublicClient(provider);
+    const otherPage = createResponseRecorder({ headers: { cookie: cookieHeader } });
+    await provider.authorize(otherClient, params, otherPage.value);
+    expect(() => otherPage.redirectLocation()).toThrow("did not redirect");
+    expect(otherPage.body()).toContain('name="csrf"');
   });
 
   it("rejects unsupported scopes, foreign resources, and oversized client state", async () => {
@@ -227,7 +366,8 @@ describe("createGitLabMcpOAuthProvider", () => {
     const providerA = createProvider(common);
     const registered = await registerPublicClient(providerA);
     const authorizeResponse = createResponseRecorder();
-    await providerA.authorize(
+    await authorizeThroughConsent(
+      providerA,
       registered,
       {
         redirectUri: CLIENT_REDIRECT_URI,
@@ -463,7 +603,8 @@ describe("createGitLabMcpOAuthProvider", () => {
     const provider = createProvider();
     const registered = await registerPublicClient(provider);
     const authorizeResponse = createResponseRecorder();
-    await provider.authorize(
+    await authorizeThroughConsent(
+      provider,
       registered,
       {
         redirectUri: CLIENT_REDIRECT_URI,
@@ -753,7 +894,8 @@ async function issueProxyCode(
     throw new Error("Unknown test client");
   }
   const authorizeResponse = createResponseRecorder();
-  await provider.authorize(
+  await authorizeThroughConsent(
+    provider,
     client,
     {
       redirectUri: CLIENT_REDIRECT_URI,
@@ -776,17 +918,35 @@ async function issueProxyCode(
   return code;
 }
 
-function createResponseRecorder(): {
+function createResponseRecorder(request?: { headers: Record<string, string> }): {
   value: Response;
   redirectLocation: () => string;
+  body: () => string;
+  cookies: () => string[];
+  headers: Record<string, string>;
+  statusCode: () => number | undefined;
 } {
   let location: string | undefined;
+  let sentBody = "";
+  let statusCode: number | undefined;
+  const cookies: string[] = [];
+  const headers: Record<string, string> = {};
   const response = {
-    setHeader: vi.fn(),
-    status: vi.fn(function status() {
+    req: request,
+    setHeader: vi.fn((name: string, value: string) => {
+      headers[name.toLowerCase()] = value;
+    }),
+    append: vi.fn((name: string, value: string) => {
+      if (name.toLowerCase() === "set-cookie") {
+        cookies.push(value);
+      }
+    }),
+    status: vi.fn(function status(code: number) {
+      statusCode = code;
       return response;
     }),
-    send: vi.fn(function send() {
+    send: vi.fn(function send(body: string) {
+      sentBody = body;
       return response;
     }),
     redirect: vi.fn((_status: number, target: string) => {
@@ -800,6 +960,38 @@ function createResponseRecorder(): {
         throw new Error("Response did not redirect");
       }
       return location;
-    }
+    },
+    body: () => sentBody,
+    cookies: () => cookies,
+    headers,
+    statusCode: () => statusCode
   };
+}
+
+function consentFormFields(html: string): { request: string; csrf: string } {
+  const request = /name="request" value="([^"]+)"/.exec(html)?.[1];
+  const csrf = /name="csrf" value="([^"]+)"/.exec(html)?.[1];
+  if (!request || !csrf) {
+    throw new Error("Authorization did not render the consent form");
+  }
+  return { request, csrf };
+}
+
+/** Run authorize, then approve its consent page, recording the GitLab redirect on response. */
+async function authorizeThroughConsent(
+  provider: ReturnType<typeof createProvider>,
+  client: Parameters<ReturnType<typeof createProvider>["authorize"]>[0],
+  params: Parameters<ReturnType<typeof createProvider>["authorize"]>[1],
+  response: Response
+): Promise<void> {
+  const page = createResponseRecorder();
+  await provider.authorize(client, params, page.value);
+  const fields = consentFormFields(page.body());
+  await provider.handleConsent(
+    {
+      body: { ...fields, decision: "approve" },
+      headers: { cookie: `mcp_oauth_consent_csrf=${fields.csrf}` }
+    } as unknown as Request,
+    response
+  );
 }

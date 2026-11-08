@@ -1402,7 +1402,42 @@ describe("http app MCP OAuth", () => {
         scope: "api",
         state: "client-state"
       }).toString();
-      const authorize = await fetch(authorizeUrl, { redirect: "manual" });
+      const consentPage = await fetch(authorizeUrl, { redirect: "manual" });
+      expect(consentPage.status).toBe(200);
+      expect(consentPage.headers.get("x-frame-options")).toBe("DENY");
+      const consentHtml = await consentPage.text();
+      expect(consentHtml).toContain("HTTP integration client");
+      expect(consentHtml).toContain('action="https://mcp.example.com/gitlab-mcp/consent"');
+      const consentRequest = /name="request" value="([^"]+)"/.exec(consentHtml)?.[1];
+      const consentCsrf = /name="csrf" value="([^"]+)"/.exec(consentHtml)?.[1];
+      const csrfCookie = consentPage.headers.get("set-cookie")?.split(";")[0];
+      expect(csrfCookie).toBe(`mcp_oauth_consent_csrf=${consentCsrf}`);
+
+      const forgedConsent = await fetch(`${running.baseUrl}/gitlab-mcp/consent`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          request: consentRequest!,
+          csrf: consentCsrf!,
+          decision: "approve"
+        }),
+        redirect: "manual"
+      });
+      expect(forgedConsent.status).toBe(400);
+
+      const authorize = await fetch(`${running.baseUrl}/gitlab-mcp/consent`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          cookie: csrfCookie!
+        },
+        body: new URLSearchParams({
+          request: consentRequest!,
+          csrf: consentCsrf!,
+          decision: "approve"
+        }),
+        redirect: "manual"
+      });
       expect(authorize.status).toBe(302);
       const gitLabAuthorize = new URL(authorize.headers.get("location")!);
       expect(gitLabAuthorize.searchParams.get("client_id")).toBe("test-gitlab-oauth-app");
