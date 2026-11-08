@@ -78,7 +78,7 @@ const TOOLSET_PATTERNS: ReadonlyArray<{
   { toolset: "issues", pattern: /(?:issue|todo)/ },
   {
     toolset: "pipelines",
-    pattern: /(?:pipeline|\bjob|job_|_job$|artifact|deployment|environment|ci_lint)/
+    pattern: /(?:pipeline|\bjob|job_|_job$|artifact|deployment|environment|ci_lint|runner)/
   },
   { toolset: "ci-catalog", pattern: /ci_catalog/ },
   { toolset: "ci-variables", pattern: /(?:project|group|schedule)_variable/ },

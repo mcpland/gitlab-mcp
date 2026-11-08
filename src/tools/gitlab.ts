@@ -83,6 +83,7 @@ import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
 import { pipelineTriggerToolDefinitions } from "./pipeline-triggers.js";
 import { pipelineToolDefinitions } from "./pipelines.js";
 import { protectedTagToolDefinitions } from "./protected-tags.js";
+import { runnerToolDefinitions } from "./runners.js";
 import { snippetToolDefinitions } from "./snippets.js";
 import {
   adminCapabilities,
@@ -5634,7 +5635,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     ...groupMilestoneToolDefinitions,
     ...iterationToolDefinitions,
     ...snippetToolDefinitions,
-    ...protectedTagToolDefinitions
+    ...protectedTagToolDefinitions,
+    ...runnerToolDefinitions
   ];
 
   return definitions.map((definition) => {
