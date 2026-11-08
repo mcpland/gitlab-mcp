@@ -72,6 +72,7 @@ import { sanitizeToolArguments } from "../lib/sanitize.js";
 import { classifyTransportFailure, describeTransportFailure } from "../lib/transport-error.js";
 import { resolveNestedWikiUpdateTitle } from "../lib/wiki-title.js";
 import type { AppContext } from "../types/context.js";
+import { deploymentToolDefinitions } from "./deployments.js";
 import { environmentToolDefinitions } from "./environments.js";
 import { getMergeRequestCodeContext, mergeRequestCodeContextSchema } from "./mr-code-context.js";
 import { pipelineScheduleToolDefinitions } from "./pipeline-schedules.js";
@@ -5477,7 +5478,8 @@ export function getGitLabToolDefinitions(): GitLabToolDefinition[] {
     },
     ...pipelineScheduleToolDefinitions,
     ...pipelineTriggerToolDefinitions,
-    ...environmentToolDefinitions
+    ...environmentToolDefinitions,
+    ...deploymentToolDefinitions
   ];
 
   return definitions.map((definition) => {
