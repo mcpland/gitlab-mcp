@@ -6,7 +6,7 @@ All project-scoped tools accept an optional `project_id` parameter. When `GITLAB
 
 Most list endpoints support `page` and `per_page`. Notable exceptions are `gitlab_list_merge_request_versions` and `gitlab_list_draft_notes`.
 
-Optional boolean arguments accept JSON booleans and the spellings `"true"`/`"false"` and `"1"`/`"0"`; any other string is rejected instead of being treated as `true`. Blank string filters (and blank entries in array filters) are left out of GitLab query strings, so an empty optional filter behaves as if it were omitted.
+Optional boolean arguments accept JSON booleans and the spellings `"true"`/`"false"` and `"1"`/`"0"`; any other string is rejected instead of being treated as `true`. Blank string filters (and blank entries in array filters) are left out of GitLab query strings, so an empty optional filter behaves as if it were omitted. With `GITLAB_ENABLE_JMESPATH=true`, every tool also accepts `jmespath` (for example `[].{iid: iid, title: title}`) to project its result before it is returned.
 
 ---
 

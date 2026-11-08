@@ -69,6 +69,12 @@ import {
 } from "../lib/pagination.js";
 import { redactSuccessfulResponse } from "../lib/redact-success.js";
 import { MAX_JOB_TRACE_CONTEXT_LINES, MAX_JOB_TRACE_MAX_MATCHES } from "../lib/job-trace-search.js";
+import {
+  applyJmespath,
+  assertValidJmespath,
+  JMESPATH_ARGUMENT,
+  MAX_JMESPATH_LENGTH
+} from "../lib/result-filter.js";
 import { sanitizeToolArguments } from "../lib/sanitize.js";
 import { classifyTransportFailure, describeTransportFailure } from "../lib/transport-error.js";
 import { nextStepForGitLabStatus, nextStepForMessage } from "../lib/error-hints.js";
@@ -397,6 +403,13 @@ const ciVariableMutationFields: ToolSchemaShape = {
 };
 const ciVariableSensitiveArguments = ["value"] as const;
 
+const jmespathArgumentSchema = nullableOptional(z.string().max(MAX_JMESPATH_LENGTH));
+
+function readJmespathArgument(args: ToolArgs | undefined): string | undefined {
+  const value = args?.[JMESPATH_ARGUMENT];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 function isExplicitlyEnabled(definition: GitLabToolDefinition, context: AppContext): boolean {
   if (definition.requiresExplicitEnable === "ciVariables") {
     return context.env.GITLAB_ENABLE_CI_VARIABLE_TOOLS;
@@ -439,16 +452,26 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
       continue;
     }
 
+    const jmespathEnabled = context.env.GITLAB_ENABLE_JMESPATH === true;
     server.registerTool(
       definition.name,
       {
         title: definition.title,
         description: definition.description,
-        inputSchema: definition.inputSchema ?? {},
+        inputSchema: jmespathEnabled
+          ? { ...(definition.inputSchema ?? {}), [JMESPATH_ARGUMENT]: jmespathArgumentSchema }
+          : (definition.inputSchema ?? {}),
         annotations: annotationsForCapabilities(definition.capabilities)
       },
       async (rawArgs, extra) => {
         try {
+          const expression = jmespathEnabled
+            ? readJmespathArgument(rawArgs as ToolArgs | undefined)
+            : undefined;
+          if (expression) {
+            // Validate before the handler so a write tool never runs with a bad filter.
+            assertValidJmespath(expression);
+          }
           context.policy.assertCanExecute({
             name: definition.name,
             capabilities: definition.capabilities,
@@ -459,15 +482,21 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
             assertAuthReady(context);
           }
 
-          const args = sanitizeToolArguments(definition.name, (rawArgs ?? {}) as ToolArgs);
+          const args = sanitizeToolArguments(
+            definition.name,
+            omit((rawArgs ?? {}) as ToolArgs, [JMESPATH_ARGUMENT])
+          );
           assertToolCanExecuteInProjectScope(definition, args, context);
           const redacted = redactSuccessfulResponse(
             await definition.handler(args, context, { signal: extra.signal })
           );
-          const result = context.responseMasker
+          const masked = context.responseMasker
             ? context.responseMasker.maskValue(redacted)
             : redacted;
-          const pagination = getPaginationMetadata(result);
+          const pagination = getPaginationMetadata(masked);
+          // Filter after masking so a predicate cannot probe masked values.
+          const filtered = expression ? applyJmespath(masked, expression) : undefined;
+          const result = filtered?.ok ? filtered.value : masked;
           const formatted = context.formatter.format(result);
           const structuredResult = formatted.truncated
             ? { truncated: true }
@@ -485,7 +514,12 @@ export function registerGitLabTools(server: McpServer, context: AppContext): voi
               meta: {
                 truncated: formatted.truncated,
                 bytes: formatted.bytes,
-                ...(pagination ? { pagination } : {})
+                ...(pagination ? { pagination } : {}),
+                ...(filtered && !filtered.ok
+                  ? {
+                      jmespath_error: `The tool succeeded but the jmespath filter failed, so the unfiltered result is returned: ${filtered.error}`
+                    }
+                  : {})
               }
             }
           };

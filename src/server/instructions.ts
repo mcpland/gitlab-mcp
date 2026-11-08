@@ -25,6 +25,12 @@ export function buildServerInstructions(context: AppContext): string {
     }.`
   ];
 
+  if (env.GITLAB_ENABLE_JMESPATH) {
+    lines.push(
+      'Every tool accepts jmespath to keep only the fields you need, for example "[].{iid: iid, title: title, state: state}" on lists.'
+    );
+  }
+
   if (env.GITLAB_ALLOWED_PROJECT_IDS.length > 0) {
     const projects = env.GITLAB_ALLOWED_PROJECT_IDS.slice(0, 10).join(", ");
     const more = env.GITLAB_ALLOWED_PROJECT_IDS.length > 10 ? ", ..." : "";

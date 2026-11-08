@@ -33,6 +33,10 @@ describe("server instructions", () => {
     expect(text).toContain("Permission mode: modify (delete and teardown tools are hidden).");
     expect(text).toContain("Only these projects are reachable: group/project.");
     expect(text).toContain("Enabled toolsets: core, pipelines.");
+    expect(text).not.toContain("jmespath");
+    expect(buildServerInstructions(buildContext({ enableJmespath: true }))).toContain(
+      "Every tool accepts jmespath"
+    );
   });
 
   it("stay within the handshake budget and name only registered tools", () => {

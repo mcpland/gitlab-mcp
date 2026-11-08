@@ -140,6 +140,7 @@ const envSchema = z.object({
   GITLAB_AUTH_VALIDATION_TTL_SECONDS: z.coerce.number().int().min(1).max(300).default(30),
   GITLAB_ERROR_DETAIL_MODE: errorDetailModeSchema.optional(),
   GITLAB_RESPONSE_MASKING_FILE: optionalNonEmptyString,
+  GITLAB_ENABLE_JMESPATH: z.enum(["true", "false"]).default("false"),
   GITLAB_AUTH_COOKIE_PATH: z.string().optional(),
   GITLAB_COOKIE_WARMUP_PATH: z.string().default("/user"),
   GITLAB_CLOUDFLARE_BYPASS: z.enum(["true", "false"]).default("false"),
@@ -282,6 +283,7 @@ export const env = {
     data.GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS,
     false
   ),
+  GITLAB_ENABLE_JMESPATH: parseBoolean(data.GITLAB_ENABLE_JMESPATH, false),
   GITLAB_DISABLED_CAPABILITIES: parseCapabilities(data.GITLAB_DISABLED_CAPABILITIES),
   GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: parseBoolean(
     data.GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE,

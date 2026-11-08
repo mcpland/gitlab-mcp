@@ -64,6 +64,7 @@ const defaultEnv: AppContext["env"] = {
   GITLAB_ENABLE_CI_VARIABLE_TOOLS: false,
   GITLAB_ALLOW_CI_VARIABLE_VALUES: false,
   GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS: false,
+  GITLAB_ENABLE_JMESPATH: false,
   GITLAB_DISABLED_CAPABILITIES: [],
   GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: false,
   GITLAB_RESPONSE_MODE: "json",
@@ -135,6 +136,7 @@ export interface BuildContextOptions {
   enableCiVariableTools?: boolean;
   allowCiVariableValues?: boolean;
   enableDependencyProxyTools?: boolean;
+  enableJmespath?: boolean;
   deniedToolsRegex?: RegExp;
   disabledCapabilities?: ToolCapability[];
   enabledFeatures?: typeof defaultFeatures;
@@ -168,6 +170,7 @@ export function buildContext(overrides?: BuildContextOptions): AppContext {
       GITLAB_ENABLE_CI_VARIABLE_TOOLS: overrides?.enableCiVariableTools ?? false,
       GITLAB_ALLOW_CI_VARIABLE_VALUES: overrides?.allowCiVariableValues ?? false,
       GITLAB_ENABLE_DEPENDENCY_PROXY_TOOLS: overrides?.enableDependencyProxyTools ?? false,
+      GITLAB_ENABLE_JMESPATH: overrides?.enableJmespath ?? false,
       GITLAB_DISABLED_CAPABILITIES: overrides?.disabledCapabilities ?? [],
       GITLAB_ALLOW_GRAPHQL_WITH_PROJECT_SCOPE: overrides?.allowGraphqlWithProjectScope ?? false,
       GITLAB_MAX_RESPONSE_BYTES: overrides?.maxBytes ?? 200_000,
